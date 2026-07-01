@@ -70,3 +70,27 @@ Stage Summary:
   - Verified a full round across two players + two monsters: Алан's opening strike hit the goblin-scout (21 vs AC 13, 7 dmg), Мира cast fire bolt on her turn (7 dmg to goblin-archer), round advanced to 2 and turn returned to Алан — with player 1's browser unlocking via polling sync.
   - Turn-lock, initiative tracker, party panel, and real-time sync all confirmed working in the browser. Lint clean (0 errors/warnings). Both Next.js (3000) and game-sync (3003) servers running.
 - Artifacts: `prisma/schema.prisma`, `mini-services/game-sync/`, `src/lib/game/{presets,state,seed,dm-agent,socket,types}.ts`, `src/app/api/game/{room/create,room/join,state,action,reset,image}/route.ts`, `src/components/dnd/{Lobby,PartyPanel,InitiativeTracker,CharacterSheet,CombatGrid,ChatPanel}.tsx`, `src/app/page.tsx`.
+
+---
+Task ID: 3
+Agent: main (Z.ai Code)
+Task: BG3-style character creator (more classes/races/backgrounds), translate game title to English, polish UI + fix bugs, then write detailed deployment guide (variant B).
+
+Work Log:
+- Expanded character content (`src/lib/game/presets.ts`): 12 D&D 5e classes (Fighter, Barbarian, Paladin, Ranger, Rogue, Monk, Wizard, Sorcerer, Warlock, Cleric, Druid, Bard), 9 BG3-flavored races (Human, Elf, Dwarf, Halfling, Tiefling, Gnome, Half-Orc, Dragonborn, Githyanki) each with stat bonuses + a racial trait, and 10 backgrounds (Soldier, Acolyte, Criminal, Folk Hero, Noble, Sage, Urchin, Outlander, Entertainer, Charlatan) each with a gold bonus + skill + flavor item. Added `applyRaceBonuses()` to compute final stats (capped at 18).
+- Updated `types.ts` (added `Stats`, `RacePreset`, `BackgroundPreset`; added `race/raceName/background/backgroundName` to PlayerState) and the Prisma schema (`Player.race/raceName/background/backgroundName`), force-reset the DB and regenerated the client.
+- Updated `seed.ts`: refactored to export `seedRoomContent(roomId, input)`; `createPlayer` now applies race bonuses to stats, adds background gold, and grants the background item. The DM context builder now reports the hero as e.g. "Тифлинг Cleric, происхождение Служитель" so the LLM can narrate race/background flavor.
+- Updated room/create + room/join API routes to accept `classId/raceId/backgroundId`; rewrote reset route to read the caller's existing race/class/background from the DB before deletion (preserves the hero across resets).
+- Built `CharacterCreator.tsx` — a multi-step BG3-style wizard (Race → Class → Background → Name) with a clickable step indicator, a "Случайно" (randomize) button, and a sticky live-preview panel showing the computed final stats (with race bonus deltas highlighted), HP/AC/gold, weapon + damage notation, the racial trait, and the background skill. Rewrote `Lobby.tsx` to route into the creator.
+- Translated the game title to English: "Тёмные Хроники" → **DUSKFALL** (layout metadata, page header, footer, loading screen, lobby, creator). Narrative stays Russian (DM speaks Russian for immersion).
+- Updated `CharacterSheet.tsx` + `PartyPanel.tsx` to show "Раса Класс · Происхождение · ур.N" for each hero.
+
+Variant B (deployment):
+- Added production artifacts: `Dockerfile` (multi-stage: builds Next.js standalone + copies Prisma client/CLI + game-sync; runs both processes via `start.sh`), `start.sh` (first-boot `prisma db push`, then launches game-sync:3003 + Next.js:3000), `.dockerignore`, `docker-compose.yml` (app + Caddy gateway + persistent `duskfall-data` volume for SQLite), `Caddyfile.prod` (same XTransformPort=3003 routing as the sandbox, with auto-HTTPS for real domains), `.env.example`.
+- Wrote `DEPLOYMENT.md` — a detailed Russian guide covering: VPS+Docker Compose (recommended, step-by-step from server rental → Docker install → code upload → env config → domain/HTTPS → run → invite friends → backup/update), Railway, Render, single-port PaaS caveat, env-var reference, optional PostgreSQL migration, post-deploy checklist, and a troubleshooting section.
+
+Stage Summary:
+- Character creator verified end-to-end in the browser: created "Кассия" (Тифлинг Cleric, Служитель) — race bonuses applied (INT 11=10+1, CHA 14=12+2), background gold (22=10+12) and item ("Святой амулет" via Acolyte... actually Печать рода for noble) granted. All 12 classes, 9 races, 10 backgrounds render in the wizard; live preview updates on selection.
+- Combat still fully functional with the new creator: Кассия attacked, initiative rolled (Goblin Scout 21 > Goblin Archer 8 > Кассия 2), killed the goblin-scout (7 dmg → 0 HP, inactive), turn advanced through the goblin-archer and back to Кассия in round 2. Turn-lock + initiative tracker confirmed in browser.
+- Title is now DUSKFALL everywhere; lint clean (0 errors/warnings); both servers (3000 + 3003) running; no console errors.
+- Artifacts: `src/lib/game/{presets,types,seed,state,dm-agent}.ts`, `src/components/dnd/CharacterCreator.tsx`, `src/components/dnd/{Lobby,CharacterSheet,PartyPanel}.tsx`, `src/app/{layout,page}.tsx`, `src/app/api/game/{room/create,room/join,reset}/route.ts`, `Dockerfile`, `start.sh`, `.dockerignore`, `docker-compose.yml`, `Caddyfile.prod`, `.env.example`, `DEPLOYMENT.md`.

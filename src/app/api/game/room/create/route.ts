@@ -1,27 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
 import { createRoomWithHost } from "@/lib/game/seed";
-import { getPreset } from "@/lib/game/presets";
+import { getPreset, getRace, getBackground } from "@/lib/game/presets";
 import { getSnapshot } from "@/lib/game/state";
 
 export const dynamic = "force-dynamic";
 
 // POST /api/game/room/create
-// Body: { playerName: string, classId: string }
-// Creates a new room with the caller as host, returns room code + snapshot.
+// Body: { playerName, classId, raceId, backgroundId }
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const playerName = (body?.playerName ?? "").toString().trim().slice(0, 24);
     const classId = (body?.classId ?? "fighter").toString();
+    const raceId = (body?.raceId ?? "human").toString();
+    const backgroundId = (body?.backgroundId ?? "soldier").toString();
     if (!playerName) {
       return NextResponse.json({ ok: false, error: "Введите имя героя." }, { status: 400 });
     }
     const preset = getPreset(classId);
+    const race = getRace(raceId);
+    const background = getBackground(backgroundId);
 
     const { roomCode } = await createRoomWithHost({
       name: playerName,
       preset,
+      race,
+      background,
       isHost: true,
       positionIndex: 0,
       portraitUrl: null,

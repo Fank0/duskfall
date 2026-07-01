@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+db/*.db
+db/*.db-journal
+dev.log
+server.log
+game-sync.log
+preview-*.png
+worklog.md
+download
+README.md
+.env*
+skills

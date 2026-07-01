@@ -185,7 +185,7 @@ export default function Home() {
       const res = await fetch("/api/game/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, classId: "fighter" }),
+        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -236,7 +236,7 @@ export default function Home() {
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="font-serif text-base font-bold leading-tight gold-text text-glow sm:text-lg">
-              Тёмные Хроники
+              DUSKFALL
             </h1>
             <p className="truncate text-[10px] text-muted-foreground sm:text-xs">
               ИИ Мастер Подземелий · D&D 5e
@@ -343,7 +343,7 @@ export default function Home() {
 
       {/* ===== Footer ===== */}
       <footer className="mt-auto shrink-0 border-t border-border/60 bg-stone-950/60 px-4 py-2 text-center text-[10px] text-muted-foreground backdrop-blur">
-        <span className="gold-text font-serif">Тёмные Хроники</span> · Комната{" "}
+        <span className="gold-text font-serif">DUSKFALL</span> · Комната{" "}
         <span className="font-mono text-amber-200">{snapshot.roomCode}</span> ·{" "}
         {snapshot.players.length} гер. · Все исходы решаются бросками костей
       </footer>
@@ -357,7 +357,7 @@ function LoadingScreen() {
       <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-primary/60 bg-stone-900 animate-flicker">
         <Skull className="h-8 w-8 text-primary" />
       </div>
-      <h1 className="font-serif text-2xl font-bold gold-text text-glow">Тёмные Хроники</h1>
+      <h1 className="font-serif text-2xl font-bold gold-text text-glow">DUSKFALL</h1>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin text-amber-300" />
         <span className="font-serif italic">Туман сгущается…</span>

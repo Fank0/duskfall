@@ -1,0 +1,52 @@
+# DUSKFALL — full stack: Caddy gateway + app (Next.js + game-sync) + DB volume.
+#
+# Usage:
+#   1. Copy .env.example to .env and edit (optional — defaults work for local).
+#   2. docker compose up -d --build
+#   3. Open http://localhost  (Caddy serves on 80)
+#
+# For HTTPS with a real domain, edit Caddyfile.prod and set DUSKFALL_DOMAIN.
+
+services:
+  app:
+    build: .
+    container_name: duskfall-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SYNC_PORT=3003
+      - DATABASE_URL=file:/data/custom.db
+      # Required for the z-ai-web-dev-sdk (LLM + image generation). Set in .env.
+      - ZAI_API_KEY=${ZAI_API_KEY:-}
+    volumes:
+      - duskfall-data:/data
+    expose:
+      - "3000"
+      - "3003"
+    networks:
+      - duskfall
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: duskfall-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    networks:
+      - duskfall
+
+volumes:
+  duskfall-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  duskfall:

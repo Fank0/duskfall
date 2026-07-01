@@ -78,8 +78,9 @@ export function CharacterSheet({
             )}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            {player.charClass} · ур.{player.level} · {player.weaponName}
+            {player.raceName} {player.charClass} · {player.backgroundName} · ур.{player.level}
           </p>
+          <p className="text-[9px] text-muted-foreground/70">{player.weaponName}</p>
         </div>
       </div>
 

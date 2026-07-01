@@ -66,7 +66,7 @@ export function PartyPanel({
                     )}
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <span>{p.charClass}</span>
+                    <span>{p.raceName} {p.charClass}</span>
                     <span>·</span>
                     <span className="flex items-center gap-0.5">
                       <Heart className="h-2.5 w-2.5 text-red-400" />

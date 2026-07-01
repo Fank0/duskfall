@@ -14,10 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Тёмные Хроники — ИИ Мастер Подземелий",
+  title: "DUSKFALL — AI Dungeon Master",
   description:
-    "Виртуальный стол для D&D 5e с автономным ИИ-Мастером Подземелий. Тёмное фэнтези, тактический бой, живые повествования.",
-  keywords: ["D&D", "DnD", "VTT", "AI Dungeon Master", "тёмное фэнтези"],
+    "Кооперативный виртуальный стол для D&D 5e с автономным ИИ-Мастером Подземелий. Тёмное фэнтези, тактический бой, живые повествования, игра с друзьями.",
+  keywords: ["D&D", "DnD", "VTT", "AI Dungeon Master", "Baldur's Gate", "dark fantasy"],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },

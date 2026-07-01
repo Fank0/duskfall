@@ -44,6 +44,10 @@ function toPlayer(p: any): PlayerState {
     portraitUrl: p.portraitUrl,
     isHost: p.isHost,
     isAlive: p.isAlive,
+    race: p.race,
+    raceName: p.raceName,
+    background: p.background,
+    backgroundName: p.backgroundName,
   };
 }
 
@@ -199,7 +203,7 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     const mod = (k: number) => abilityModifier(k);
     const status = p.isAlive && p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : "ПАЛ";
     lines.push(
-      `${p.name} (${p.charClass}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation}) | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation}) | Позиция (${p.posX},${p.posY})`
     );
   }
 

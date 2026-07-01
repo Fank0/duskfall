@@ -1,0 +1,46 @@
+# Production Caddyfile for DUSKFALL.
+#
+# Routes:
+#   - requests with ?XTransformPort=3003  -> game-sync (socket.io) on app:3003
+#   - everything else                      -> Next.js on app:3000
+#
+# Replace {$DUSKFALL_DOMAIN} with your domain (e.g. duskfall.example.com),
+# or use :80 for local-only HTTP. Caddy auto-provisions HTTPS for real domains.
+
+{
+	email {$DUSKFALL_EMAIL:-}
+}
+
+# ---- Local HTTP (no TLS). Comment this block out if you use the domain block below. ----
+:80 {
+	@transform_port_query {
+		query XTransformPort=3003
+	}
+	handle @transform_port_query {
+		reverse_proxy app:3003 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+	handle {
+		reverse_proxy app:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+}
+
+# ---- Production HTTPS (uncomment & edit). ----
+# duskfall.example.com {
+# 	@transform_port_query {
+# 		query XTransformPort=3003
+# 	}
+# 	handle @transform_port_query {
+# 		reverse_proxy app:3003
+# 	}
+# 	handle {
+# 		reverse_proxy app:3000
+# 	}
+# }

@@ -110,6 +110,10 @@ export interface PlayerState {
   portraitUrl: string | null;
   isHost: boolean;
   isAlive: boolean;
+  race: string;
+  raceName: string;
+  background: string;
+  backgroundName: string;
 }
 
 export interface MonsterState {
@@ -197,9 +201,19 @@ export interface GameStateSnapshot {
   currentTurnType: "player" | "monster" | null;
 }
 
+export interface Stats {
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+}
+
 export interface CharClassPreset {
   id: string;
   name: string;
+  enName: string;
   description: string;
   charClass: string;
   hp: number;
@@ -215,4 +229,24 @@ export interface CharClassPreset {
   weaponName: string;
   weaponNotation: string;
   startItems: { name: string; type: string; description: string }[];
+}
+
+export interface RacePreset {
+  id: string;
+  name: string;
+  enName: string;
+  description: string;
+  bonuses: Partial<Stats>;
+  trait: string;
+  color: string;
+}
+
+export interface BackgroundPreset {
+  id: string;
+  name: string;
+  enName: string;
+  description: string;
+  goldBonus: number;
+  skill: string;
+  item: { name: string; type: string; description: string };
 }
