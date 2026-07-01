@@ -61,7 +61,7 @@ export function CombatGrid({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="mx-auto aspect-square w-full max-w-[460px]">
+        <div className="mx-auto aspect-square w-full max-w-[340px]">
           <div
             className="grid h-full w-full gap-px rounded-md border border-border/70 bg-stone-950/60 p-1"
             style={{

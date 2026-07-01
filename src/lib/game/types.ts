@@ -114,6 +114,15 @@ export interface PlayerState {
   raceName: string;
   background: string;
   backgroundName: string;
+  xp: number;
+  selectedTalents: string[];
+  bonusStr: number;
+  bonusDex: number;
+  bonusCon: number;
+  bonusInt: number;
+  bonusWis: number;
+  bonusCha: number;
+  pendingLevelUp: boolean;
 }
 
 export interface MonsterState {
@@ -249,4 +258,38 @@ export interface BackgroundPreset {
   goldBonus: number;
   skill: string;
   item: { name: string; type: string; description: string };
+}
+
+// ---------- Talents (feats granted on level-up) ----------
+export type TalentEffect =
+  | { type: "counterattack"; chance: number; damageNotation: string }
+  | { type: "damage_resistance_pct"; value: number } // 0..1, reduces incoming damage
+  | { type: "damage_resistance_flat"; value: number } // flat reduction
+  | { type: "crit_range"; minRoll: number } // crit on natural d20 >= minRoll
+  | { type: "crit_bonus_dice"; dice: number } // extra weapon dice on a crit
+  | { type: "extra_attack_chance"; chance: number } // chance for a 2nd attack
+  | { type: "heal_on_kill"; notation: string } // heal when you kill an enemy
+  | { type: "initiative_bonus"; value: number }
+  | { type: "damage_bonus_flat"; value: number } // + to all weapon damage
+  | { type: "ac_bonus"; value: number }
+  | { type: "vampiric_pct"; value: number } // heal % of damage dealt
+  | { type: "reroll_miss_once" } // reroll one missed attack per turn
+  | { type: "save_bonus"; value: number } // bonus to ability checks
+  | { type: "hp_bonus"; value: number }; // +max HP (and current)
+
+export interface Talent {
+  id: string;
+  classId: string;
+  name: string;
+  description: string;
+  effect: TalentEffect;
+}
+
+/** A starting location + opening hook for a fresh adventure. */
+export interface StartLocation {
+  id: string;
+  name: string;
+  prompt: string; // image prompt (English)
+  intro: string; // Russian opening narrative template; {name} = host name
+  monsters: { name: string; label: string; hp: number; maxHp: number; ac: number; damageNotation: string; attackBonus: number; posX: number; posY: number; color: string; description: string }[];
 }

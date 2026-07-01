@@ -16,14 +16,15 @@ export function SceneViewer({
 }) {
   return (
     <Card className="parchment rune-border border-border/80 overflow-hidden gap-0">
-      <div className="relative aspect-[16/9] w-full bg-stone-950">
+      {/* Image container: natural aspect ratio, never stretched. */}
+      <div className="relative w-full bg-stone-950">
         {scene?.imageUrl ? (
           <img
             key={scene.imageUrl}
             src={scene.imageUrl}
             alt={scene.title || location}
             className={cn(
-              "h-full w-full object-cover transition-opacity duration-700",
+              "block max-h-[42vh] w-full object-contain transition-opacity duration-700",
               isGenerating ? "opacity-40 blur-sm" : "opacity-100"
             )}
             onError={(e) => {
@@ -31,7 +32,7 @@ export function SceneViewer({
             }}
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground">
+          <div className="flex h-32 w-full flex-col items-center justify-center text-muted-foreground">
             <ImageIcon className="mb-2 h-10 w-10" />
             <span className="text-sm">Сцена не задана</span>
           </div>
@@ -41,7 +42,7 @@ export function SceneViewer({
         <div className="pointer-events-none absolute inset-0 vignette" />
 
         {/* Location caption */}
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent p-3">
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3">
           <p className="text-[10px] uppercase tracking-[0.2em] text-amber-300/80">
             Локация
           </p>

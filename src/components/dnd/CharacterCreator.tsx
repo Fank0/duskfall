@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Skull, Crown, Swords, Loader2, ChevronLeft, ChevronRight,
-  Sparkles, Dna, GraduationCap, User, Shuffle,
+  Sparkles, Dna, GraduationCap, User, Shuffle, Minus, Plus,
 } from "lucide-react";
 import {
   CLASS_PRESETS, RACE_PRESETS, BACKGROUND_PRESETS,
@@ -18,14 +18,19 @@ import type { CharClassPreset, RacePreset, BackgroundPreset } from "@/lib/game/t
 import { abilityModifier } from "@/lib/game/dice";
 import { cn } from "@/lib/utils";
 
-type Step = "name" | "race" | "class" | "background";
-const STEP_ORDER: Step[] = ["race", "class", "background", "name"];
+type Step = "name" | "race" | "class" | "background" | "stats";
+const STEP_ORDER: Step[] = ["race", "class", "background", "stats", "name"];
 const STEP_META: Record<Step, { label: string; icon: any }> = {
   race: { label: "Народ", icon: Dna },
   class: { label: "Класс", icon: Swords },
   background: { label: "Происхождение", icon: GraduationCap },
+  stats: { label: "Характеристики", icon: Sparkles },
   name: { label: "Имя", icon: User },
 };
+
+const POINT_BUY_POOL = 5; // additional points to distribute
+const STAT_CAP = 18;
+const STAT_SHORT: Record<string, string> = { str: "СИЛ", dex: "ЛОВ", con: "ТЕЛ", int: "ИНТ", wis: "МУД", cha: "ХАР" };
 
 export function CharacterCreator({
   mode, // "create" | "join"
@@ -45,6 +50,7 @@ export function CharacterCreator({
   const [playerName, setPlayerName] = useState("");
   const [roomCode, setRoomCode] = useState(initialRoomCode ?? "");
   const [busy, setBusy] = useState(false);
+  const [bonus, setBonus] = useState({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 });
 
   const race = useMemo(() => RACE_PRESETS.find((r) => r.id === raceId)!, [raceId]);
   const cls = useMemo(() => CLASS_PRESETS.find((c) => c.id === classId)!, [classId]);
@@ -52,6 +58,16 @@ export function CharacterCreator({
   const finalStats = useMemo(() => applyRaceBonuses(
     { str: cls.str, dex: cls.dex, con: cls.con, int: cls.int, wis: cls.wis, cha: cls.cha }, race
   ), [cls, race]);
+  const finalWithBonus = useMemo(() => ({
+    str: Math.min(STAT_CAP, finalStats.str + bonus.str),
+    dex: Math.min(STAT_CAP, finalStats.dex + bonus.dex),
+    con: Math.min(STAT_CAP, finalStats.con + bonus.con),
+    int: Math.min(STAT_CAP, finalStats.int + bonus.int),
+    wis: Math.min(STAT_CAP, finalStats.wis + bonus.wis),
+    cha: Math.min(STAT_CAP, finalStats.cha + bonus.cha),
+  }), [finalStats, bonus]);
+  const spent = bonus.str + bonus.dex + bonus.con + bonus.int + bonus.wis + bonus.cha;
+  const remaining = POINT_BUY_POOL - spent;
 
   const stepIndex = STEP_ORDER.indexOf(step);
 
@@ -68,6 +84,7 @@ export function CharacterCreator({
     setRaceId(RACE_PRESETS[Math.floor(Math.random() * RACE_PRESETS.length)].id);
     setClassId(CLASS_PRESETS[Math.floor(Math.random() * CLASS_PRESETS.length)].id);
     setBackgroundId(BACKGROUND_PRESETS[Math.floor(Math.random() * BACKGROUND_PRESETS.length)].id);
+    setBonus({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 });
     toast("Случайный герой сгенерирован!");
   }
 
@@ -79,8 +96,8 @@ export function CharacterCreator({
     try {
       const url = mode === "create" ? "/api/game/room/create" : "/api/game/room/join";
       const payload = mode === "create"
-        ? { playerName: name, classId, raceId, backgroundId }
-        : { roomCode: roomCode.trim().toUpperCase(), playerName: name, classId, raceId, backgroundId };
+        ? { playerName: name, classId, raceId, backgroundId, bonusStats: bonus }
+        : { roomCode: roomCode.trim().toUpperCase(), playerName: name, classId, raceId, backgroundId, bonusStats: bonus };
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!data.ok) { toast.error(data.error ?? "Не удалось войти."); return; }
@@ -170,6 +187,61 @@ export function CharacterCreator({
                   ))}
                 </div>
               )}
+              {step === "stats" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2">
+                    <span className="text-xs text-amber-200">Очки для распределения</span>
+                    <span className={cn("font-mono text-lg font-bold", remaining > 0 ? "text-amber-300" : "text-emerald-400")}>
+                      {remaining} / {POINT_BUY_POOL}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Распределите дополнительные очки между характеристиками. Каждый пункт повышает характеристику на 1 (макс. 18).
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {(Object.keys(finalStats) as (keyof typeof finalStats)[]).map((k) => {
+                      const base = finalStats[k];
+                      const b = bonus[k];
+                      const total = Math.min(STAT_CAP, base + b);
+                      const mod = abilityModifier(total);
+                      const atCap = total >= STAT_CAP;
+                      const canInc = remaining > 0 && !atCap;
+                      const canDec = b > 0;
+                      return (
+                        <div key={k} className="flex items-center gap-2 rounded-md border border-border/50 bg-stone-900/40 p-2">
+                          <div className="w-16">
+                            <div className="text-[10px] uppercase text-muted-foreground">{STAT_SHORT[k]}</div>
+                            <div className="text-[9px] text-muted-foreground/60">база {base}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => canDec && setBonus((s) => ({ ...s, [k]: s[k] - 1 }))}
+                            disabled={!canDec}
+                            className="flex h-7 w-7 items-center justify-center rounded border border-border/60 bg-stone-800 disabled:opacity-30 hover:border-primary/60"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <div className="flex-1 text-center">
+                            <div className="text-xl font-bold leading-tight">{total}</div>
+                            <div className={cn("text-[10px] font-mono", mod >= 0 ? "text-emerald-400" : "text-red-400")}>
+                              {mod >= 0 ? "+" : ""}{mod}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => canInc && setBonus((s) => ({ ...s, [k]: s[k] + 1 }))}
+                            disabled={!canInc}
+                            className="flex h-7 w-7 items-center justify-center rounded border border-border/60 bg-stone-800 disabled:opacity-30 hover:border-primary/60"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          {b > 0 && <Badge className="text-[9px]">+{b}</Badge>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {step === "name" && (
                 <div className="space-y-4">
                   {mode === "join" && (
@@ -221,7 +293,7 @@ export function CharacterCreator({
 
         {/* ===== Right: live preview ===== */}
         <div className="space-y-3">
-          <CharacterPreview cls={cls} race={race} bg={bg} finalStats={finalStats} />
+          <CharacterPreview cls={cls} race={race} bg={bg} finalStats={finalWithBonus} />
         </div>
       </div>
     </div>

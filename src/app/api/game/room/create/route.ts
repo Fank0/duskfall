@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     const classId = (body?.classId ?? "fighter").toString();
     const raceId = (body?.raceId ?? "human").toString();
     const backgroundId = (body?.backgroundId ?? "soldier").toString();
+    const bonusStats = body?.bonusStats ?? { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
     if (!playerName) {
       return NextResponse.json({ ok: false, error: "Введите имя героя." }, { status: 400 });
     }
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
       isHost: true,
       positionIndex: 0,
       portraitUrl: null,
+      bonusStats,
     });
 
     const snapshot = await getSnapshot(roomCode);

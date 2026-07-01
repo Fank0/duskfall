@@ -13,6 +13,7 @@ import { DiceLog } from "@/components/dnd/DiceLog";
 import { PartyPanel } from "@/components/dnd/PartyPanel";
 import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
 import { Lobby } from "@/components/dnd/Lobby";
+import { LevelUpModal } from "@/components/dnd/LevelUpModal";
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, ResolvedEvent } from "@/lib/game/types";
 
@@ -211,6 +212,26 @@ export default function Home() {
     });
   }, [session]);
 
+  const pickTalent = useCallback(
+    async (talentId: string) => {
+      if (!session) return;
+      const res = await fetch("/api/game/levelup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, talentId }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSnapshot(data.snapshot);
+        pingRoom(session.roomCode);
+        toast.success(`Новый талант: ${data.talent?.name ?? ""}!`);
+      } else {
+        toast.error(data.error ?? "Не удалось выбрать талант.");
+      }
+    },
+    [session]
+  );
+
   // ===== Lobby =====
   if (!session) {
     return <Lobby onEntered={handleEntered} />;
@@ -347,6 +368,14 @@ export default function Home() {
         <span className="font-mono text-amber-200">{snapshot.roomCode}</span> ·{" "}
         {snapshot.players.length} гер. · Все исходы решаются бросками костей
       </footer>
+
+      {/* ===== Level-up modal ===== */}
+      <LevelUpModal
+        player={you ?? null}
+        open={Boolean(you?.pendingLevelUp)}
+        onClose={() => {}}
+        onPick={pickTalent}
+      />
     </div>
   );
 }

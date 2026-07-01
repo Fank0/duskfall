@@ -1,8 +1,10 @@
-// Seed a game room with the opening scenario (goblins, scene, intro).
+// Seed a game room with a randomly-chosen starting location + hidden enemies
+// + opening scene + narrative. Each new game begins somewhere different.
 
 import { db } from "@/lib/db";
 import type { CharClassPreset, RacePreset, BackgroundPreset } from "./types";
 import { PARTY_POSITIONS, applyRaceBonuses } from "./presets";
+import { randomStartLocation } from "./locations";
 
 export interface CreatePlayerInput {
   name: string;
@@ -12,60 +14,47 @@ export interface CreatePlayerInput {
   isHost: boolean;
   positionIndex: number;
   portraitUrl?: string | null;
+  // Point-buy: how many additional points to add to each stat (beyond class base + race bonus).
+  bonusStats?: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
 }
 
-/** Seed a freshly-created room with host player + goblins + scene + intro. */
+/** Seed a freshly-created room with host + hidden enemies (from a random location) + scene + intro. */
 export async function seedRoomContent(roomId: string, input: CreatePlayerInput) {
   await createPlayer(roomId, input);
 
-  // Hidden goblin ambush.
+  const loc = randomStartLocation();
+
+  // Hidden enemies from the chosen location.
   await db.monster.createMany({
-    data: [
-      {
-        roomId,
-        name: "Гоблин-разведчик",
-        label: "Г1",
-        hp: 12, maxHp: 12, ac: 13, damageNotation: "1d6+2", attackBonus: 4,
-        posX: 8, posY: 1, color: "#16a34a",
-        description: "Кривоногий зеленошкурый гоблин с ржавым кривым ножом.",
-        isActive: false,
-      },
-      {
-        roomId,
-        name: "Гоблин-стрелок",
-        label: "Г2",
-        hp: 10, maxHp: 10, ac: 12, damageNotation: "1d6+1", attackBonus: 3,
-        posX: 9, posY: 2, color: "#15803d",
-        description: "Тощий гоблин с коротким луком и колчаном зазубренных стрел.",
-        isActive: false,
-      },
-    ],
+    data: loc.monsters.map((m) => ({ ...m, roomId, isActive: false })),
   });
 
-  // Opening scene.
+  // Opening scene (use a forest placeholder until the AI regenerates art; the
+  // title/prompt carry the real location so the UI shows the right name).
   await db.scene.create({
     data: {
       roomId,
       imageUrl: "/scenes/forest-ruins.png",
-      prompt:
-        "Dark fantasy misty forest clearing at dusk with ancient moss-covered stone ruins, ominous fog, grim atmosphere, painterly concept art",
-      title: "Туманный лес, опушка у древних руин",
+      prompt: loc.prompt,
+      title: loc.name,
       isActive: true,
     },
   });
+
+  // Update the room's location label.
+  await db.room.update({ where: { id: roomId }, data: { location: loc.name } });
 
   // Opening narrative.
   await db.chatMessage.create({
     data: {
       roomId,
       role: "dm", speaker: "", round: 0,
-      content:
-        `Сумерки опускаются на Туманный лес. Тропа привела вашу группу к поросшим мхом руинам, что чернеют среди деревьев. Воздух холоден и пахнет сырой землёй и гниющей хвоей. Откуда-то из-за камней доносится тихое скаление — не ветер. Луна едва пробивается сквозь кроны. ${input.name}, ты ведёшь отряд. Что вы будете делать?`,
+      content: loc.intro.replace("{name}", input.name),
     },
   });
 }
 
-/** Create a room and seed its world (goblins hidden, scene, intro). */
+/** Create a room and seed its world. */
 export async function createRoomWithHost(input: CreatePlayerInput): Promise<{ roomCode: string; roomId: string }> {
   const code = await generateUniqueCode();
   const room = await db.room.create({
@@ -74,7 +63,7 @@ export async function createRoomWithHost(input: CreatePlayerInput): Promise<{ ro
       hostName: input.name,
       combatActive: false,
       round: 0,
-      location: "Туманный лес, опушка у древних руин",
+      location: "—",
       turnIndex: 0,
       introShown: false,
     },
@@ -89,10 +78,8 @@ export async function joinRoomAsPlayer(roomId: string, input: CreatePlayerInput)
   await db.chatMessage.create({
     data: {
       roomId,
-      role: "system",
-      speaker: "",
-      round: 0,
-      content: `${input.name} (${input.preset.name}) присоединяется к отряду.`,
+      role: "system", speaker: "", round: 0,
+      content: `${input.name} (${input.race.name} ${input.preset.name}) присоединяется к отряду.`,
     },
   });
 }
@@ -104,6 +91,13 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
     { str: p.str, dex: p.dex, con: p.con, int: p.int, wis: p.wis, cha: p.cha },
     input.race
   );
+  const b = input.bonusStats ?? { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
+  const finalStr = Math.min(18, stats.str + b.str);
+  const finalDex = Math.min(18, stats.dex + b.dex);
+  const finalCon = Math.min(18, stats.con + b.con);
+  const finalInt = Math.min(18, stats.int + b.int);
+  const finalWis = Math.min(18, stats.wis + b.wis);
+  const finalCha = Math.min(18, stats.cha + b.cha);
   const player = await db.player.create({
     data: {
       roomId,
@@ -113,12 +107,12 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       hp: p.hp,
       maxHp: p.hp,
       ac: p.ac,
-      str: stats.str,
-      dex: stats.dex,
-      con: stats.con,
-      int: stats.int,
-      wis: stats.wis,
-      cha: stats.cha,
+      str: finalStr,
+      dex: finalDex,
+      con: finalCon,
+      int: finalInt,
+      wis: finalWis,
+      cha: finalCha,
       proficiencyBonus: 2,
       gold: p.gold + input.background.goldBonus,
       posX: pos.x,
@@ -133,30 +127,25 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       raceName: input.race.name,
       background: input.background.id,
       backgroundName: input.background.name,
+      xp: 0,
+      selectedTalents: "",
+      bonusStr: b.str,
+      bonusDex: b.dex,
+      bonusCon: b.con,
+      bonusInt: b.int,
+      bonusWis: b.wis,
+      bonusCha: b.cha,
+      pendingLevelUp: false,
     },
   });
   // Starting inventory: class items + background item.
   for (const item of p.startItems) {
     await db.inventoryItem.create({
-      data: {
-        roomId,
-        playerName: input.name,
-        itemName: item.name,
-        itemType: item.type,
-        quantity: 1,
-        description: item.description,
-      },
+      data: { roomId, playerName: input.name, itemName: item.name, itemType: item.type, quantity: 1, description: item.description },
     });
   }
   await db.inventoryItem.create({
-    data: {
-      roomId,
-      playerName: input.name,
-      itemName: input.background.item.name,
-      itemType: input.background.item.type,
-      quantity: 1,
-      description: input.background.item.description,
-    },
+    data: { roomId, playerName: input.name, itemName: input.background.item.name, itemType: input.background.item.type, quantity: 1, description: input.background.item.description },
   });
   return player;
 }

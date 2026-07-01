@@ -48,6 +48,15 @@ function toPlayer(p: any): PlayerState {
     raceName: p.raceName,
     background: p.background,
     backgroundName: p.backgroundName,
+    xp: p.xp,
+    selectedTalents: p.selectedTalents ? p.selectedTalents.split(",").filter(Boolean) : [],
+    bonusStr: p.bonusStr,
+    bonusDex: p.bonusDex,
+    bonusCon: p.bonusCon,
+    bonusInt: p.bonusInt,
+    bonusWis: p.bonusWis,
+    bonusCha: p.bonusCha,
+    pendingLevelUp: p.pendingLevelUp,
   };
 }
 
@@ -571,4 +580,77 @@ export async function countAlive(roomId: string) {
     anyPlayerAlive: alivePlayers.length > 0,
     anyMonsterAlive: aliveMonsters.length > 0,
   };
+}
+
+// ---------- XP / leveling ----------
+/** XP needed to REACH a given level (D&D 5e compressed for short games). */
+export const XP_THRESHOLDS: Record<number, number> = {
+  1: 0,
+  2: 200,
+  3: 600,
+  4: 1200,
+  5: 2000,
+};
+
+/** Proficiency bonus by level (5e standard). */
+export function proficiencyForLevel(level: number): number {
+  return 2 + Math.floor((level - 1) / 4);
+}
+
+/** Award XP to a player; sets pendingLevelUp if a threshold is crossed. Returns the new level. */
+export async function awardXP(roomId: string, playerName: string, xp: number): Promise<{ leveledUp: boolean; newLevel: number }> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return { leveledUp: false, newLevel: 1 };
+  const newXp = p.xp + xp;
+  let newLevel = p.level;
+  let leveledUp = false;
+  while (newLevel < 5 && XP_THRESHOLDS[newLevel + 1] <= newXp) {
+    newLevel++;
+    leveledUp = true;
+  }
+  const prof = proficiencyForLevel(newLevel);
+  // On level-up: +max HP (use CON modifier * level delta + class hit die avg), restore a bit.
+  let newMaxHp = p.maxHp;
+  let newHp = p.hp;
+  if (leveledUp) {
+    const conMod = abilityModifier(p.con);
+    const hpPerLevel = Math.max(1, 5 + conMod); // ~d8 average
+    const gain = hpPerLevel * (newLevel - p.level);
+    newMaxHp += gain;
+    newHp = Math.min(newMaxHp, newHp + gain); // heal the gain
+  }
+  await db.player.update({
+    where: { id: p.id },
+    data: {
+      xp: newXp,
+      level: newLevel,
+      proficiencyBonus: prof,
+      maxHp: newMaxHp,
+      hp: newHp,
+      pendingLevelUp: leveledUp ? true : p.pendingLevelUp,
+    },
+  });
+  return { leveledUp, newLevel };
+}
+
+/** Apply a chosen talent on level-up and clear the pending flag. */
+export async function applyLevelUpTalent(roomId: string, playerName: string, talentId: string): Promise<boolean> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p || !p.pendingLevelUp) return false;
+  const existing = p.selectedTalents ? p.selectedTalents.split(",").filter(Boolean) : [];
+  if (existing.includes(talentId)) return false; // already taken
+  existing.push(talentId);
+  await db.player.update({
+    where: { id: p.id },
+    data: { selectedTalents: existing.join(","), pendingLevelUp: false },
+  });
+  return true;
+}
+
+/** Standard XP reward per monster CR (compressed). */
+export function xpForMonster(maxHp: number): number {
+  if (maxHp <= 8) return 25;
+  if (maxHp <= 13) return 50;
+  if (maxHp <= 20) return 100;
+  return 150;
 }

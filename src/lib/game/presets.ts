@@ -347,6 +347,9 @@ export function getPreset(id: string): CharClassPreset {
 export function getPresetByCharClass(charClass: string): CharClassPreset {
   return CLASS_PRESETS.find((p) => p.charClass === charClass) ?? CLASS_PRESETS[0];
 }
+export function getClassIdByCharClass(charClass: string): string {
+  return CLASS_PRESETS.find((p) => p.charClass === charClass)?.id ?? "fighter";
+}
 export function getRace(id: string): RacePreset {
   return RACE_PRESETS.find((r) => r.id === id) ?? RACE_PRESETS[0];
 }

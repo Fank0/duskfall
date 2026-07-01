@@ -30,14 +30,26 @@ import {
   countAlive,
   nearestActiveMonster,
   GRID_SIZE,
+  awardXP,
+  xpForMonster,
 } from "./state";
 import { rollDice, rollD20, abilityModifier } from "./dice";
 import { extractJson } from "./json";
+import {
+  damageBonusFromTalents,
+  applyDamageReduction,
+  rollVampiricHeal,
+  rollHealOnKill,
+  healOnKillNotation,
+  effectiveAC,
+  rollCounterattack,
+} from "./talents";
 import type {
   DMResolution,
   ResolvedRoll,
   ResolvedEvent,
   InventoryChange,
+  PlayerState,
 } from "./types";
 
 let zaiPromise: Promise<any> | null = null;
@@ -48,10 +60,15 @@ async function getZAI() {
 
 const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Подземелий для D&D 5e, ведущий тёмное фэнтези-приключение для группы героев. Твоя задача — спланировать механику разрешения действия ОДНОГО героя.
 
+=== НЕПРЕЛОЖНЫЕ ПРАВИЛА АТМОСФЕРЫ И РЕАЛИЗМА (нарушать запрещено) ===
+1. ПРЕДМЕТЫ: у героя есть ТОЛЬКО то, что listed в его инвентаре в контексте. Если игрок утверждает «у меня есть посох/зелье/артефакт», но этого НЕТ в инвентаре — этого предмета не существует. НЕ добавляй предметы в инвентарь по желанию игрока. Игрок может найти предмет только через исследование, loot с поверженного врага или награду НПС (и это отражается в success.inventory). Если игрок пытается использовать несуществующий предмет — action проваливается (failure) с описанием, что предмета нет.
+2. ЭПОХА И ТЕХНОЛОГИИ: строго псевдосредневековое тёмное фэнтези. Запрещены: огнестрельное оружие, порох, электричество, механизмы позднее водяной мельницы, телескопы, печатный пресс, любые современные/индустриальные/Sci-Fi элементы, упоминания реального мира после ~1400 г. н.э. Если игрок пытается изобрести или сослаться на современное — действие невозможно (failure, «такого в этом мире не существует»).
+3. УНИКАЛЬНОСТЬ: каждое приключение уникально. Не повторяй одни и те же локации, НПС и сюжеты. Варьируй угрозы, награды и повороты.
+4. СВОБОДА С ПОСЛЕДСТВИЯМИ: игрок может попытаться сделать что угодно, но результаты подчиняются логике мира и характеристикам. Провальная проверка = реальное последствие (ранение, тревога, потеря). Не подыгрывай игроку безосновательно.
+5. БАЛАНС D&D 5e: уровни 1-3 — враги 10-15 HP, урон 1d6+2. Артефакты обязаны иметь недостаток, соразмерный силе (например, +3 клинок жжёт владельца 1d6 огнём при выпадении 1). Не более 50 золотых за сессию на ранних уровнях.
+6. АТМОСФЕРА: тёмное фэнтези, мрачное, грозовое, с опасностью и моральной серостью. Без комедии вне меры, без «сказочной» лёгкости.
+
 ПРАВИЛА:
-- Уровень игроков 1-3. Враги имеют 10-15 HP, наносят 1d6+2 урона.
-- Артефакты должны иметь недостаток, соразмерный силе.
-- Не давай игрокам больше 50 золотых за сессию.
 - Модификатор характеристики = (характеристика-10)/2.
 - Бонус атаки ближнего боя = мод СИЛ + бонус мастерства; дальнего боя = мод ЛОВ + бонус мастерства.
 - Для проверки характеристики: rolls = [{notation:"1d20", modifier:<мод, +бонус мастерства если proficiency>, target:<DC>, target_type:"DC", ability:"<ХАР>"}].
@@ -268,6 +285,9 @@ async function resolvePlayerAction(
   round: number,
   plan: DMResolution
 ): Promise<ResolutionResult> {
+  // Fetch the acting player's full state (for talent modifiers).
+  const snap0 = await getSnapshot(roomCode);
+  const actorState: PlayerState | undefined = snap0?.players.find((p) => p.name === actorName);
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
   if (plan.rolls.length > 0) {
@@ -313,30 +333,67 @@ async function resolvePlayerAction(
     }
     if (m) {
       const dmg = rollDice(branch.monsterDamage.notation);
-      damageDealtToMonster = dmg.total;
+      // Talent: bonus flat damage + vampiric heal.
+      const bonus = damageBonusFromTalents(actorState);
+      const isCrit = playerRolls.some((r) => r.purpose === "СИЛ" || r.purpose === "action" || r.purpose === "ЛОВ")
+        ? false : false; // crit handled via natural roll below
+      void isCrit;
+      damageDealtToMonster = dmg.total + bonus;
       await logDiceRoll(roomId, round, actorName, {
-        label: `Урон по: ${m.name}`, notation: branch.monsterDamage.notation,
-        modifier: 0, result: dmg.raw, total: dmg.total, purpose: "player_damage",
+        label: `Урон по: ${m.name}` + (bonus ? ` (+${bonus} талант)` : ""),
+        notation: branch.monsterDamage.notation + (bonus ? `+${bonus}` : ""),
+        modifier: bonus, result: dmg.raw, total: damageDealtToMonster, purpose: "player_damage",
       });
-      const result = await damageMonster(roomId, m.id, dmg.total);
-      if (result.died) monsterThatDied = m.name;
+      const result = await damageMonster(roomId, m.id, damageDealtToMonster);
+      // Vampiric heal.
+      const vampHeal = rollVampiricHeal(actorState, damageDealtToMonster);
+      if (vampHeal > 0) {
+        await healPlayer(roomId, actorName, vampHeal);
+        healingToPlayer += vampHeal;
+        healedPlayer = actorName;
+        await logDiceRoll(roomId, round, actorName, {
+          label: "Вампиризм", notation: `${vampHeal}`, modifier: 0, result: vampHeal, total: vampHeal, purpose: "healing",
+        });
+      }
+      if (result.died) {
+        monsterThatDied = m.name;
+        // Heal-on-kill talent.
+        const killHeal = rollHealOnKill(actorState);
+        if (killHeal > 0) {
+          await healPlayer(roomId, actorName, killHeal);
+          healingToPlayer += killHeal;
+          healedPlayer = actorName;
+          await logDiceRoll(roomId, round, actorName, {
+            label: "Лечение за убийство", notation: healOnKillNotation(actorState) || `${killHeal}`, modifier: 0, result: killHeal, total: killHeal, purpose: "healing",
+          });
+        }
+        // Award XP to the killing player.
+        const xp = xpForMonster(m.maxHp);
+        await awardXP(roomId, actorName, xp);
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: `${actorName} получает ${xp} опыта за победу над ${m.name}.` },
+        });
+      }
     }
   }
 
   if (branch.playerDamage) {
-    const dmg = rollDice(branch.playerDamage.notation);
-    damageDealtToPlayer = dmg.total;
+    let dmg = rollDice(branch.playerDamage.notation);
+    let total = dmg.total;
+    // Talent: damage reduction.
+    total = applyDamageReduction(actorState, total);
+    damageDealtToPlayer = total;
     damagedPlayer = actorName; // failure backlash hits the actor
     await logDiceRoll(roomId, round, actorName, {
-      label: "Урон по герою", notation: branch.playerDamage.notation,
-      modifier: 0, result: dmg.raw, total: dmg.total, purpose: "player_damage",
+      label: "Урон по герою" + (total < dmg.total ? ` (−${dmg.total - total} сопр.)` : ""),
+      notation: branch.playerDamage.notation, modifier: 0, result: dmg.raw, total, purpose: "player_damage",
     });
-    await damagePlayer(roomId, actorName, dmg.total);
+    await damagePlayer(roomId, actorName, total);
   }
 
   if (branch.healing) {
     const heal = rollDice(branch.healing.notation);
-    healingToPlayer = heal.total;
+    healingToPlayer += heal.total;
     healedPlayer = branch.healing.target || actorName;
     await logDiceRoll(roomId, round, actorName, {
       label: "Лечение", notation: branch.healing.notation,
@@ -402,11 +459,28 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   const target = await db.player.findFirst({ where: { name: targetName, roomId } });
   if (!target) return emptyMonster();
 
+  // Build a PlayerState-like view for talent modifiers.
+  const targetState: PlayerState = {
+    id: target.id, name: target.name, charClass: target.charClass, level: target.level,
+    hp: target.hp, maxHp: target.maxHp, ac: target.ac,
+    str: target.str, dex: target.dex, con: target.con, int: target.int, wis: target.wis, cha: target.cha,
+    proficiencyBonus: target.proficiencyBonus, gold: target.gold, posX: target.posX, posY: target.posY,
+    color: target.color, weaponName: target.weaponName, weaponNotation: target.weaponNotation,
+    portraitUrl: target.portraitUrl, isHost: target.isHost, isAlive: target.isAlive,
+    race: target.race, raceName: target.raceName, background: target.background, backgroundName: target.backgroundName,
+    xp: target.xp,
+    selectedTalents: target.selectedTalents ? target.selectedTalents.split(",").filter(Boolean) : [],
+    bonusStr: target.bonusStr, bonusDex: target.bonusDex, bonusCon: target.bonusCon,
+    bonusInt: target.bonusInt, bonusWis: target.bonusWis, bonusCha: target.bonusCha,
+    pendingLevelUp: target.pendingLevelUp,
+  };
+  const targetAC = effectiveAC(targetState);
+
   const atk = rollD20(m.attackBonus);
-  const hit = atk.total >= target.ac;
+  const hit = atk.total >= targetAC;
   rolls.push({
     label: `Атака ${m.name}`, notation: "1d20", modifier: m.attackBonus,
-    result: atk.rolls[0], total: atk.total, target: target.ac, success: hit,
+    result: atk.rolls[0], total: atk.total, target: targetAC, success: hit,
     purpose: "monster_attack",
   });
   await logDiceRoll(roomId, round, m.name, rolls[rolls.length - 1]);
@@ -415,20 +489,42 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     return {
       taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
       monsterName: m.name, moved: false,
-      narrativeLine: `${m.name} бьёт по ${targetName}, но промахивается (${atk.total} против AC ${target.ac}).`,
+      narrativeLine: `${m.name} бьёт по ${targetName}, но промахивается (${atk.total} против AC ${targetAC}).`,
     };
   }
 
-  const dmg = rollDice(m.damageNotation);
+  const rawDmg = rollDice(m.damageNotation);
+  // Talent: damage reduction.
+  const dmg = applyDamageReduction(targetState, rawDmg.total);
   await logDiceRoll(roomId, round, m.name, {
-    label: `Урон: ${m.name}`, notation: m.damageNotation,
-    modifier: 0, result: dmg.raw, total: dmg.total, purpose: "monster_damage",
+    label: `Урон: ${m.name}` + (dmg < rawDmg.total ? ` (−${rawDmg.total - dmg} сопр.)` : ""),
+    notation: m.damageNotation, modifier: 0, result: rawDmg.raw, total: dmg, purpose: "monster_damage",
   });
-  await damagePlayer(roomId, targetName, dmg.total);
+  await damagePlayer(roomId, targetName, dmg);
+
+  // Talent: counterattack — the target may strike back.
+  const counterDmg = rollCounterattack(targetState);
+  let counterLine = "";
+  if (counterDmg > 0) {
+    const monsterResult = await damageMonster(roomId, m.id, counterDmg);
+    await logDiceRoll(roomId, round, targetName, {
+      label: `Контратака ${targetName}`, notation: "талант",
+      modifier: 0, result: counterDmg, total: counterDmg, purpose: "player_damage",
+    });
+    counterLine = ` ${targetName} отвечает контратакой (${counterDmg} урона)!`;
+    if (monsterResult.died) {
+      const xp = xpForMonster(m.maxHp);
+      await awardXP(roomId, targetName, xp);
+      await db.chatMessage.create({
+        data: { roomId, role: "system", speaker: "", round, content: `${targetName} получает ${xp} опыта за победу над ${m.name}.` },
+      });
+    }
+  }
+
   return {
-    taken: true, rolls, damageToPlayer: dmg.total, damagedPlayer: targetName,
+    taken: true, rolls, damageToPlayer: dmg, damagedPlayer: targetName,
     monsterName: m.name, moved: false,
-    narrativeLine: `${m.name} бьёт ${targetName} и попадает! ${dmg.total} урона (${atk.total} против AC ${target.ac}).`,
+    narrativeLine: `${m.name} бьёт ${targetName} и попадает! ${dmg} урона (${atk.total} против AC ${targetAC}).${counterLine}`,
   };
 }
 

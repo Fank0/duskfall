@@ -94,3 +94,42 @@ Stage Summary:
 - Combat still fully functional with the new creator: Кассия attacked, initiative rolled (Goblin Scout 21 > Goblin Archer 8 > Кассия 2), killed the goblin-scout (7 dmg → 0 HP, inactive), turn advanced through the goblin-archer and back to Кассия in round 2. Turn-lock + initiative tracker confirmed in browser.
 - Title is now DUSKFALL everywhere; lint clean (0 errors/warnings); both servers (3000 + 3003) running; no console errors.
 - Artifacts: `src/lib/game/{presets,types,seed,state,dm-agent}.ts`, `src/components/dnd/CharacterCreator.tsx`, `src/components/dnd/{Lobby,CharacterSheet,PartyPanel}.tsx`, `src/app/{layout,page}.tsx`, `src/app/api/game/{room/create,room/join,reset}/route.ts`, `Dockerfile`, `start.sh`, `.dockerignore`, `docker-compose.yml`, `Caddyfile.prod`, `.env.example`, `DEPLOYMENT.md`.
+
+---
+Task ID: 2
+Agent: talent-data-writer
+Task: Write 120 class talents (10 per class × 12 classes) for DUSKFALL.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` (prior tasks 1–3: VTT scaffold, multiplayer co-op, BG3-style creator with 12 classes / 9 races / 10 backgrounds) and `src/lib/game/types.ts` to confirm the `Talent`/`TalentEffect` discriminated-union shapes (14 effect variants).
+- Created `src/lib/game/talent-data.ts` exporting `CLASS_TALENTS: Record<string, Talent[]>` and the `getTalentsForClass(classId)` helper.
+- Authored exactly 10 talents for each of the 12 classes (`fighter, barbarian, paladin, ranger, rogue, monk, wizard, sorcerer, warlock, cleric, druid, bard`) — 120 total. IDs follow `${classId}_t${1-10}`. Names + descriptions are in Russian, D&D 5e / BG3-flavored ("Второе дыхание", "Ярость варвара", "Божественная кара", "Клинок_HEX", "Адское возмездие", "Вдохновение барда", etc.).
+- Spread effects thematically per class — each class uses 9–10 distinct effect types (well above the 5-type minimum). E.g. fighter leans on counterattack/crit_range/damage_bonus_flat/ac_bonus/hp_bonus/extra_attack_chance/reroll_miss_once; barbarian on damage_bonus_flat/damage_resistance_flat/crit_bonus_dice/heal_on_kill/initiative_bonus/vampiric_pct; rogue on crit_range/crit_bonus_dice/damage_bonus_flat/reroll_miss_once/initiative_bonus; etc.
+- Balanced all numerics for a level-2 character per the spec: counterattack chance 0.25–0.3, damage_bonus_flat 1–3, ac_bonus 1–2, hp_bonus 5–12, damage_resistance_pct 0.15–0.25, damage_resistance_flat 1–3, crit_range minRoll 19, crit_bonus_dice 1–2, extra_attack_chance 0.3–0.4, vampiric_pct 0.1–0.25, initiative_bonus 2–3, save_bonus 1–2, heal_on_kill notation "1d6" or "1d8". Counterattack damageNotation matches weapon style (fighter/paladin "1d8+3", rogue/monk "1d6+X", wizard/sorcerer/warlock "1d8", ranger "1d6+3").
+- Verified with `bunx tsc --noEmit src/lib/game/talent-data.ts` — clean (0 errors). Verified with `bun run lint` — clean (0 errors, 0 warnings). Counted talents: 10 per class, 120 total.
+
+Stage Summary:
+- Deliverable complete: `/home/z/my-project/src/lib/game/talent-data.ts` contains 120 strictly-typed, lint-clean talents — 10 per class × 12 classes, thematically aligned with D&D 5e class identities, with at least 9 distinct effect types per class and level-2-appropriate numeric balance. Exports `CLASS_TALENTS` and `getTalentsForClass(classId)`. Ready to be wired into the character-creator / level-up flow (a future task can call `getTalentsForClass(player.classId)` to present the 10 choices on level-up and store picked ids in `PlayerState.selectedTalents`).
+
+---
+Task ID: 4
+Agent: main (Z.ai Code)
+Task: BG3-style character creator expansion (point-buy + 120 talents + level-up), random unique adventures, hard atmosphere rules, UI fixes (non-stretched image, smaller grid).
+
+Work Log:
+- Added 12 D&D classes already existed; kept. Added point-buy: 5 bonus stat points distributable at creation (capped 18), persisted as bonusStr/Dex/Con/Int/Wis/Cha on Player + shown live in the creator preview.
+- Designed a 14-type TalentEffect discriminated union (counterattack, damage_resistance_pct/flat, crit_range, crit_bonus_dice, extra_attack_chance, heal_on_kill, initiative_bonus, damage_bonus_flat, ac_bonus, vampiric_pct, reroll_miss_once, save_bonus, hp_bonus) in types.ts.
+- Delegated 120 talents (10×12 classes) to a subagent (Task ID 2) with a tight spec; wrote `talent-data.ts` + a `talents.ts` engine module that resolves a player's selected talents into combat modifiers and rolls reactive effects (counterattack, vampiric heal, heal-on-kill, damage reduction).
+- Added XP/leveling: Player.xp + XP_THRESHOLDS (L2=200, L3=600, L4=1200, L5=2000), `awardXP` (raises level, proficiency, maxHP, sets pendingLevelUp), `applyLevelUpTalent`, `xpForMonster`. Killing a monster awards XP to the killer (and to a counterattacker who lands the killing blow). Combat engine now applies talent modifiers: player damage bonus + vampiric + heal-on-kill on hits; monster attacks use effectiveAC, apply damage reduction, and may trigger a counterattack.
+- Added a new `stats` step to the CharacterCreator (point-buy UI with +/- buttons, live pool counter, stat cap, modifier display). The live preview now reflects bonus-adjusted final stats.
+- Built `LevelUpModal.tsx` (Dialog) listing the player's class talents (filtered to unselected) with effect badges; calls POST /api/game/levelup. Wired into page.tsx so it opens when `you.pendingLevelUp` is true.
+- Added 8 random starting locations (`locations.ts`): Mistwood ruins, Forgotten crypt, Burned village, Silver caverns, Death marsh, Black tower, Shipwreck shore, Ruined monastery — each with a unique Russian intro hook, an English image prompt, and themed hidden enemies. Room creation picks one at random so every adventure begins somewhere different.
+- Strengthened the DM planning system prompt with 6 hard "atmosphere & realism" rules: (1) items exist ONLY if in inventory — player cannot conjure items by assertion; (2) strict pseudo-medieval era — no gunpowder/electricity/modern tech/sci-fi; (3) every adventure unique; (4) freedom with realistic consequences; (5) D&D 5e balance (artifacts must have drawbacks, ≤50 gold/session early); (6) dark-fantasy tone. The DM context now lists each hero's full inventory so the LLM can verify what items actually exist.
+- Fixed UI: SceneViewer now uses `object-contain` with `max-h-[42vh]` so the location image is never stretched/distorted (letterboxed naturally). CombatGrid max-width reduced 460→340px so the grid is more compact.
+- Fixed a charClass/classId mismatch bug: players store `charClass="Fighter"` but talents are keyed by lowercase `classId`. Added `getClassIdByCharClass()` and used it in talents.ts, LevelUpModal, and the levelup API.
+
+Stage Summary:
+- Verified end-to-end: created a Fighter, point-buy allocated (СИЛ 18), random location chosen (shipwreck shore), combat deals damage with talent bonuses, killing monsters awards XP (100/25 XP per monster), crossing 200 XP sets pendingLevelUp, the LevelUpModal opens showing the 10 Fighter talents with effect descriptions, picking "Рипоста" (counterattack 30%) saved it and cleared the flag. Talent effects (counterattack, damage reduction, AC bonus, vampiric, etc.) are applied in the combat engine.
+- Atmosphere rules baked into the DM prompt: tested context shows full inventory per hero so the LLM can enforce "no free items"; era/balance/uniqueness constraints are explicit.
+- Vision-verified: scene image no longer stretched, grid is a reasonable size, no layout issues. Lint clean (0 errors/warnings), both servers running, no console errors.
+- Artifacts: `src/lib/game/{talent-data,talents,locations,types,seed,state,dm-agent,presets}.ts`, `src/components/dnd/{CharacterCreator,LevelUpModal}.tsx`, `src/app/api/game/levelup/route.ts`, updated `src/components/dnd/{SceneViewer,CombatGrid}.tsx`, `src/app/page.tsx`, `src/app/api/game/{room/create,room/join}/route.ts`.

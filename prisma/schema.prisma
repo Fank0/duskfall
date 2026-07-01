@@ -62,6 +62,15 @@ model Player {
   raceName         String   @default("Человек")
   background       String   @default("soldier")
   backgroundName   String   @default("Солдат")
+  xp               Int      @default(0)
+  selectedTalents  String   @default("")
+  bonusStr         Int      @default(0)
+  bonusDex         Int      @default(0)
+  bonusCon         Int      @default(0)
+  bonusInt         Int      @default(0)
+  bonusWis         Int      @default(0)
+  bonusCha         Int      @default(0)
+  pendingLevelUp   Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
