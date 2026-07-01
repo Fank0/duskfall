@@ -1,20 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSnapshot } from "@/lib/game/state";
-import { seedWorld } from "@/lib/game/seed";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/game/state — return the full game-state snapshot.
-export async function GET() {
+// GET /api/game/state?room=ABCDEF
+export async function GET(req: NextRequest) {
   try {
-    await seedWorld();
-    const snapshot = await getSnapshot();
+    const roomCode = (req.nextUrl.searchParams.get("room") ?? "").toUpperCase().trim();
+    if (!roomCode) {
+      return NextResponse.json({ ok: false, error: "Код комнаты не указан." }, { status: 400 });
+    }
+    const snapshot = await getSnapshot(roomCode);
+    if (!snapshot) {
+      return NextResponse.json({ ok: false, error: "Комната не найдена." }, { status: 404 });
+    }
     return NextResponse.json({ ok: true, snapshot });
   } catch (e: any) {
     console.error("[api/game/state] error:", e);
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? "Unknown error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });
   }
 }

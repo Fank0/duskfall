@@ -1,4 +1,4 @@
-// D&D 5e Virtual Tabletop — AI Dungeon Master schema
+// D&D 5e Virtual Tabletop — AI Dungeon Master (multiplayer, room-scoped)
 
 generator client {
   provider = "prisma-client-js"
@@ -9,36 +9,68 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// The player character (singleton in practice, keyed by name).
-model Player {
-  id               String   @id @default(cuid())
-  name             String   @unique
-  charClass        String   @default("Воин")
-  level            Int      @default(1)
-  hp               Int      @default(28)
-  maxHp            Int      @default(28)
-  ac               Int      @default(16)
-  str              Int      @default(16)
-  dex              Int      @default(12)
-  con              Int      @default(15)
-  int              Int      @default(10)
-  wis              Int      @default(11)
-  cha              Int      @default(13)
-  proficiencyBonus Int      @default(2)
-  gold             Int      @default(15)
-  posX             Int      @default(1)
-  posY             Int      @default(8)
-  color            String   @default("#dc2626")
-  portraitUrl      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+/// A game room identified by a short shareable code.
+model Room {
+  id           String   @id @default(cuid())
+  code         String   @unique // 6-char uppercase code
+  hostName     String
+  combatActive Boolean  @default(false)
+  round        Int      @default(0)
+  location     String   @default("Туманный лес, опушка у древних руин")
+  turnIndex    Int      @default(0) // index into the initiative order
+  introShown   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  players      Player[]
+  monsters     Monster[]
+  chatMessages ChatMessage[]
+  diceRolls    DiceRoll[]
+  scenes       Scene[]
+  initiatives  InitiativeEntry[]
+  inventory    InventoryItem[]
 }
 
-/// A hostile creature on the grid.
+/// A player character belonging to a room (a party member).
+model Player {
+  id               String   @id @default(cuid())
+  roomId           String
+  room             Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name             String
+  charClass        String
+  level            Int      @default(1)
+  hp               Int
+  maxHp            Int
+  ac               Int
+  str              Int
+  dex              Int
+  con              Int
+  int              Int
+  wis              Int
+  cha              Int
+  proficiencyBonus Int      @default(2)
+  gold             Int      @default(10)
+  posX             Int      @default(1)
+  posY             Int      @default(8)
+  color            String
+  weaponName       String   @default("Длинный меч")
+  weaponNotation   String   @default("1d8+3")
+  portraitUrl      String?
+  isHost           Boolean  @default(false)
+  isAlive          Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([roomId, name])
+}
+
+/// A hostile creature on the grid, scoped to a room.
 model Monster {
   id             String   @id @default(cuid())
+  roomId         String
+  room           Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   name           String
-  label          String   @default("") // short token label e.g. "Г1"
+  label          String
   hp             Int      @default(12)
   maxHp          Int      @default(12)
   ac             Int      @default(13)
@@ -53,31 +85,39 @@ model Monster {
   updatedAt      DateTime @updatedAt
 }
 
-/// Items carried by the player.
+/// Items carried by players (scoped to room + player name).
 model InventoryItem {
   id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   playerName  String
   itemName    String
-  itemType    String   @default("misc") // weapon, armor, potion, misc, key
+  itemType    String   @default("misc")
   quantity    Int      @default(1)
   description String   @default("")
   createdAt   DateTime @default(now())
 }
 
-/// Chat log of the table (DM narrative + player messages + system).
+/// Chat log of the table (DM narrative + player messages + system), per room.
 model ChatMessage {
   id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   role      String   @default("dm") // dm | player | system
+  speaker   String   @default("") // player name when role=player
   content   String
   imageUrl  String?
   round     Int      @default(0)
   createdAt DateTime @default(now())
 }
 
-/// Persisted dice roll history for the dice-log panel.
+/// Persisted dice roll history per room.
 model DiceRoll {
   id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   round     Int      @default(0)
+  roller    String   @default("") // who rolled
   label     String
   notation  String
   modifier  Int      @default(0)
@@ -88,9 +128,11 @@ model DiceRoll {
   createdAt DateTime @default(now())
 }
 
-/// The currently displayed scene illustration.
+/// The currently displayed scene illustration per room.
 model Scene {
   id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   imageUrl  String
   prompt    String
   title     String   @default("")
@@ -98,14 +140,17 @@ model Scene {
   createdAt DateTime @default(now())
 }
 
-/// Global game state (singleton row).
-model GameState {
-  id           String   @id @default("singleton")
-  combatActive Boolean  @default(false)
-  round        Int      @default(0)
-  location     String   @default("Туманный лес, опушка")
-  turn         String   @default("player") // player | monster
-  introShown   Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+/// Initiative order entries for a room's combat.
+model InitiativeEntry {
+  id            String  @id @default(cuid())
+  roomId        String
+  room          Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  combatantName String
+  combatantType String  // "player" | "monster"
+  initiative    Int     @default(0)
+  order         Int     @default(0) // position in the turn order (0 = first)
+  monsterId     String? // link to Monster when type=monster
+  isAlive       Boolean @default(true)
+
+  @@unique([roomId, combatantName])
 }

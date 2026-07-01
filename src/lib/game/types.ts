@@ -1,4 +1,4 @@
-// Shared game types for the D&D 5e VTT AI Dungeon Master.
+// Shared game types for the D&D 5e VTT AI Dungeon Master (multiplayer).
 
 export type ActionCategory =
   | "combat"
@@ -10,11 +10,11 @@ export type ActionCategory =
 /** A roll the DM decides must happen to resolve the player's action. */
 export interface PlannedRoll {
   label: string;
-  notation: string; // e.g. "1d20"
+  notation: string;
   modifier: number;
-  target: number; // DC or AC
+  target: number;
   target_type: "AC" | "DC" | "none";
-  ability?: string; // STR/DEX/etc for ability checks
+  ability?: string;
 }
 
 export interface InventoryChange {
@@ -30,21 +30,18 @@ export interface TokenMove {
   newY: number;
 }
 
-/** Effects to apply on a particular outcome branch. */
 export interface OutcomeEffects {
   narrative: string;
   monsterDamage?: { notation: string; target: string } | null;
-  playerDamage?: { notation: string } | null;
-  healing?: { notation: string } | null;
+  playerDamage?: { notation: string; target?: string } | null;
+  healing?: { notation: string; target?: string } | null;
   inventory: InventoryChange[];
   tokenMoves: TokenMove[];
   monsterDies?: boolean;
   goldChange?: number;
-  /** whether the scene should be re-illustrated */
   sceneChange?: boolean;
 }
 
-/** The structured mechanics the DM produces for a player action. */
 export interface DMResolution {
   category: ActionCategory;
   rolls: PlannedRoll[];
@@ -54,34 +51,39 @@ export interface DMResolution {
   imageNeeded: boolean;
 }
 
-/** A resolved dice roll with concrete numbers. */
 export interface ResolvedRoll {
   label: string;
   notation: string;
   modifier: number;
-  result: number; // raw dice sum
-  total: number; // result + modifier
+  result: number;
+  total: number;
   target?: number;
   success?: boolean;
   purpose: string;
 }
 
-/** A complete event produced by the backend after resolving a round. */
 export interface ResolvedEvent {
+  actorName: string;
   playerRolls: ResolvedRoll[];
   monsterRolls: ResolvedRoll[];
   outcome: "success" | "failure";
-  playerNarrative: string;
-  monsterTurnTaken: boolean;
+  combatStarted: boolean;
+  combatEnded: boolean;
   damageDealtToMonster: number;
-  damageDealtToPlayer: number;
-  healingToPlayer: number;
   monsterThatDied: string | null;
+  damageDealtToPlayer: number;
+  damagedPlayer: string | null;
+  healingToPlayer: number;
+  healedPlayer: string | null;
   inventoryChanges: InventoryChange[];
   goldChange: number;
   imagePrompt: string;
   imageNeeded: boolean;
   finalNarrative: string;
+  /** whose turn is next (combatant name), or null if out of combat */
+  nextTurn: string | null;
+  nextTurnType: "player" | "monster" | null;
+  round: number;
 }
 
 export interface PlayerState {
@@ -103,7 +105,11 @@ export interface PlayerState {
   posX: number;
   posY: number;
   color: string;
+  weaponName: string;
+  weaponNotation: string;
   portraitUrl: string | null;
+  isHost: boolean;
+  isAlive: boolean;
 }
 
 export interface MonsterState {
@@ -124,6 +130,7 @@ export interface MonsterState {
 
 export interface InventoryItemState {
   id: string;
+  playerName: string;
   itemName: string;
   itemType: string;
   quantity: number;
@@ -133,6 +140,7 @@ export interface InventoryItemState {
 export interface ChatMessageState {
   id: string;
   role: "dm" | "player" | "system";
+  speaker: string;
   content: string;
   imageUrl: string | null;
   round: number;
@@ -142,6 +150,7 @@ export interface ChatMessageState {
 export interface DiceRollState {
   id: string;
   round: number;
+  roller: string;
   label: string;
   notation: string;
   modifier: number;
@@ -159,15 +168,51 @@ export interface SceneState {
   title: string;
 }
 
+export interface InitiativeEntryState {
+  id: string;
+  combatantName: string;
+  combatantType: "player" | "monster";
+  initiative: number;
+  order: number;
+  monsterId: string | null;
+  isAlive: boolean;
+}
+
 export interface GameStateSnapshot {
-  player: PlayerState;
+  roomCode: string;
+  hostName: string;
+  players: PlayerState[];
   monsters: MonsterState[];
   inventory: InventoryItemState[];
   chat: ChatMessageState[];
   diceLog: DiceRollState[];
   scene: SceneState | null;
+  initiatives: InitiativeEntryState[];
   combatActive: boolean;
   round: number;
   location: string;
-  turn: string;
+  turnIndex: number;
+  /** name of the combatant whose turn it is (null out of combat) */
+  currentTurnName: string | null;
+  currentTurnType: "player" | "monster" | null;
+}
+
+export interface CharClassPreset {
+  id: string;
+  name: string;
+  description: string;
+  charClass: string;
+  hp: number;
+  ac: number;
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+  gold: number;
+  color: string;
+  weaponName: string;
+  weaponNotation: string;
+  startItems: { name: string; type: string; description: string }[];
 }

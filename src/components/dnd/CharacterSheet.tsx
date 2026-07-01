@@ -1,28 +1,21 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import {
-  Heart,
-  Shield,
-  Coins,
-  Swords,
-  Backpack,
-  Skull,
-} from "lucide-react";
+import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown } from "lucide-react";
 import type { PlayerState, InventoryItemState } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { cn } from "@/lib/utils";
 
-const STAT_LABELS: { key: keyof PlayerState; short: string; full: string }[] = [
-  { key: "str", short: "СИЛ", full: "Сила" },
-  { key: "dex", short: "ЛОВ", full: "Ловкость" },
-  { key: "con", short: "ТЕЛ", full: "Телосложение" },
-  { key: "int", short: "ИНТ", full: "Интеллект" },
-  { key: "wis", short: "МУД", full: "Мудрость" },
-  { key: "cha", short: "ХАР", full: "Харизма" },
+const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
+  { key: "str", short: "СИЛ" },
+  { key: "dex", short: "ЛОВ" },
+  { key: "con", short: "ТЕЛ" },
+  { key: "int", short: "ИНТ" },
+  { key: "wis", short: "МУД" },
+  { key: "cha", short: "ХАР" },
 ];
 
 const TYPE_STYLES: Record<string, string> = {
@@ -36,190 +29,152 @@ const TYPE_STYLES: Record<string, string> = {
 export function CharacterSheet({
   player,
   inventory,
+  isYou,
+  isTurn,
+  compact,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
+  isYou?: boolean;
+  isTurn?: boolean;
+  compact?: boolean;
 }) {
   const hpPct = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0;
   const hpColor =
     hpPct > 60 ? "from-emerald-600 to-emerald-500" : hpPct > 30 ? "from-amber-600 to-amber-500" : "from-red-700 to-red-600";
-  const isDead = player.hp <= 0;
+  const dead = !player.isAlive || player.hp <= 0;
 
   return (
-    <Card className="parchment rune-border border-border/80 gap-0">
-      {/* Portrait + identity */}
-      <div className="relative px-4 pt-4">
-        <div className="flex items-center gap-3">
-          <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 border-primary/70 bg-stone-900 animate-flicker">
-            {player.portraitUrl ? (
-              <img
-                src={player.portraitUrl}
-                alt={player.name}
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <Swords className="h-7 w-7 text-primary" />
-              </div>
+    <Card
+      className={cn(
+        "parchment border-border/80 gap-0 transition-all",
+        isTurn ? "rune-border ring-1 ring-primary/50 animate-pulse-glow" : "border-border/60",
+        isYou && "border-primary/50"
+      )}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-3 py-2.5">
+        <div
+          className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold text-white"
+          style={{
+            background: `radial-gradient(circle at 30% 25%, ${player.color}, ${shade(player.color, -30)})`,
+            borderColor: shade(player.color, 30),
+          }}
+        >
+          {player.name.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <h3 className="truncate font-serif text-sm font-bold gold-text">{player.name}</h3>
+            {isYou && (
+              <Badge variant="outline" className="shrink-0 border-primary/60 px-1 text-[8px] text-primary">
+                ВЫ
+              </Badge>
+            )}
+            {player.isHost && <Crown className="h-3 w-3 shrink-0 text-amber-300" />}
+            {dead && <Skull className="h-3.5 w-3.5 shrink-0 text-red-400" />}
+            {isTurn && (
+              <Badge className="ml-auto shrink-0 bg-primary px-1.5 text-[8px]">ВАШ ХОД</Badge>
             )}
           </div>
-          <div className="min-w-0">
-            <h2 className="truncate font-serif text-lg font-bold gold-text text-glow">
-              {player.name}
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              {player.charClass} · Уровень {player.level}
-            </p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {isDead && (
-                <Badge variant="outline" className="border-red-700 bg-red-950/60 text-red-300">
-                  <Skull className="mr-1 h-3 w-3" /> Повержен
-                </Badge>
-              )}
-            </div>
-          </div>
+          <p className="text-[10px] text-muted-foreground">
+            {player.charClass} · ур.{player.level} · {player.weaponName}
+          </p>
         </div>
       </div>
 
-      <CardContent className="px-4 pt-3">
+      <CardContent className="px-3 pb-3 pt-0">
         {/* Vitals */}
-        <div className="grid grid-cols-3 gap-2">
-          <Vital
-            icon={<Heart className="h-4 w-4" />}
-            label="HP"
-            value={`${player.hp}/${player.maxHp}`}
-            accent="text-red-400"
-          />
-          <Vital
-            icon={<Shield className="h-4 w-4" />}
-            label="AC"
-            value={`${player.ac}`}
-            accent="text-sky-300"
-          />
-          <Vital
-            icon={<Coins className="h-4 w-4" />}
-            label="Золото"
-            value={`${player.gold}`}
-            accent="text-amber-300"
-          />
+        <div className="grid grid-cols-3 gap-1.5">
+          <Vital icon={<Heart className="h-3 w-3" />} label="HP" value={`${player.hp}/${player.maxHp}`} accent="text-red-400" />
+          <Vital icon={<Shield className="h-3 w-3" />} label="AC" value={`${player.ac}`} accent="text-sky-300" />
+          <Vital icon={<Coins className="h-3 w-3" />} label="ЗЛТ" value={`${player.gold}`} accent="text-amber-300" />
         </div>
 
         {/* HP bar */}
-        <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <Heart className="h-3 w-3 text-red-400" /> Здоровье
-            </span>
-            <span>
-              {player.hp} / {player.maxHp}
-            </span>
-          </div>
-          <div className="h-2.5 w-full overflow-hidden rounded-full border border-border/60 bg-stone-900/80">
-            <div
-              className={cn(
-                "h-full rounded-full bg-gradient-to-r transition-all duration-500",
-                hpColor
-              )}
-              style={{ width: `${hpPct}%` }}
-            />
+        <div className="mt-2">
+          <div className="h-2 w-full overflow-hidden rounded-full border border-border/60 bg-stone-900/80">
+            <div className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-500", hpColor)} style={{ width: `${hpPct}%` }} />
           </div>
         </div>
 
-        {/* Stats grid */}
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {STAT_LABELS.map((s) => {
-            const val = player[s.key] as number;
-            const mod = abilityModifier(val);
-            return (
-              <div
-                key={s.key}
-                className="rounded-md border border-border/60 bg-stone-900/50 px-2 py-1.5 text-center"
-              >
-                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {s.short}
-                </div>
-                <div className="text-base font-bold leading-tight">{val}</div>
-                <div className={cn("text-[11px] font-mono", mod >= 0 ? "text-emerald-400" : "text-red-400")}>
-                  {mod >= 0 ? "+" : ""}
-                  {mod}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <Separator className="my-3 bg-border/60" />
-
-        {/* Inventory */}
-        <div className="flex items-center gap-2 pb-1">
-          <Backpack className="h-4 w-4 text-amber-300" />
-          <h3 className="text-sm font-semibold gold-text">Снаряжение</h3>
-          <Badge variant="secondary" className="ml-auto text-[10px]">
-            {inventory.length} предм.
-          </Badge>
-        </div>
-        <ScrollArea className="fantasy-scroll max-h-56 pr-2">
-          {inventory.length === 0 ? (
-            <p className="py-3 text-center text-xs italic text-muted-foreground">
-              Сумки пусты…
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {inventory.map((item) => (
-                <li
-                  key={item.id}
-                  className="rounded-md border border-border/50 bg-stone-900/40 p-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">{item.itemName}</span>
-                    {item.quantity > 1 && (
-                      <Badge variant="outline" className="shrink-0 text-[10px]">
-                        x{item.quantity}
-                      </Badge>
-                    )}
+        {!compact && (
+          <>
+            {/* Stats */}
+            <div className="mt-2 grid grid-cols-6 gap-1">
+              {STAT_LABELS.map((s) => {
+                const val = player[s.key] as number;
+                const mod = abilityModifier(val);
+                return (
+                  <div key={s.key} className="rounded border border-border/40 bg-stone-900/50 px-1 py-0.5 text-center">
+                    <div className="text-[8px] text-muted-foreground">{s.short}</div>
+                    <div className="text-xs font-bold leading-tight">{val}</div>
+                    <div className={cn("text-[9px] font-mono", mod >= 0 ? "text-emerald-400" : "text-red-400")}>
+                      {mod >= 0 ? "+" : ""}
+                      {mod}
+                    </div>
                   </div>
-                  {item.description && (
-                    <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                      {item.description}
-                    </p>
-                  )}
-                  <Badge
-                    variant="outline"
-                    className={cn("mt-1 text-[9px] uppercase tracking-wide", TYPE_STYLES[item.itemType] ?? TYPE_STYLES.misc)}
-                  >
-                    {item.itemType}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </ScrollArea>
+                );
+              })}
+            </div>
+
+            <Separator className="my-2 bg-border/50" />
+
+            {/* Inventory */}
+            <div className="flex items-center gap-1.5 pb-1">
+              <Backpack className="h-3 w-3 text-amber-300" />
+              <span className="text-[11px] font-semibold gold-text">Снаряжение</span>
+              <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
+            </div>
+            <ScrollArea className="fantasy-scroll max-h-40 pr-1">
+              {inventory.length === 0 ? (
+                <p className="py-2 text-center text-[10px] italic text-muted-foreground">Пусто…</p>
+              ) : (
+                <ul className="space-y-1">
+                  {inventory.map((item) => (
+                    <li key={item.id} className="rounded border border-border/40 bg-stone-900/40 p-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="truncate text-[11px] font-medium">{item.itemName}</span>
+                        {item.quantity > 1 && <Badge variant="outline" className="text-[8px]">x{item.quantity}</Badge>}
+                      </div>
+                      {item.description && (
+                        <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{item.description}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ScrollArea>
+          </>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function Vital({
-  icon,
-  label,
-  value,
-  accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  accent: string;
-}) {
+function Vital({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {
   return (
-    <div className="rounded-md border border-border/60 bg-stone-900/50 px-2 py-1.5 text-center">
-      <div className={cn("flex items-center justify-center gap-1 text-[10px] uppercase tracking-wide", accent)}>
+    <div className="rounded border border-border/50 bg-stone-900/50 px-1.5 py-1 text-center">
+      <div className={cn("flex items-center justify-center gap-0.5 text-[8px] uppercase", accent)}>
         {icon}
         {label}
       </div>
-      <div className="text-sm font-bold font-mono">{value}</div>
+      <div className="text-xs font-bold font-mono">{value}</div>
     </div>
   );
 }
+
+function shade(hex: string, amount: number): string {
+  const c = hex.replace("#", "");
+  const num = parseInt(c.length === 3 ? c.split("").map((ch) => ch + ch).join("") : c, 16);
+  let r = (num >> 16) & 0xff;
+  let g = (num >> 8) & 0xff;
+  let b = num & 0xff;
+  const f = amount / 100;
+  r = Math.round(Math.max(0, Math.min(255, r + (f > 0 ? (255 - r) * f : r * f))));
+  g = Math.round(Math.max(0, Math.min(255, g + (f > 0 ? (255 - g) * f : g * f))));
+  b = Math.round(Math.max(0, Math.min(255, b + (f > 0 ? (255 - b) * f : b * f))));
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+void Swords;

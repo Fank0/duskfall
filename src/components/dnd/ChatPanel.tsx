@@ -4,36 +4,36 @@ import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Send,
-  Loader2,
-  Skull,
-  Swords,
-  Eye,
-  Footprints,
-  MessageSquareQuote,
-  Sparkles,
+  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock,
 } from "lucide-react";
 import type { ChatMessageState } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
 
 const QUICK_ACTIONS = [
-  { label: "Атаковать", icon: Swords, text: "Я обнажаю меч и атакую ближайшего врага!" },
-  { label: "Осмотреться", icon: Eye, text: "Я внимательно осматриваю местность вокруг." },
+  { label: "Атаковать", icon: Swords, text: "Я обнажаю оружие и атакую ближайшего врага!" },
+  { label: "Осмотреться", icon: Eye, text: "Я внимательно осматриваю местность." },
   { label: "Двигаться", icon: Footprints, text: "Я осторожно продвигаюсь вперёд." },
-  { label: "Говорить", icon: MessageSquareQuote, text: "Я обращаюсь к существу словами." },
+  { label: "Говорить", icon: MessageSquareQuote, text: "Я обращаюсь словами." },
 ];
 
 export function ChatPanel({
   messages,
   isThinking,
+  isYourTurn,
   isDead,
+  combatActive,
+  yourName,
+  currentTurnName,
   onSend,
 }: {
   messages: ChatMessageState[];
   isThinking: boolean;
+  isYourTurn: boolean;
   isDead: boolean;
+  combatActive: boolean;
+  yourName: string;
+  currentTurnName: string | null;
   onSend: (text: string) => void;
 }) {
   const [input, setInput] = useState("");
@@ -41,14 +41,16 @@ export function ChatPanel({
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, isThinking]);
+
+  // Input is locked during combat unless it's your turn.
+  const locked = combatActive && !isYourTurn && !isDead;
+  const canAct = !isThinking && !isDead && !locked;
 
   function submit(text?: string) {
     const value = (text ?? input).trim();
-    if (!value || isThinking) return;
+    if (!value || !canAct) return;
     onSend(value);
     setInput("");
   }
@@ -62,13 +64,36 @@ export function ChatPanel({
 
   return (
     <Card className="parchment rune-border border-border/80 flex h-full min-h-0 flex-col gap-0 overflow-hidden">
+      {/* Turn indicator banner */}
+      {combatActive && (
+        <div
+          className={cn(
+            "shrink-0 border-b px-3 py-1.5 text-center text-xs",
+            isYourTurn
+              ? "border-primary/50 bg-primary/15 text-primary"
+              : "border-border/50 bg-stone-900/60 text-muted-foreground"
+          )}
+        >
+          {isYourTurn ? (
+            <span className="flex items-center justify-center gap-1.5 font-semibold">
+              <Sparkles className="h-3.5 w-3.5" /> Ваш ход! Действуйте.
+            </span>
+          ) : currentTurnName ? (
+            <span className="flex items-center justify-center gap-1.5">
+              <Lock className="h-3 w-3" /> Ход: <span className="font-semibold text-foreground">{currentTurnName}</span> — дождитесь своей инициативы
+            </span>
+          ) : (
+            <span className="flex items-center justify-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" /> Ход монстров…
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
-      <div
-        ref={scrollRef}
-        className="fantasy-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4"
-      >
+      <div ref={scrollRef} className="fantasy-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
+          <MessageBubble key={m.id} message={m} yourName={yourName} />
         ))}
 
         {isThinking && (
@@ -79,7 +104,7 @@ export function ChatPanel({
             <div className="rounded-lg rounded-tl-none border border-border/60 bg-stone-900/60 px-3 py-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-300" />
-                <span className="font-serif italic">Мастер обдумывает…</span>
+                <span className="font-serif italic">Мастер вершит судьбу…</span>
                 <span className="flex gap-1">
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.3s]" />
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.15s]" />
@@ -97,7 +122,7 @@ export function ChatPanel({
           <button
             key={q.label}
             type="button"
-            disabled={isThinking || isDead}
+            disabled={!canAct}
             onClick={() => submit(q.text)}
             className="flex items-center gap-1 rounded-full border border-border/60 bg-stone-900/50 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -113,11 +138,13 @@ export function ChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={isThinking || isDead}
+          disabled={!canAct}
           placeholder={
             isDead
-              ? "Герой пал. Начните новую игру."
-              : "Опишите действие героя… (Enter — отправить)"
+              ? "Герой пал. Ожидайте новой игры."
+              : locked
+                ? `Ожидание хода (${currentTurnName} действует)…`
+                : "Опишите действие героя… (Enter — отправить)"
           }
           className="min-h-[44px] max-h-32 resize-none bg-stone-950/60 text-sm"
           rows={1}
@@ -126,28 +153,30 @@ export function ChatPanel({
           type="button"
           size="icon"
           onClick={() => submit()}
-          disabled={isThinking || isDead || !input.trim()}
+          disabled={!canAct || !input.trim()}
           className="h-11 w-11 shrink-0"
           aria-label="Отправить действие"
         >
-          {isThinking ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Send className="h-5 w-5" />
-          )}
+          {isThinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
         </Button>
       </div>
     </Card>
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessageState }) {
+function MessageBubble({ message, yourName }: { message: ChatMessageState; yourName: string }) {
   if (message.role === "player") {
+    const isYou = message.speaker === yourName;
     return (
-      <div className="flex justify-end animate-fade-up">
-        <div className="max-w-[85%] rounded-lg rounded-tr-none border border-primary/40 bg-primary/15 px-3 py-2 text-sm">
-          <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary/80">
-            {message.role === "player" ? "Алдрик" : message.role}
+      <div className={cn("flex animate-fade-up", isYou ? "justify-end" : "justify-start")}>
+        <div className={cn(
+          "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+          isYou
+            ? "rounded-tr-none border border-primary/40 bg-primary/15"
+            : "rounded-tl-none border border-sky-800/40 bg-sky-950/30"
+        )}>
+          <div className={cn("mb-0.5 text-[10px] font-semibold uppercase tracking-wide", isYou ? "text-primary/80" : "text-sky-300/80")}>
+            {isYou ? "Вы" : message.speaker || "Игрок"}
           </div>
           <p className="whitespace-pre-wrap leading-snug">{message.content}</p>
         </div>
@@ -165,7 +194,7 @@ function MessageBubble({ message }: { message: ChatMessageState }) {
     );
   }
 
-  // DM narrative
+  // DM
   return (
     <div className="flex items-start gap-2 animate-fade-up">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-700/60 bg-stone-950/80">

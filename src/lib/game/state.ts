@@ -1,7 +1,8 @@
-// Database helpers: fetch / mutate the D&D game state.
+// Database helpers: fetch / mutate the room-scoped D&D game state.
 
 import { db } from "@/lib/db";
 import { abilityModifier } from "./dice";
+import { rollD20 } from "./dice";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -10,15 +11,15 @@ import type {
   ChatMessageState,
   DiceRollState,
   SceneState,
+  InitiativeEntryState,
   ResolvedRoll,
   InventoryChange,
 } from "./types";
 
-export const GRID_SIZE = 10; // 10x10 grid, each cell = 5 ft
-export const PLAYER_NAME = "Алдрик"; // default hero name
+export const GRID_SIZE = 10;
 
-/** Map a Prisma Player row to the client-safe PlayerState. */
-function toPlayerState(p: any): PlayerState {
+// ---------- mappers ----------
+function toPlayer(p: any): PlayerState {
   return {
     id: p.id,
     name: p.name,
@@ -38,11 +39,15 @@ function toPlayerState(p: any): PlayerState {
     posX: p.posX,
     posY: p.posY,
     color: p.color,
+    weaponName: p.weaponName,
+    weaponNotation: p.weaponNotation,
     portraitUrl: p.portraitUrl,
+    isHost: p.isHost,
+    isAlive: p.isAlive,
   };
 }
 
-function toMonsterState(m: any): MonsterState {
+function toMonster(m: any): MonsterState {
   return {
     id: m.id,
     name: m.name,
@@ -60,9 +65,10 @@ function toMonsterState(m: any): MonsterState {
   };
 }
 
-function toInventoryState(i: any): InventoryItemState {
+function toInventory(i: any): InventoryItemState {
   return {
     id: i.id,
+    playerName: i.playerName,
     itemName: i.itemName,
     itemType: i.itemType,
     quantity: i.quantity,
@@ -70,10 +76,11 @@ function toInventoryState(i: any): InventoryItemState {
   };
 }
 
-function toChatState(c: any): ChatMessageState {
+function toChat(c: any): ChatMessageState {
   return {
     id: c.id,
     role: c.role,
+    speaker: c.speaker,
     content: c.content,
     imageUrl: c.imageUrl,
     round: c.round,
@@ -81,10 +88,11 @@ function toChatState(c: any): ChatMessageState {
   };
 }
 
-function toDiceState(d: any): DiceRollState {
+function toDice(d: any): DiceRollState {
   return {
     id: d.id,
     round: d.round,
+    roller: d.roller,
     label: d.label,
     notation: d.notation,
     modifier: d.modifier,
@@ -96,7 +104,7 @@ function toDiceState(d: any): DiceRollState {
   };
 }
 
-function toSceneState(s: any): SceneState {
+function toScene(s: any): SceneState {
   return {
     id: s.id,
     imageUrl: s.imageUrl,
@@ -105,80 +113,108 @@ function toSceneState(s: any): SceneState {
   };
 }
 
-/** Fetch the complete game-state snapshot for the UI / DM context. */
-export async function getSnapshot(): Promise<GameStateSnapshot> {
-  const player = await db.player.findFirst({ where: { name: PLAYER_NAME } });
-  const monsters = await db.monster.findMany({ orderBy: { createdAt: "asc" } });
-  const inventory = await db.inventoryItem.findMany({
-    where: { playerName: PLAYER_NAME },
-    orderBy: { createdAt: "asc" },
-  });
-  const chat = await db.chatMessage.findMany({ orderBy: { createdAt: "asc" } });
-  const diceLog = await db.diceRoll.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 40,
-  });
-  const activeScene = await db.scene.findFirst({
-    where: { isActive: true },
-    orderBy: { createdAt: "desc" },
-  });
-  const gs = await db.gameState.findUnique({ where: { id: "singleton" } });
-
+function toInitiative(i: any): InitiativeEntryState {
   return {
-    player: player
-      ? toPlayerState(player)
-      : toPlayerState({
-          id: "",
-          name: PLAYER_NAME,
-          charClass: "Воин",
-          level: 1,
-          hp: 28,
-          maxHp: 28,
-          ac: 16,
-          str: 16,
-          dex: 12,
-          con: 15,
-          int: 10,
-          wis: 11,
-          cha: 13,
-          proficiencyBonus: 2,
-          gold: 15,
-          posX: 1,
-          posY: 8,
-          color: "#dc2626",
-          portraitUrl: null,
-        }),
-    monsters: monsters.map(toMonsterState),
-    inventory: inventory.map(toInventoryState),
-    chat: chat.map(toChatState),
-    diceLog: diceLog.map(toDiceState),
-    scene: activeScene ? toSceneState(activeScene) : null,
-    combatActive: gs?.combatActive ?? false,
-    round: gs?.round ?? 0,
-    location: gs?.location ?? "Туманный лес, опушка",
-    turn: gs?.turn ?? "player",
+    id: i.id,
+    combatantName: i.combatantName,
+    combatantType: i.combatantType,
+    initiative: i.initiative,
+    order: i.order,
+    monsterId: i.monsterId,
+    isAlive: i.isAlive,
   };
 }
 
-/** Return a compact, DM-readable summary of the current situation. */
-export async function getDMContext(): Promise<string> {
-  const snap = await getSnapshot();
-  const p = snap.player;
+// ---------- room helpers ----------
+export async function getRoomByCode(code: string) {
+  const c = String(code || "").toUpperCase().trim();
+  if (!c) return null;
+  return db.room.findUnique({ where: { code: c } });
+}
+
+/** Generate a unique 6-char room code. */
+export async function generateRoomCode(): Promise<string> {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing chars
+  for (let attempt = 0; attempt < 20; attempt++) {
+    let code = "";
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    const exists = await db.room.findUnique({ where: { code } });
+    if (!exists) return code;
+  }
+  // Fallback (extremely unlikely collision)
+  return "DND" + Math.floor(1000 + Math.random() * 9000);
+}
+
+// ---------- snapshot ----------
+export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot | null> {
+  const room = await getRoomByCode(roomCode);
+  if (!room) return null;
+
+  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives] = await Promise.all([
+    db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    db.chatMessage.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    db.diceRoll.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, take: 50 }),
+    db.scene.findFirst({ where: { roomId: room.id, isActive: true }, orderBy: { createdAt: "desc" } }),
+    db.initiativeEntry.findMany({ where: { roomId: room.id }, orderBy: { order: "asc" } }),
+  ]);
+
+  const order = initiatives;
+  const currentEntry = order[room.turnIndex] ?? null;
+
+  return {
+    roomCode: room.code,
+    hostName: room.hostName,
+    players: players.map(toPlayer),
+    monsters: monsters.map(toMonster),
+    inventory: inventory.map(toInventory),
+    chat: chat.map(toChat),
+    diceLog: diceLog.map(toDice),
+    scene: activeScene ? toScene(activeScene) : null,
+    initiatives: order.map(toInitiative),
+    combatActive: room.combatActive,
+    round: room.round,
+    location: room.location,
+    turnIndex: room.turnIndex,
+    currentTurnName: currentEntry?.combatantName ?? null,
+    currentTurnType: (currentEntry?.combatantType as "player" | "monster") ?? null,
+  };
+}
+
+// ---------- DM context ----------
+/** Return a compact, DM-readable summary of the room's current situation. */
+export async function getDMContext(roomCode: string, actorName: string): Promise<string> {
+  const snap = await getSnapshot(roomCode);
+  if (!snap) return "Комната не найдена.";
   const lines: string[] = [];
   lines.push(
     `=== Состояние игры ===\nЛокация: ${snap.location}\nРаунд: ${snap.round}\nБой активен: ${snap.combatActive ? "да" : "нет"}`
   );
-  lines.push(
-    `=== Герой: ${p.name} (${p.charClass}, ур.${p.level}) ===\nHP: ${p.hp}/${p.maxHp} | AC: ${p.ac} | Золото: ${p.gold}\nСил: ${p.str} (мод ${abilityModifier(p.str)}) | Лов: ${p.dex} (мод ${abilityModifier(p.dex)}) | Тел: ${p.con} (мод ${abilityModifier(p.con)}) | Инт: ${p.int} (мод ${abilityModifier(p.int)}) | Муд: ${p.wis} (мод ${abilityModifier(p.wis)}) | Хар: ${p.cha} (мод ${abilityModifier(p.cha)})\nБонус мастерства: +${p.proficiencyBonus}\nПозиция на сетке: (${p.posX},${p.posY})`
-  );
-  if (snap.inventory.length > 0) {
+  lines.push(`Действует сейчас: ${actorName}`);
+
+  const alivePlayers = snap.players.filter((p) => p.isAlive && p.hp > 0);
+  lines.push(`=== Группа (${alivePlayers.length} в строю) ===`);
+  for (const p of snap.players) {
+    const mod = (k: number) => abilityModifier(k);
+    const status = p.isAlive && p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : "ПАЛ";
     lines.push(
-      "Инвентарь: " +
-        snap.inventory.map((i) => `${i.itemName} x${i.quantity} [${i.itemType}]`).join(", ")
+      `${p.name} (${p.charClass}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation}) | Позиция (${p.posX},${p.posY})`
     );
-  } else {
-    lines.push("Инвентарь: пусто");
   }
+
+  const items = snap.inventory;
+  if (items.length > 0) {
+    const byPlayer = new Map<string, string[]>();
+    for (const it of items) {
+      if (!byPlayer.has(it.playerName)) byPlayer.set(it.playerName, []);
+      byPlayer.get(it.playerName)!.push(`${it.itemName} x${it.quantity}`);
+    }
+    for (const [name, list] of byPlayer) {
+      lines.push(`Инвентарь ${name}: ${list.join(", ")}`);
+    }
+  }
+
   const activeMonsters = snap.monsters.filter((m) => m.isActive);
   const hiddenMonsters = snap.monsters.filter((m) => !m.isActive);
   if (activeMonsters.length > 0) {
@@ -188,8 +224,6 @@ export async function getDMContext(): Promise<string> {
         `${m.name} (${m.label}): HP ${m.hp}/${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY})`
       );
     }
-  } else if (snap.combatActive) {
-    lines.push("Противники: все повержены");
   }
   if (hiddenMonsters.length > 0) {
     lines.push("=== Скрытые угрозы (появятся, если начнётся бой) ===");
@@ -202,26 +236,38 @@ export async function getDMContext(): Promise<string> {
   if (activeMonsters.length === 0 && hiddenMonsters.length === 0) {
     lines.push("Противники: нет");
   }
-  // recent chat for memory (last 6 messages)
+
+  if (snap.combatActive && snap.initiatives.length > 0) {
+    lines.push("=== Порядок инициативы ===");
+    snap.initiatives.forEach((e, i) => {
+      const cur = i === snap.turnIndex ? " <- СЕЙЧАС" : "";
+      lines.push(`${i + 1}. ${e.combatantName} (${e.combatantType}, инициатива ${e.initiative})${cur}`);
+    });
+  }
+
   const recent = snap.chat.slice(-6);
   if (recent.length > 0) {
     lines.push("=== Недавние события ===");
     for (const c of recent) {
-      const who = c.role === "player" ? "Игрок" : c.role === "system" ? "Система" : "Мастер";
-      lines.push(`${who}: ${c.content.slice(0, 280)}`);
+      const who = c.role === "player" ? `Игрок ${c.speaker}` : c.role === "system" ? "Система" : "Мастер";
+      lines.push(`${who}: ${c.content.slice(0, 300)}`);
     }
   }
   return lines.join("\n");
 }
 
-/** Persist a dice roll to the log. */
+// ---------- mutations ----------
 export async function logDiceRoll(
+  roomId: string,
   round: number,
+  roller: string,
   roll: ResolvedRoll
 ): Promise<void> {
   await db.diceRoll.create({
     data: {
+      roomId,
       round,
+      roller,
       label: roll.label,
       notation: roll.notation,
       modifier: roll.modifier,
@@ -233,69 +279,79 @@ export async function logDiceRoll(
   });
 }
 
-/** Apply damage to a monster (clamped, marks inactive at 0). */
-export async function damageMonster(
-  monsterId: string,
-  amount: number
-): Promise<{ hp: number; died: boolean }> {
-  const m = await db.monster.findUnique({ where: { id: monsterId } });
+export async function damageMonster(roomId: string, monsterId: string, amount: number) {
+  const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
   if (!m) return { hp: 0, died: false };
   const newHp = Math.max(0, m.hp - amount);
   await db.monster.update({
-    where: { id: monsterId },
+    where: { id: m.id },
     data: { hp: newHp, isActive: newHp > 0 },
   });
+  // Keep initiative entry alive-state in sync.
+  if (newHp <= 0) {
+    await db.initiativeEntry.updateMany({
+      where: { roomId, combatantName: m.name },
+      data: { isAlive: false },
+    });
+  }
   return { hp: newHp, died: newHp <= 0 };
 }
 
-/** Apply damage to the player (clamped at 0). */
-export async function damagePlayer(amount: number): Promise<number> {
-  const p = await db.player.findFirst({ where: { name: PLAYER_NAME } });
-  if (!p) return 0;
+export async function damagePlayer(roomId: string, name: string, amount: number) {
+  const p = await db.player.findFirst({ where: { name, roomId } });
+  if (!p) return { hp: 0, died: false };
   const newHp = Math.max(0, p.hp - amount);
-  await db.player.update({ where: { id: p.id }, data: { hp: newHp } });
-  return newHp;
+  const died = newHp <= 0;
+  await db.player.update({
+    where: { id: p.id },
+    data: { hp: newHp, isAlive: !died },
+  });
+  if (died) {
+    await db.initiativeEntry.updateMany({
+      where: { roomId, combatantName: name },
+      data: { isAlive: false },
+    });
+  }
+  return { hp: newHp, died };
 }
 
-/** Heal the player (clamped at maxHp). */
-export async function healPlayer(amount: number): Promise<number> {
-  const p = await db.player.findFirst({ where: { name: PLAYER_NAME } });
+export async function healPlayer(roomId: string, name: string, amount: number) {
+  const p = await db.player.findFirst({ where: { name, roomId } });
   if (!p) return 0;
   const newHp = Math.min(p.maxHp, p.hp + amount);
-  await db.player.update({ where: { id: p.id }, data: { hp: newHp } });
+  await db.player.update({
+    where: { id: p.id },
+    data: { hp: newHp, isAlive: true },
+  });
   return newHp;
 }
 
-/** Move a token (player or monster) on the grid. */
 export async function moveToken(
+  roomId: string,
   name: string,
   newX: number,
   newY: number,
   isPlayer: boolean
-): Promise<void> {
+) {
   const x = Math.max(0, Math.min(GRID_SIZE - 1, newX));
   const y = Math.max(0, Math.min(GRID_SIZE - 1, newY));
   if (isPlayer) {
-    await db.player.updateMany({
-      where: { name },
-      data: { posX: x, posY: y },
-    });
+    await db.player.updateMany({ where: { name, roomId }, data: { posX: x, posY: y } });
   } else {
-    const m = await db.monster.findFirst({ where: { name } });
-    if (m) {
-      await db.monster.update({ where: { id: m.id }, data: { posX: x, posY: y } });
-    }
+    const m = await db.monster.findFirst({ where: { name, roomId } });
+    if (m) await db.monster.update({ where: { id: m.id }, data: { posX: x, posY: y } });
   }
 }
 
-/** Apply a list of inventory changes. */
 export async function applyInventoryChanges(
+  roomId: string,
+  playerName: string,
   changes: InventoryChange[]
-): Promise<void> {
+) {
   for (const c of changes) {
     if (c.action === "add") {
       const existing = await db.inventoryItem.findFirst({
-        where: { playerName: PLAYER_NAME, itemName: c.item },
+        where: { roomId, playerName, itemName: c.item },
       });
       if (existing) {
         await db.inventoryItem.update({
@@ -305,7 +361,8 @@ export async function applyInventoryChanges(
       } else {
         await db.inventoryItem.create({
           data: {
-            playerName: PLAYER_NAME,
+            roomId,
+            playerName,
             itemName: c.item,
             itemType: c.type || "misc",
             quantity: 1,
@@ -315,7 +372,7 @@ export async function applyInventoryChanges(
       }
     } else if (c.action === "remove") {
       const existing = await db.inventoryItem.findFirst({
-        where: { playerName: PLAYER_NAME, itemName: c.item },
+        where: { roomId, playerName, itemName: c.item },
       });
       if (existing) {
         if (existing.quantity > 1) {
@@ -331,9 +388,8 @@ export async function applyInventoryChanges(
   }
 }
 
-/** Adjust the player's gold (can be negative). */
-export async function adjustGold(amount: number): Promise<void> {
-  const p = await db.player.findFirst({ where: { name: PLAYER_NAME } });
+export async function adjustGold(roomId: string, name: string, amount: number) {
+  const p = await db.player.findFirst({ where: { name, roomId } });
   if (!p) return;
   await db.player.update({
     where: { id: p.id },
@@ -341,93 +397,174 @@ export async function adjustGold(amount: number): Promise<void> {
   });
 }
 
-/** Save a chat message. */
 export async function saveChatMessage(
+  roomId: string,
   role: "dm" | "player" | "system",
+  speaker: string,
   content: string,
   round: number,
   imageUrl?: string | null
-): Promise<void> {
+) {
   await db.chatMessage.create({
-    data: { role, content, round, imageUrl: imageUrl ?? null },
+    data: { roomId, role, speaker, content, round, imageUrl: imageUrl ?? null },
   });
 }
 
-/** Update the global game state flags. */
-export async function setGameState(data: {
-  combatActive?: boolean;
-  round?: number;
-  location?: string;
-  turn?: string;
-  introShown?: boolean;
-}): Promise<void> {
-  await db.gameState.upsert({
-    where: { id: "singleton" },
-    update: data,
-    create: { id: "singleton", ...data },
-  });
+export async function setRoomState(roomId: string, data: Partial<{
+  combatActive: boolean;
+  round: number;
+  location: string;
+  turnIndex: number;
+  introShown: boolean;
+}>) {
+  await db.room.update({ where: { id: roomId }, data });
 }
 
-/** Find the active monster nearest to the player (Chebyshev distance). */
-export async function nearestActiveMonster(): Promise<MonsterState | null> {
-  const player = await db.player.findFirst({ where: { name: PLAYER_NAME } });
-  const monsters = await db.monster.findMany({ where: { isActive: true } });
-  if (!player || monsters.length === 0) return null;
+/** Find the nearest alive player to a monster (Chebyshev distance). */
+export async function nearestAlivePlayer(roomId: string, fromX: number, fromY: number) {
+  const players = await db.player.findMany({ where: { roomId, isAlive: true } });
+  const alive = players.filter((p) => p.hp > 0);
+  if (alive.length === 0) return null;
+  let best = alive[0];
+  let bestDist = Infinity;
+  for (const p of alive) {
+    const d = Math.max(Math.abs(p.posX - fromX), Math.abs(p.posY - fromY));
+    if (d < bestDist) {
+      bestDist = d;
+      best = p;
+    }
+  }
+  return { player: toPlayer(best), distance: bestDist };
+}
+
+/** Find the nearest active monster to a player. */
+export async function nearestActiveMonster(roomId: string, fromX: number, fromY: number) {
+  const monsters = await db.monster.findMany({ where: { roomId, isActive: true } });
+  if (monsters.length === 0) return null;
   let best = monsters[0];
   let bestDist = Infinity;
   for (const m of monsters) {
-    const dist = Math.max(Math.abs(m.posX - player.posX), Math.abs(m.posY - player.posY));
-    if (dist < bestDist) {
-      bestDist = dist;
+    const d = Math.max(Math.abs(m.posX - fromX), Math.abs(m.posY - fromY));
+    if (d < bestDist) {
+      bestDist = d;
       best = m;
     }
   }
-  return toMonsterState(best);
+  return { monster: toMonster(best), distance: bestDist };
 }
 
-/** Move a monster one step toward the player along the dominant axis. */
-export async function moveMonsterTowardPlayer(
-  monsterId: string
-): Promise<{ newX: number; newY: number; distBefore: number; distAfter: number }> {
-  const m = await db.monster.findUnique({ where: { id: monsterId } });
-  const p = await db.player.findFirst({ where: { name: PLAYER_NAME } });
-  if (!m || !p) return { newX: 0, newY: 0, distBefore: 0, distAfter: 0 };
-  const distBefore = Math.max(Math.abs(m.posX - p.posX), Math.abs(m.posY - p.posY));
+/** Move a monster toward the nearest alive player (up to 2 cells). */
+export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: string) {
+  const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
+  if (!m) return { newX: 0, newY: 0, distBefore: 0, distAfter: 0, targetName: null };
+  const nearest = await nearestAlivePlayer(roomId, m.posX, m.posY);
+  if (!nearest) return { newX: m.posX, newY: m.posY, distBefore: 0, distAfter: 0, targetName: null };
+  const p = nearest.player;
+  const distBefore = nearest.distance;
   let nx = m.posX;
   let ny = m.posY;
-  // move up to 2 cells (30 ft) toward player, one axis at a time
-  const stepsLeft = 2;
-  let steps = stepsLeft;
+  let steps = 2;
   while (steps > 0 && (nx !== p.posX || ny !== p.posY)) {
     const dx = p.posX - nx;
     const dy = p.posY - ny;
-    if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) {
-      nx += Math.sign(dx);
-    } else if (dy !== 0) {
-      ny += Math.sign(dy);
-    } else {
-      break;
-    }
+    if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) nx += Math.sign(dx);
+    else if (dy !== 0) ny += Math.sign(dy);
+    else break;
     steps--;
   }
   nx = Math.max(0, Math.min(GRID_SIZE - 1, nx));
   ny = Math.max(0, Math.min(GRID_SIZE - 1, ny));
-  await db.monster.update({ where: { id: monsterId }, data: { posX: nx, posY: ny } });
+  await db.monster.update({ where: { id: m.id }, data: { posX: nx, posY: ny } });
   const distAfter = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
-  return { newX: nx, newY: ny, distBefore, distAfter };
+  return { newX: nx, newY: ny, distBefore, distAfter, targetName: p.name };
 }
 
-/** Mark a scene as inactive and store a new active scene. */
-export async function setActiveScene(
-  imageUrl: string,
-  prompt: string,
-  title: string
-): Promise<void> {
-  await db.scene.updateMany({ where: { isActive: true }, data: { isActive: false } });
-  await db.scene.create({ data: { imageUrl, prompt, title, isActive: true } });
+export async function setActiveScene(roomId: string, imageUrl: string, prompt: string, title: string) {
+  await db.scene.updateMany({ where: { roomId, isActive: true }, data: { isActive: false } });
+  await db.scene.create({ data: { roomId, imageUrl, prompt, title, isActive: true } });
 }
 
-/** Compute the player's melee attack bonus (STR mod + proficiency). */
-export function playerAttackBonus(str: number, proficiency: number): number {
-  return abilityModifier(str) + proficiency;
+// ---------- initiative ----------
+/** Roll initiative for all players + active monsters and persist the order. */
+export async function rollInitiative(roomId: string): Promise<InitiativeEntryState[]> {
+  const [players, monsters] = await Promise.all([
+    db.player.findMany({ where: { roomId, isAlive: true } }),
+    db.monster.findMany({ where: { roomId, isActive: true } }),
+  ]);
+
+  type Entry = { name: string; type: "player" | "monster"; init: number; monsterId: string | null };
+  const entries: Entry[] = [];
+  for (const p of players) {
+    if (p.hp <= 0) continue;
+    const init = rollD20(abilityModifier(p.dex)).total;
+    entries.push({ name: p.name, type: "player", init, monsterId: null });
+  }
+  for (const m of monsters) {
+    const init = rollD20(2).total; // monsters use a flat +2 (typical DEX)
+    entries.push({ name: m.name, type: "monster", init, monsterId: m.id });
+  }
+  // Sort descending by initiative; tie-break by type (players first) then name.
+  entries.sort((a, b) => {
+    if (b.init !== a.init) return b.init - a.init;
+    if (a.type !== b.type) return a.type === "player" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Clear old entries and write new ones.
+  await db.initiativeEntry.deleteMany({ where: { roomId } });
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    await db.initiativeEntry.create({
+      data: {
+        roomId,
+        combatantName: e.name,
+        combatantType: e.type,
+        initiative: e.init,
+        order: i,
+        monsterId: e.monsterId,
+        isAlive: true,
+      },
+    });
+    // Log the initiative roll.
+    await db.diceRoll.create({
+      data: {
+        roomId,
+        round: 0,
+        roller: e.name,
+        label: "Инициатива",
+        notation: "1d20",
+        modifier: e.type === "player" ? abilityModifier((players.find((p) => p.name === e.name))!.dex) : 2,
+        result: e.init - (e.type === "player" ? abilityModifier(players.find((p) => p.name === e.name)!.dex) : 2),
+        total: e.init,
+        target: null,
+        success: null,
+      },
+    });
+  }
+  const saved = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+  return saved.map(toInitiative);
+}
+
+/** Get the combatant whose turn it is. */
+export async function getCurrentCombatant(roomId: string) {
+  const room = await db.room.findUnique({ where: { id: roomId } });
+  if (!room || !room.combatActive) return null;
+  const order = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+  return order[room.turnIndex] ?? null;
+}
+
+/** Count alive players / monsters. */
+export async function countAlive(roomId: string) {
+  const [players, monsters] = await Promise.all([
+    db.player.findMany({ where: { roomId, isAlive: true } }),
+    db.monster.findMany({ where: { roomId, isActive: true } }),
+  ]);
+  const alivePlayers = players.filter((p) => p.hp > 0);
+  const aliveMonsters = monsters.filter((m) => m.hp > 0);
+  return {
+    players: alivePlayers.length,
+    monsters: aliveMonsters.length,
+    anyPlayerAlive: alivePlayers.length > 0,
+    anyMonsterAlive: aliveMonsters.length > 0,
+  };
 }

@@ -1,82 +1,41 @@
-// Seed the D&D 5e VTT world with the opening scenario.
+// Seed a game room with the opening scenario (goblins, scene, intro).
 
 import { db } from "@/lib/db";
+import type { CharClassPreset } from "./types";
+import { PARTY_POSITIONS } from "./presets";
 
-const PLAYER_NAME = "Алдрик";
+export interface CreatePlayerInput {
+  name: string;
+  preset: CharClassPreset;
+  isHost: boolean;
+  positionIndex: number;
+  portraitUrl?: string | null;
+}
 
-export async function seedWorld(): Promise<void> {
-  // Only seed if there's no player yet.
-  const existing = await db.player.findFirst({ where: { name: PLAYER_NAME } });
-  if (existing) return;
+/** Create a room and seed its world (goblins hidden, scene, intro). */
+export async function createRoomWithHost(input: CreatePlayerInput): Promise<{ roomCode: string; roomId: string }> {
+  const code = await generateUniqueCode();
+  const pos = PARTY_POSITIONS[input.positionIndex % PARTY_POSITIONS.length];
 
-  // --- Player: a level-1 Fighter exploring the Mistwood. ---
-  await db.player.create({
+  const room = await db.room.create({
     data: {
-      name: PLAYER_NAME,
-      charClass: "Воин",
-      level: 1,
-      hp: 28,
-      maxHp: 28,
-      ac: 16,
-      str: 16,
-      dex: 12,
-      con: 15,
-      int: 10,
-      wis: 11,
-      cha: 13,
-      proficiencyBonus: 2,
-      gold: 15,
-      posX: 1,
-      posY: 8,
-      color: "#dc2626",
-      portraitUrl: "/scenes/hero.png",
+      code,
+      hostName: input.name,
+      combatActive: false,
+      round: 0,
+      location: "Туманный лес, опушка у древних руин",
+      turnIndex: 0,
+      introShown: false,
     },
   });
 
-  // --- Starting inventory ---
-  const startItems = [
-    {
-      playerName: PLAYER_NAME,
-      itemName: "Длинный меч",
-      itemType: "weapon",
-      quantity: 1,
-      description: "Стальной клинок, 1d8 рубящего урона. Верный спутник воина.",
-    },
-    {
-      playerName: PLAYER_NAME,
-      itemName: "Деревянный щит",
-      itemType: "armor",
-      quantity: 1,
-      description: "Круглый щит, даёт +2 к Классу Доспеха.",
-    },
-    {
-      playerName: PLAYER_NAME,
-      itemName: "Зелье лечения",
-      itemType: "potion",
-      quantity: 2,
-      description: "Восстанавливает 2d4+2 HP. Выпить действием.",
-    },
-    {
-      playerName: PLAYER_NAME,
-      itemName: "Факел",
-      itemType: "misc",
-      quantity: 3,
-      description: "Горит 1 час, освещает 20 футов.",
-    },
-    {
-      playerName: PLAYER_NAME,
-      itemName: "Сухой паёк",
-      itemType: "misc",
-      quantity: 5,
-      description: "Дорога солонины и твёрдый хлеб.",
-    },
-  ];
-  await db.inventoryItem.createMany({ data: startItems });
+  await createPlayer(room.id, input);
 
-  // --- Monsters: a goblin ambush party (hidden until combat triggers) ---
+  // Hidden goblin ambush.
   await db.monster.createMany({
     data: [
       {
+        roomId: room.id,
         name: "Гоблин-разведчик",
         label: "Г1",
         hp: 12,
@@ -88,9 +47,10 @@ export async function seedWorld(): Promise<void> {
         posY: 1,
         color: "#16a34a",
         description: "Кривоногий зеленошкурый гоблин с ржавым кривым ножом.",
-        isActive: false, // appears once combat triggers
+        isActive: false,
       },
       {
+        roomId: room.id,
         name: "Гоблин-стрелок",
         label: "Г2",
         hp: 10,
@@ -107,23 +67,10 @@ export async function seedWorld(): Promise<void> {
     ],
   });
 
-  // --- Game state singleton ---
-  await db.gameState.upsert({
-    where: { id: "singleton" },
-    update: {},
-    create: {
-      id: "singleton",
-      combatActive: false,
-      round: 0,
-      location: "Туманный лес, опушка у древних руин",
-      turn: "player",
-      introShown: false,
-    },
-  });
-
-  // --- Opening scene illustration (pre-generated asset) ---
+  // Opening scene.
   await db.scene.create({
     data: {
+      roomId: room.id,
       imageUrl: "/scenes/forest-ruins.png",
       prompt:
         "Dark fantasy misty forest clearing at dusk with ancient moss-covered stone ruins, ominous fog, grim atmosphere, painterly concept art",
@@ -132,13 +79,88 @@ export async function seedWorld(): Promise<void> {
     },
   });
 
-  // --- Opening narrative ---
+  // Opening narrative.
   await db.chatMessage.create({
     data: {
+      roomId: room.id,
       role: "dm",
+      speaker: "",
       round: 0,
       content:
-        "Сумерки опускаются на Туманный лес. Ты — Алдрик, странствующий воин, и тропа привела тебя к поросшим мхом руинам, что чернеют среди деревьев. Воздух холоден и пахнет сырой землёй и гниющей хвоей. Откуда-то из-за камней доносится тихое скаление — не ветер. Луна едва пробивается сквозь кроны. Что ты будешь делать?",
+        `Сумерки опускаются на Туманный лес. Тропа привела вашу группу к поросшим мхом руинам, что чернеют среди деревьев. Воздух холоден и пахнет сырой землёй и гниющей хвоей. Откуда-то из-за камней доносится тихое скаление — не ветер. Луна едва пробивается сквозь кроны. ${input.name}, ты ведёшь отряд. Что вы будете делать?`,
     },
   });
+
+  return { roomCode: code, roomId: room.id };
+}
+
+/** Add a party member to an existing room. */
+export async function joinRoomAsPlayer(roomId: string, input: CreatePlayerInput) {
+  await createPlayer(roomId, input);
+  await db.chatMessage.create({
+    data: {
+      roomId,
+      role: "system",
+      speaker: "",
+      round: 0,
+      content: `${input.name} (${input.preset.name}) присоединяется к отряду.`,
+    },
+  });
+}
+
+async function createPlayer(roomId: string, input: CreatePlayerInput) {
+  const pos = PARTY_POSITIONS[input.positionIndex % PARTY_POSITIONS.length];
+  const p = input.preset;
+  const player = await db.player.create({
+    data: {
+      roomId,
+      name: input.name,
+      charClass: p.charClass,
+      level: 1,
+      hp: p.hp,
+      maxHp: p.hp,
+      ac: p.ac,
+      str: p.str,
+      dex: p.dex,
+      con: p.con,
+      int: p.int,
+      wis: p.wis,
+      cha: p.cha,
+      proficiencyBonus: 2,
+      gold: p.gold,
+      posX: pos.x,
+      posY: pos.y,
+      color: p.color,
+      weaponName: p.weaponName,
+      weaponNotation: p.weaponNotation,
+      portraitUrl: input.portraitUrl ?? null,
+      isHost: input.isHost,
+      isAlive: true,
+    },
+  });
+  // Starting inventory.
+  for (const item of p.startItems) {
+    await db.inventoryItem.create({
+      data: {
+        roomId,
+        playerName: input.name,
+        itemName: item.name,
+        itemType: item.type,
+        quantity: 1,
+        description: item.description,
+      },
+    });
+  }
+  return player;
+}
+
+async function generateUniqueCode(): Promise<string> {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  for (let attempt = 0; attempt < 30; attempt++) {
+    let code = "";
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    const exists = await db.room.findUnique({ where: { code } });
+    if (!exists) return code;
+  }
+  return "DND" + Math.floor(1000 + Math.random() * 9000);
 }
