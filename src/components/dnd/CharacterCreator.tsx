@@ -8,25 +8,30 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Skull, Crown, Swords, Loader2, ChevronLeft, ChevronRight,
-  Sparkles, Dna, GraduationCap, User, Shuffle, Minus, Plus,
+  Sparkles, Dna, GraduationCap, User, Shuffle, Minus, Plus, LogIn,
 } from "lucide-react";
 import {
   CLASS_PRESETS, RACE_PRESETS, BACKGROUND_PRESETS,
   applyRaceBonuses,
 } from "@/lib/game/presets";
+import { previewAbilities } from "@/lib/game/abilities";
 import type { CharClassPreset, RacePreset, BackgroundPreset } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { cn } from "@/lib/utils";
 
-type Step = "name" | "race" | "class" | "background" | "stats";
-const STEP_ORDER: Step[] = ["race", "class", "background", "stats", "name"];
+type Step = "code" | "name" | "race" | "class" | "background" | "stats";
 const STEP_META: Record<Step, { label: string; icon: any }> = {
+  code: { label: "Код", icon: LogIn },
   race: { label: "Народ", icon: Dna },
   class: { label: "Класс", icon: Swords },
   background: { label: "Происхождение", icon: GraduationCap },
   stats: { label: "Характеристики", icon: Sparkles },
   name: { label: "Имя", icon: User },
 };
+// Create flow: race → class → background → stats → name.
+// Join flow: code → race → class → background → stats → name.
+const STEP_ORDER_CREATE: Step[] = ["race", "class", "background", "stats", "name"];
+const STEP_ORDER_JOIN: Step[] = ["code", "race", "class", "background", "stats", "name"];
 
 const POINT_BUY_POOL = 5; // additional points to distribute
 const STAT_CAP = 18;
@@ -43,7 +48,8 @@ export function CharacterCreator({
   onBack: () => void;
   onEntered: (roomCode: string, playerName: string) => void;
 }) {
-  const [step, setStep] = useState<Step>(mode === "join" ? "name" : "race");
+  const STEP_ORDER = mode === "join" ? STEP_ORDER_JOIN : STEP_ORDER_CREATE;
+  const [step, setStep] = useState<Step>(mode === "join" ? "code" : "race");
   const [raceId, setRaceId] = useState("human");
   const [classId, setClassId] = useState("fighter");
   const [backgroundId, setBackgroundId] = useState("soldier");
@@ -110,7 +116,10 @@ export function CharacterCreator({
     }
   }
 
-  const canNext = step === "name" ? playerName.trim().length > 0 : true;
+  const canNext =
+    step === "name" ? playerName.trim().length > 0 :
+    step === "code" ? roomCode.trim().length === 6 :
+    true;
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-3 sm:p-4">
@@ -242,19 +251,26 @@ export function CharacterCreator({
                   </div>
                 </div>
               )}
+              {step === "code" && (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs uppercase tracking-wide text-muted-foreground">Код комнаты</label>
+                    <Input
+                      value={roomCode}
+                      onChange={(e) => setRoomCode(e.target.value.toUpperCase().slice(0, 6))}
+                      placeholder="ABCDEF"
+                      className="text-center text-2xl font-mono font-bold tracking-[0.4em]"
+                      autoFocus
+                      onKeyDown={(e) => { if (e.key === "Enter" && canNext) next(); }}
+                    />
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    Введите 6-значный код, который вам прислал хост игры. Сначала выберите народ, класс, происхождение и распределите характеристики, а имя дадите в конце.
+                  </p>
+                </div>
+              )}
               {step === "name" && (
                 <div className="space-y-4">
-                  {mode === "join" && (
-                    <div className="space-y-1.5">
-                      <label className="text-xs uppercase tracking-wide text-muted-foreground">Код комнаты</label>
-                      <Input
-                        value={roomCode}
-                        onChange={(e) => setRoomCode(e.target.value.toUpperCase().slice(0, 6))}
-                        placeholder="ABCDEF"
-                        className="text-center text-2xl font-mono font-bold tracking-[0.4em]"
-                      />
-                    </div>
-                  )}
                   <div className="space-y-1.5">
                     <label className="text-xs uppercase tracking-wide text-muted-foreground">Имя героя</label>
                     <Input
@@ -374,6 +390,32 @@ function CharacterPreview({
             <Sparkles className="h-3 w-3" /> Особенность народа
           </div>
           <p className="text-[11px] leading-snug text-muted-foreground">{race.trait}</p>
+        </div>
+
+        {/* Abilities (innate + class) */}
+        <div className="mt-2">
+          <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-300/80">
+            <Sparkles className="h-3 w-3" /> Способности
+          </div>
+          <ul className="space-y-1">
+            {previewAbilities(race.id, cls.id).map((a) => (
+              <li key={a.id} className="rounded border border-border/40 bg-stone-900/40 p-1.5">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="truncate text-[11px] font-semibold">{a.name}</span>
+                  <Badge variant="outline" className={cn("shrink-0 text-[8px]", a.source === "race" ? "border-emerald-700/50 text-emerald-300" : "border-sky-700/50 text-sky-300")}>
+                    {a.source === "race" ? "народ" : "класс"}
+                  </Badge>
+                </div>
+                <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{a.description}</p>
+                {a.castNotation && (
+                  <span className="mt-0.5 inline-block font-mono text-[9px] text-red-300">
+                    {a.castType === "heal" ? "лечение " : a.castType === "buff" ? "" : "урон "}
+                    {a.castNotation}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* Background skill */}

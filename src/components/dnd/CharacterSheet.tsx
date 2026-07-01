@@ -4,9 +4,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown } from "lucide-react";
+import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon } from "lucide-react";
 import type { PlayerState, InventoryItemState } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
+import { computeAbilities } from "@/lib/game/abilities";
 import { cn } from "@/lib/utils";
 
 const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
@@ -145,6 +146,66 @@ export function CharacterSheet({
                   ))}
                 </ul>
               )}
+            </ScrollArea>
+
+            <Separator className="my-2 bg-border/50" />
+
+            {/* Abilities */}
+            <div className="flex items-center gap-1.5 pb-1">
+              <Sparkles className="h-3 w-3 text-amber-300" />
+              <span className="text-[11px] font-semibold gold-text">Способности</span>
+              <Badge variant="secondary" className="ml-auto text-[8px]">
+                {computeAbilities(player, inventory).length}
+              </Badge>
+            </div>
+            <ScrollArea className="fantasy-scroll max-h-44 pr-1">
+              <ul className="space-y-1">
+                {computeAbilities(player, inventory).map((a) => (
+                  <li
+                    key={a.id}
+                    className={cn(
+                      "rounded border p-1.5",
+                      a.consumable
+                        ? "border-amber-700/50 bg-amber-950/20"
+                        : "border-border/40 bg-stone-900/40"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="flex items-center gap-1 truncate text-[11px] font-semibold">
+                        {a.source === "scroll" && <ScrollIcon className="h-3 w-3 shrink-0 text-amber-300" />}
+                        {a.name}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {a.consumable && (
+                          <Badge className="bg-amber-900/60 text-[7px] text-amber-200">расходуемый</Badge>
+                        )}
+                        {a.uses && a.uses > 1 && (
+                          <Badge variant="outline" className="text-[8px]">x{a.uses}</Badge>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[7px]",
+                            a.source === "race" ? "border-emerald-700/50 text-emerald-300" :
+                            a.source === "class" ? "border-sky-700/50 text-sky-300" :
+                            a.source === "talent" ? "border-purple-700/50 text-purple-300" :
+                            "border-amber-700/50 text-amber-300"
+                          )}
+                        >
+                          {a.source === "race" ? "народ" : a.source === "class" ? "класс" : a.source === "talent" ? "талант" : "свиток"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{a.description}</p>
+                    {a.castNotation && (
+                      <span className="mt-0.5 inline-block font-mono text-[9px] text-red-300">
+                        {a.castType === "heal" ? "лечение " : a.castType === "buff" ? "эффект " : "урон "}
+                        {a.castNotation}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </ScrollArea>
           </>
         )}

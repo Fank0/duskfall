@@ -221,7 +221,8 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     const byPlayer = new Map<string, string[]>();
     for (const it of items) {
       if (!byPlayer.has(it.playerName)) byPlayer.set(it.playerName, []);
-      byPlayer.get(it.playerName)!.push(`${it.itemName} x${it.quantity}`);
+      const scrollTag = it.itemType === "scroll" ? " [расходуемое заклинание-свиток]" : "";
+      byPlayer.get(it.playerName)!.push(`${it.itemName} x${it.quantity}${scrollTag}`);
     }
     for (const [name, list] of byPlayer) {
       lines.push(`Инвентарь ${name}: ${list.join(", ")}`);

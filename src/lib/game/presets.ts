@@ -117,6 +117,7 @@ export const CLASS_PRESETS: CharClassPreset[] = [
       { name: "Книга заклинаний", type: "misc", description: "Содержит известные заклинания." },
       { name: "Посох", type: "weapon", description: "Фокус для магии, 1d6." },
       { name: "Зелье лечения", type: "potion", description: "Восстанавливает 2d4+2 HP." },
+      { name: "Свиток магической стрелы", type: "scroll", description: "Три силы-снаряда, каждый 1d4+1. Расходуемый." },
     ],
   },
   {

@@ -133,3 +133,24 @@ Stage Summary:
 - Atmosphere rules baked into the DM prompt: tested context shows full inventory per hero so the LLM can enforce "no free items"; era/balance/uniqueness constraints are explicit.
 - Vision-verified: scene image no longer stretched, grid is a reasonable size, no layout issues. Lint clean (0 errors/warnings), both servers running, no console errors.
 - Artifacts: `src/lib/game/{talent-data,talents,locations,types,seed,state,dm-agent,presets}.ts`, `src/components/dnd/{CharacterCreator,LevelUpModal}.tsx`, `src/app/api/game/levelup/route.ts`, updated `src/components/dnd/{SceneViewer,CombatGrid}.tsx`, `src/app/page.tsx`, `src/app/api/game/{room/create,room/join}/route.ts`.
+
+---
+Task ID: 5
+Agent: main (Z.ai Code)
+Task: Fix join-by-code step order; add abilities system (innate/class/scrolls) shown in creator + character sheet; honest answer on going online.
+
+Work Log:
+- Fixed the "Войти по коду" flow: previously it jumped straight to the name step with the code field embedded. Now the step order is mode-dependent — create: race→class→background→stats→name; join: code→race→class→background→stats→name. Added a new "code" step (first for join) with its own input; removed the code input from the name step. `canNext` requires a 6-char code on the code step.
+- Built `src/lib/game/abilities.ts`: an Ability type (source: race|class|talent|scroll, consumable flag, castNotation, castType, uses). Catalogs:
+  - RACIAL_ABILITIES (9 races, ~2-3 each, dnd.su/SRD-flavored): e.g. Elf darkvision + fey ancestry; Dwarf poison resilience; Tiefling fire resistance + Hellish Rebuke (2d6 reaction); Half-Orc relentless endurance + savage attacks; Dragonborn breath weapon (2d6 cone); Githyanki psionics + mind discipline.
+  - CLASS_ABILITIES (12 classes, 1 starting feature each): Fighter Second Wind (1d10 heal), Barbarian Rage, Paladin Divine Smite (2d8), Ranger Hunter's Mark (1d6), Rogue Sneak Attack (1d6), Monk Martial Arts, Wizard Arcane Recovery, Sorcerer Font of Magic, Warlock Pact Magic, Cleric Channel Divinity, Druid Wild Shape, Bard Bardic Inspiration (1d6).
+  - SCROLL_SPELLS (7 consumable spells): Fireball (8d6), Cure Wounds (1d8+3), Shield (+5 AC), Magic Missile (3d4+3), Darkness, Lightning (8d6), Mass Cure (3d8). Scroll-type inventory items auto-appear as castable consumable abilities.
+  - `computeAbilities(player, inventory)` merges race + class + talents + scroll-items; `previewAbilities(raceId, classId)` for the creator.
+- Added a starting scroll ("Свиток магической стрелы") to the Wizard preset so the scroll system is demonstrable out of the box.
+- Wired abilities into the CharacterCreator preview (race + class abilities shown with badges "народ"/"класс" and cast notation).
+- Added an "Способности" section to the CharacterSheet (in-game): lists all computed abilities with source badges (народ/класс/талант/свиток), marks consumable scrolls with an amber "расходуемый" badge and a scroll icon, shows cast notation (урон/лечение/эффект). Talents chosen at level-up appear here too.
+- Updated the DM context to tag scroll items as "[расходуемое заклинание-свиток]" so the LLM treats them as castable consumables and removes them on use.
+
+Stage Summary:
+- Verified in browser: join flow now starts at the code step, then race→class→background→stats→name (correct order). Character creator preview shows abilities (e.g. Tiefling: Тёмное зрение, Сопротивление огню, Адское возмездие). In-game character sheet shows the full ability list with source badges and consumable markers — a Tiefling Wizard correctly displays 3 racial + 1 class ability + 1 consumable scroll. Lint clean (0 errors/warnings), no console errors.
+- Artifacts: `src/lib/game/abilities.ts`, updated `src/components/dnd/{CharacterCreator,CharacterSheet}.tsx`, `src/lib/game/{presets,state}.ts`.
