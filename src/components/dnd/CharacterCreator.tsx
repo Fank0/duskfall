@@ -97,7 +97,7 @@ export function CharacterCreator({
   async function submit() {
     const name = playerName.trim();
     if (!name) { toast.error("Введите имя героя."); setStep("name"); return; }
-    if (mode === "join" && !roomCode.trim()) { toast.error("Введите код комнаты."); setStep("name"); return; }
+    if (mode === "join" && !roomCode.trim()) { toast.error("Введите код комнаты."); setStep("code"); return; }
     setBusy(true);
     try {
       const url = mode === "create" ? "/api/game/room/create" : "/api/game/room/join";
@@ -105,8 +105,9 @@ export function CharacterCreator({
         ? { playerName: name, classId, raceId, backgroundId, bonusStats: bonus }
         : { roomCode: roomCode.trim().toUpperCase(), playerName: name, classId, raceId, backgroundId, bonusStats: bonus };
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (!data.ok) { toast.error(data.error ?? "Не удалось войти."); return; }
+      let data: any;
+      try { data = await res.json(); } catch { toast.error("Сервер вернул некорректный ответ."); return; }
+      if (!data?.ok) { toast.error(data?.error ?? "Не удалось войти."); return; }
       toast.success(mode === "create" ? "Комната создана!" : "Вы присоединились к отряду!", { description: mode === "create" ? `Код: ${data.roomCode}` : undefined });
       onEntered(data.roomCode, data.youAre);
     } catch {
