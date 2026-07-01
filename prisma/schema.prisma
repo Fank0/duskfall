@@ -1,0 +1,111 @@
+// D&D 5e Virtual Tabletop — AI Dungeon Master schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// The player character (singleton in practice, keyed by name).
+model Player {
+  id               String   @id @default(cuid())
+  name             String   @unique
+  charClass        String   @default("Воин")
+  level            Int      @default(1)
+  hp               Int      @default(28)
+  maxHp            Int      @default(28)
+  ac               Int      @default(16)
+  str              Int      @default(16)
+  dex              Int      @default(12)
+  con              Int      @default(15)
+  int              Int      @default(10)
+  wis              Int      @default(11)
+  cha              Int      @default(13)
+  proficiencyBonus Int      @default(2)
+  gold             Int      @default(15)
+  posX             Int      @default(1)
+  posY             Int      @default(8)
+  color            String   @default("#dc2626")
+  portraitUrl      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+/// A hostile creature on the grid.
+model Monster {
+  id             String   @id @default(cuid())
+  name           String
+  label          String   @default("") // short token label e.g. "Г1"
+  hp             Int      @default(12)
+  maxHp          Int      @default(12)
+  ac             Int      @default(13)
+  damageNotation String   @default("1d6+2")
+  attackBonus    Int      @default(3)
+  posX           Int      @default(8)
+  posY           Int      @default(1)
+  color          String   @default("#16a34a")
+  description    String   @default("")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+/// Items carried by the player.
+model InventoryItem {
+  id          String   @id @default(cuid())
+  playerName  String
+  itemName    String
+  itemType    String   @default("misc") // weapon, armor, potion, misc, key
+  quantity    Int      @default(1)
+  description String   @default("")
+  createdAt   DateTime @default(now())
+}
+
+/// Chat log of the table (DM narrative + player messages + system).
+model ChatMessage {
+  id        String   @id @default(cuid())
+  role      String   @default("dm") // dm | player | system
+  content   String
+  imageUrl  String?
+  round     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+/// Persisted dice roll history for the dice-log panel.
+model DiceRoll {
+  id        String   @id @default(cuid())
+  round     Int      @default(0)
+  label     String
+  notation  String
+  modifier  Int      @default(0)
+  result    Int      @default(0)
+  total     Int      @default(0)
+  target    Int?
+  success   Boolean?
+  createdAt DateTime @default(now())
+}
+
+/// The currently displayed scene illustration.
+model Scene {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  prompt    String
+  title     String   @default("")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+/// Global game state (singleton row).
+model GameState {
+  id           String   @id @default("singleton")
+  combatActive Boolean  @default(false)
+  round        Int      @default(0)
+  location     String   @default("Туманный лес, опушка")
+  turn         String   @default("player") // player | monster
+  introShown   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
