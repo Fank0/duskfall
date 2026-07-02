@@ -294,8 +294,9 @@ export default function Home() {
 
   const you = snapshot.players.find((p) => p.name === session.playerName);
   const isDead = !you || !you.isAlive || you.hp <= 0;
-  const isYourTurn =
-    !snapshot.combatActive || snapshot.currentTurnName === session.playerName;
+  const isYourTurn = snapshot.combatActive
+    ? snapshot.currentTurnName === session.playerName
+    : snapshot.currentExplorerName === session.playerName;
   const yourInventory = snapshot.inventory.filter((i) => i.playerName === session.playerName);
 
   return (
@@ -407,7 +408,7 @@ export default function Home() {
             isDead={isDead}
             combatActive={snapshot.combatActive}
             yourName={session.playerName}
-            currentTurnName={snapshot.currentTurnName}
+            currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
             onSend={sendAction}
           />
         </section>

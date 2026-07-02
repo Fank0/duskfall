@@ -44,8 +44,9 @@ export function ChatPanel({
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, isThinking]);
 
-  // Input is locked during combat unless it's your turn.
-  const locked = combatActive && !isYourTurn && !isDead;
+  // Input is locked whenever it's not your turn (combat OR exploration),
+  // unless you're the only player.
+  const locked = !isYourTurn && !isDead;
   const canAct = !isThinking && !isDead && !locked;
 
   function submit(text?: string) {
@@ -64,8 +65,8 @@ export function ChatPanel({
 
   return (
     <Card className="parchment rune-border border-border/80 flex h-full min-h-0 flex-col gap-0 overflow-hidden">
-      {/* Turn indicator banner */}
-      {combatActive && (
+      {/* Turn indicator banner — always shown (combat or exploration) */}
+      {(
         <div
           className={cn(
             "shrink-0 border-b px-3 py-1.5 text-center text-xs",
@@ -80,7 +81,7 @@ export function ChatPanel({
             </span>
           ) : currentTurnName ? (
             <span className="flex items-center justify-center gap-1.5">
-              <Lock className="h-3 w-3" /> Ход: <span className="font-semibold text-foreground">{currentTurnName}</span> — дождитесь своей инициативы
+              <Lock className="h-3 w-3" /> Ход: <span className="font-semibold text-foreground">{currentTurnName}</span> — дождитесь своей очереди
             </span>
           ) : (
             <span className="flex items-center justify-center gap-1.5">

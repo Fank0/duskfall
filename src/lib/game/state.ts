@@ -192,6 +192,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     turnIndex: room.turnIndex,
     currentTurnName: currentEntry?.combatantName ?? null,
     currentTurnType: (currentEntry?.combatantType as "player" | "monster") ?? null,
+    currentExplorerName: room.combatActive ? null : (players.filter((p) => p.isAlive && p.hp > 0)[room.explorationActorIndex % Math.max(1, players.filter((p) => p.isAlive && p.hp > 0).length)]?.name ?? players[0]?.name ?? null),
   };
 }
 
@@ -581,6 +582,16 @@ export async function countAlive(roomId: string) {
     anyPlayerAlive: alivePlayers.length > 0,
     anyMonsterAlive: aliveMonsters.length > 0,
   };
+}
+
+/** Advance the exploration turn to the next alive player (by createdAt order). */
+export async function advanceExplorationTurn(roomId: string, justActedName: string) {
+  const players = await db.player.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+  const alive = players.filter((p) => p.isAlive && p.hp > 0);
+  if (alive.length === 0) return;
+  const currentIdx = alive.findIndex((p) => p.name === justActedName);
+  const nextIdx = (currentIdx + 1) % alive.length;
+  await db.room.update({ where: { id: roomId }, data: { explorationActorIndex: nextIdx } });
 }
 
 // ---------- XP / leveling ----------

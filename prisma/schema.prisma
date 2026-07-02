@@ -19,6 +19,7 @@ model Room {
   location     String   @default("Туманный лес, опушка у древних руин")
   turnIndex    Int      @default(0) // index into the initiative order
   introShown   Boolean  @default(false)
+  explorationActorIndex Int @default(0) // whose turn it is during exploration (index into players by createdAt)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

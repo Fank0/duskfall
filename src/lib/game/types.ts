@@ -5,6 +5,7 @@ export type ActionCategory =
   | "exploration"
   | "social"
   | "ability_check"
+  | "invalid"
   | "other";
 
 /** A roll the DM decides must happen to resolve the player's action. */
@@ -44,6 +45,7 @@ export interface OutcomeEffects {
 
 export interface DMResolution {
   category: ActionCategory;
+  invalidReason?: string; // when category === "invalid": why the action is impossible
   rolls: PlannedRoll[];
   success: OutcomeEffects;
   failure: OutcomeEffects;
@@ -208,6 +210,8 @@ export interface GameStateSnapshot {
   /** name of the combatant whose turn it is (null out of combat) */
   currentTurnName: string | null;
   currentTurnType: "player" | "monster" | null;
+  /** whose turn it is during exploration (null in combat) */
+  currentExplorerName: string | null;
 }
 
 export interface Stats {
