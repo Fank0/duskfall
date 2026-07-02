@@ -15,12 +15,9 @@ fi
 mkdir -p /data 2>/dev/null || true
 
 # --- Create DB tables (Prisma) ---
-# Try several ways to run prisma db push, since bunx pulls v7 (incompatible)
-# and the local binary path varies by runtime.
-echo "[start] running prisma db push..."
-(./node_modules/.bin/prisma db push --accept-data-loss 2>&1 && echo "[start] prisma OK via .bin") || \
-(node ./node_modules/prisma/build/index.js db push --accept-data-loss 2>&1 && echo "[start] prisma OK via node") || \
-(npx prisma@6 db push --accept-data-loss 2>&1 && echo "[start] prisma OK via npx@6") || \
+# bunx prisma pulls v7 (incompatible with our schema); prisma@6 is the working version.
+echo "[start] running prisma db push (v6)..."
+bunx prisma@6 db push --accept-data-loss 2>&1 && echo "[start] prisma OK" || \
 echo "[start] WARNING: prisma db push failed — tables may be missing"
 
 echo "[start] launching game-sync relay on port ${SYNC_PORT:-3003}..."

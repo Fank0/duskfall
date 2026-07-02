@@ -144,6 +144,45 @@ async function planResolution(
   return fallbackResolution(playerAction);
 }
 
+/** Combined plan + narrative in ONE LLM call (saves the second ~5s round-trip).
+ *  Returns the DMResolution (mechanics) plus a ready-to-use narrative. */
+export async function planAndNarrate(
+  roomCode: string,
+  actorName: string,
+  playerAction: string
+): Promise<{ plan: DMResolution; narrative: string }> {
+  const context = await getDMContext(roomCode, actorName);
+  const zai = await getZAI();
+  const userMsg = `КОНТЕКСТ ИГРЫ:\n${context}\n\nДЕЙСТВУЮЩИЙ ГЕРОЙ: ${actorName}\nДЕЙСТВИЕ: ${playerAction}\n\nСпланируй механику И напиши нарратив в одном ответе. Верни только JSON.`;
+  try {
+    const completion = await zai.chat.completions.create({
+      messages: [
+        { role: "assistant", content: SYSTEM_PROMPT_COMBINED },
+        { role: "user", content: userMsg },
+      ],
+      thinking: { type: "disabled" },
+    });
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const parsed = extractJson<DMResolution & { narrative: string }>(raw);
+    if (parsed && parsed.success && parsed.failure) {
+      const narrative = parsed.narrative || parsed.success.narrative || parsed.failure.narrative;
+      return { plan: parsed, narrative };
+    }
+  } catch (e) {
+    console.error("[DM] planAndNarrate error:", e);
+  }
+  // Fallback: separate calls (slower but reliable).
+  const plan = await planResolution(roomCode, actorName, playerAction);
+  return { plan, narrative: plan.success.narrative };
+}
+
+const SYSTEM_PROMPT_COMBINED = SYSTEM_PROMPT_PLANNING.replace(
+  'ВАЖНО: narrative пиши на русском, тёмное фэнтези, атмосферно. Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически. При category="invalid" success/failure можно заполнить пустыми — они не используются.',
+  `ВАЖНО: narrative пиши на русском, тёмное фэнтези, атмосферно (2-4 предложения, кратко и кинематографично). Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически.
+
+ОБЯЗАТЕЛЬНО добавь поле "narrative" в верхний уровень JSON — это финальный нарратив на русском (2-4 предложения) для итога действия (при category="invalid" — объяснение игроку почему невозможно; иначе — описание произошедшего с учётом успеха/провала бросков).`
+);
+
 function fallbackResolution(playerAction: string): DMResolution {
   return {
     category: "ability_check",
