@@ -213,6 +213,83 @@ async function narrateAction(
   return data.branchNarrative;
 }
 
+/** Stream the action narrative token-by-token. Yields text chunks as they arrive. */
+export async function* streamNarrativeAction(
+  roomCode: string,
+  actorName: string,
+  playerAction: string,
+  data: {
+    playerRolls: ResolvedRoll[];
+    outcome: "success" | "failure";
+    branchNarrative: string;
+    damageToMonster: number;
+    monsterThatDied: string | null;
+    inventoryChanges: InventoryChange[];
+    goldChange: number;
+    location: string;
+  }
+): AsyncGenerator<string> {
+  const zai = await getZAI();
+  const lines: string[] = [];
+  lines.push(`Локация: ${data.location}`);
+  lines.push(`Герой: ${actorName}`);
+  lines.push(`Действие: ${playerAction}`);
+  lines.push(`Исход: ${data.outcome === "success" ? "УСПЕХ" : "ПРОВАЛ"}`);
+  for (const r of data.playerRolls) {
+    lines.push(`- ${r.label}: ${r.notation}${r.modifier >= 0 ? "+" : ""}${r.modifier} = ${r.total} → ${r.success ? "успех" : "провал"}`);
+  }
+  if (data.damageToMonster > 0) lines.push(`Урон противнику: ${data.damageToMonster}`);
+  if (data.monsterThatDied) lines.push(`Повержен: ${data.monsterThatDied}`);
+  if (data.goldChange) lines.push(`Золото: ${data.goldChange > 0 ? "+" : ""}${data.goldChange}`);
+  lines.push(`Заготовка: ${data.branchNarrative}`);
+
+  try {
+    const streamBody: any = await zai.chat.completions.create({
+      messages: [
+        { role: "assistant", content: SYSTEM_PROMPT_NARRATION },
+        { role: "user", content: `Напиши повествование (3-5 предложений):\n${lines.join("\n")}` },
+      ],
+      thinking: { type: "disabled" },
+      stream: true,
+    });
+    // streamBody is a ReadableStream of SSE. Parse it.
+    if (streamBody && typeof streamBody.getReader === "function") {
+      const reader = streamBody.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let full = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n");
+        buffer = parts.pop() ?? "";
+        for (const line of parts) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const json = JSON.parse(payload);
+            const delta = json.choices?.[0]?.delta?.content;
+            if (delta) {
+              full += delta;
+              yield delta;
+            }
+          } catch {
+            /* skip malformed chunk */
+          }
+        }
+      }
+      if (full.trim().length > 20) return;
+    }
+  } catch (e) {
+    console.error("[DM] streamNarrativeAction error:", e);
+  }
+  // Fallback: yield the branch narrative as a single chunk.
+  yield data.branchNarrative;
+}
+
 async function narrateMonsterTurn(
   roomCode: string,
   data: {
@@ -624,11 +701,20 @@ async function advanceTurn(roomCode: string, roomId: string): Promise<{
 }
 
 // ---------- main entry ----------
-export async function processPlayerAction(
+export interface MechanicsResult extends Omit<ResolvedEvent, "finalNarrative"> {
+  branchNarrative: string;
+  playerAction: string;
+  location: string;
+}
+
+/** Resolve all mechanics (plan, dice, effects, monster turns) WITHOUT the
+ *  final narrative. Returns everything the SSE route needs to then stream
+ *  the narrative token-by-token. */
+export async function resolvePlayerMechanics(
   roomCode: string,
   actorName: string,
   playerAction: string
-): Promise<ResolvedEvent> {
+): Promise<MechanicsResult> {
   const room = await db.room.findUnique({ where: { code: roomCode.toUpperCase() } });
   if (!room) throw new Error("Комната не найдена.");
   const roomId = room.id;
@@ -671,22 +757,11 @@ export async function processPlayerAction(
     combatStarted = true;
   }
 
-  // 3. Narrate the player's action.
+  // Snapshot for location (narrative will be streamed by the route).
   const snap1 = await getSnapshot(roomCode);
-  const finalNarrative = await narrateAction(roomCode, actorName, playerAction, {
-    playerRolls: res.playerRolls,
-    outcome: res.outcome,
-    branchNarrative: res.branchNarrative,
-    damageToMonster: res.damageDealtToMonster,
-    monsterThatDied: res.monsterThatDied,
-    inventoryChanges: res.inventoryChanges,
-    goldChange: res.goldChange,
-    location: snap1?.location ?? "",
-  });
 
-  // Persist player message + DM narrative.
+  // Persist the player's message immediately (DM narrative is saved by the route after streaming).
   await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
-  await db.chatMessage.create({ data: { roomId, role: "dm", speaker: "", round, content: finalNarrative } });
 
   // 4. Check immediate combat end (e.g. one-shot kill before initiative, or last monster died).
   const aliveCheck = await countAlive(roomId);
@@ -755,7 +830,9 @@ export async function processPlayerAction(
     goldChange: res.goldChange,
     imagePrompt: res.imagePrompt,
     imageNeeded: res.imageNeeded,
-    finalNarrative,
+    branchNarrative: res.branchNarrative,
+    playerAction,
+    location: snap1?.location ?? "",
     nextTurn: nextTurnName,
     nextTurnType,
     round: finalRoom?.round ?? round,

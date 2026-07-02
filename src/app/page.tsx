@@ -124,51 +124,102 @@ export default function Home() {
     async (text: string) => {
       if (!session || !text.trim() || isThinking) return;
       setIsThinking(true);
+      // "Streaming narrative" placeholder bubble id, shown while tokens arrive.
       try {
         const res = await fetch("/api/game/action", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
           body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, action: text }),
         });
-        const data = await res.json();
-        if (!data.ok) {
-          toast.error(data.error ?? "Мастер не ответил.");
+        if (!res.ok || !res.body) {
+          toast.error("Мастер не ответил.");
           return;
         }
-        setSnapshot(data.snapshot);
-        // Tell everyone else to refresh.
-        pingRoom(session.roomCode);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let narrativeText = "";
+        let event: ResolvedEvent | null = null;
+        let imgPrompt: string | null = null;
+        let imgNeeded = false;
 
-        const event: ResolvedEvent = data.event;
-        if (event.imageNeeded && event.imagePrompt) {
-          setIsGeneratingImage(true);
-          try {
-            const imgRes = await fetch("/api/game/image", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ roomCode: session.roomCode, prompt: event.imagePrompt, title: data.snapshot?.location ?? "Сцена" }),
-            });
-            const imgData = await imgRes.json();
-            if (imgData.ok) await fetchState(session.roomCode, true);
-          } catch {
-            /* non-fatal */
-          } finally {
-            setIsGeneratingImage(false);
-          }
+        const flush = async () => {
+          // Once mechanics arrive, update state immediately so the player
+          // sees dice/HP changes before the narrative finishes streaming.
           pingRoom(session.roomCode);
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() ?? "";
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            let msg: any;
+            try { msg = JSON.parse(payload); } catch { continue; }
+            if (msg.type === "mechanics") {
+              event = msg.event;
+              setSnapshot(msg.snapshot);
+              if (event) {
+                imgPrompt = event.imagePrompt;
+                imgNeeded = event.imageNeeded;
+                if (event.combatStarted) toast("Бой начался! Брошена инициатива.", { description: "Ход определяется порядком инициативы." });
+                if (event.combatEnded) toast.success("Бой окончен!", { description: "Все враги повержены." });
+                if (event.monsterThatDied) toast.success(`${event.monsterThatDied} повержен!`, { description: `Нанесено ${event.damageDealtToMonster} урона.` });
+                if (event.damagedPlayer) toast.warning(`${event.damagedPlayer} получает ${event.damageDealtToPlayer} урона!`);
+              }
+              flush();
+            } else if (msg.type === "delta") {
+              narrativeText += msg.text;
+              // Live-update the last DM message in the chat so the text streams in.
+              setSnapshot((prev) => {
+                if (!prev) return prev;
+                const chat = [...prev.chat];
+                const last = chat[chat.length - 1];
+                if (last && last.role === "dm" && last.speaker === "") {
+                  chat[chat.length - 1] = { ...last, content: narrativeText };
+                } else {
+                  chat.push({
+                    id: "streaming",
+                    role: "dm",
+                    speaker: "",
+                    content: narrativeText,
+                    imageUrl: null,
+                    round: prev.round,
+                    createdAt: new Date().toISOString(),
+                  });
+                }
+                return { ...prev, chat };
+              });
+            } else if (msg.type === "error") {
+              toast.error(msg.error ?? "Ошибка Мастера.");
+            } else if (msg.type === "done") {
+              // Refresh to pick up the persisted DM message + any final state.
+              await fetchState(session.roomCode, true);
+              pingRoom(session.roomCode);
+            }
+          }
         }
 
-        if (event.combatStarted) {
-          toast("Бой начался! Брошена инициатива.", { description: "Ход определяется порядком инициативы." });
-        }
-        if (event.combatEnded) {
-          toast.success("Бой окончен!", { description: "Все враги повержены." });
-        }
-        if (event.monsterThatDied) {
-          toast.success(`${event.monsterThatDied} повержен!`, { description: `Нанесено ${event.damageDealtToMonster} урона.` });
-        }
-        if (event.damagedPlayer) {
-          toast.warning(`${event.damagedPlayer} получает ${event.damageDealtToPlayer} урона!`);
+        // Background image generation — does NOT block the UI.
+        if (imgNeeded && imgPrompt) {
+          setIsGeneratingImage(true);
+          fetch("/api/game/image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ roomCode: session.roomCode, prompt: imgPrompt, title: "Сцена" }),
+          })
+            .then((r) => r.json())
+            .then((d) => { if (d.ok) return fetchState(session.roomCode, true); })
+            .catch(() => {})
+            .finally(() => {
+              setIsGeneratingImage(false);
+              pingRoom(session.roomCode);
+            });
         }
       } catch {
         toast.error("Ошибка связи с Мастером.");

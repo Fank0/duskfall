@@ -1,35 +1,89 @@
-import { NextRequest, NextResponse } from "next/server";
-import { processPlayerAction } from "@/lib/game/dm-agent";
+import { NextRequest } from "next/server";
+import { db } from "@/lib/db";
+import {
+  resolvePlayerMechanics,
+  streamNarrativeAction,
+} from "@/lib/game/dm-agent";
 import { getSnapshot } from "@/lib/game/state";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// POST /api/game/action
-// Body: { roomCode: string, playerName: string, action: string }
+// POST /api/game/action  (Server-Sent Events stream)
+// Body: { roomCode, playerName, action }
+// Emits:
+//   data: {"type":"mechanics","event":{...},"snapshot":{...}}\n\n   (instantly)
+//   data: {"type":"delta","text":"..."}\n\n                    (per narrative token)
+//   data: {"type":"done"}\n\n                                  (stream end)
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
-    const playerName = (body?.playerName ?? "").toString().trim();
-    const action = (body?.action ?? "").toString().trim();
-    if (!roomCode || !playerName || !action) {
-      return NextResponse.json(
-        { ok: false, error: "Укажите комнату, героя и действие." },
-        { status: 400 }
-      );
-    }
-
-    const event = await processPlayerAction(roomCode, playerName, action);
-    const snapshot = await getSnapshot(roomCode);
-    return NextResponse.json({ ok: true, event, snapshot });
-  } catch (e: any) {
-    console.error("[api/game/action] error:", e);
-    // Turn-enforcement errors are client errors.
-    const status = e?.message?.includes("не ваш ход") || e?.message?.includes("Павший") ? 403 : 500;
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? "Ошибка Мастера Подземелий." },
-      { status }
+  const body = await req.json().catch(() => ({}));
+  const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
+  const playerName = (body?.playerName ?? "").toString().trim();
+  const action = (body?.action ?? "").toString().trim();
+  if (!roomCode || !playerName || !action) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "Укажите комнату, героя и действие." }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: unknown) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+      };
+      try {
+        // 1. Resolve mechanics (plan, dice, effects, monster turns) — ~1-3s.
+        const mech = await resolvePlayerMechanics(roomCode, playerName, action);
+        const snapshot = await getSnapshot(roomCode);
+        send({ type: "mechanics", event: mech, snapshot });
+
+        // 2. Stream the narrative token-by-token.
+        let full = "";
+        for await (const chunk of streamNarrativeAction(roomCode, playerName, action, {
+          playerRolls: mech.playerRolls,
+          outcome: mech.outcome,
+          branchNarrative: mech.branchNarrative,
+          damageToMonster: mech.damageDealtToMonster,
+          monsterThatDied: mech.monsterThatDied,
+          inventoryChanges: mech.inventoryChanges,
+          goldChange: mech.goldChange,
+          location: mech.location,
+        })) {
+          full += chunk;
+          send({ type: "delta", text: chunk });
+        }
+
+        // 3. Persist the DM narrative, then signal done.
+        const room = await db.room.findUnique({ where: { code: roomCode } });
+        if (room) {
+          await db.chatMessage.create({
+            data: {
+              roomId: room.id,
+              role: "dm",
+              speaker: "",
+              round: mech.round,
+              content: full || mech.branchNarrative,
+            },
+          });
+        }
+        send({ type: "done" });
+      } catch (e: any) {
+        const status = e?.message?.includes("не ваш ход") || e?.message?.includes("Павший") ? 403 : 500;
+        send({ type: "error", error: e?.message ?? "Ошибка Мастера.", status });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

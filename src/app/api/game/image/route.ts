@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     let imageUrl = "";
     try {
-      const response = await zai.images.generations.create({ prompt: fullPrompt, size: "1344x768" });
+      const response = await zai.images.generations.create({ prompt: fullPrompt, size: "1024x1024" });
       const base64 = response.data?.[0]?.base64;
       if (base64) {
         const filename = `scene_${Date.now()}.png`;
