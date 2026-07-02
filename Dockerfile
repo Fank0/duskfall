@@ -10,10 +10,10 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
 
-# Copy source and generate Prisma client
+# Copy source and generate Prisma client (use the LOCAL prisma, not bunx which pulls v7)
 COPY prisma ./prisma
 COPY . .
-RUN bunx prisma generate
+RUN ./node_modules/.bin/prisma generate
 
 # Build Next.js (standalone output)
 RUN bun run build
@@ -31,12 +31,13 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
-# Prisma: schema + generated client + DB engine + CLI (for first-boot db push)
+# Prisma: schema + generated client + DB engine + CLI binary
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=build /app/node_modules/prisma ./node_modules/prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build /app/node_modules/prisma ./node_modules/prisma
+COPY --from=build /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 # game-sync mini-service — install its socket.io dependency
 COPY --from=build /app/mini-services ./mini-services
