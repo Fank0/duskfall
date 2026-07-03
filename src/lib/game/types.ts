@@ -188,12 +188,25 @@ export interface PlayerState {
   bonusWis: number;
   bonusCha: number;
   pendingLevelUp: boolean;
+  /** When true, the player must pick an ASI (Ability Score Improvement, +2 to a chosen stat) — granted at levels 5/9/13/17. */
+  pendingASI: boolean;
   /** Current spell slots per level: {"1":2,"2":0,...} */
   spellSlots: Record<string, number>;
   /** Max spell slots per level: {"1":2,"2":0,...} */
   maxSpellSlots: Record<string, number>;
   /** Hit die size (e.g. 8 for d8). */
   hitDice: number;
+  /** Equipped inventory-item ids per slot (null = empty). */
+  equipment: {
+    weapon: string | null;
+    shield: string | null;
+    head: string | null;
+    chest: string | null;
+    legs: string | null;
+    hands: string | null;
+    accessory1: string | null;
+    accessory2: string | null;
+  };
 }
 
 export interface MonsterState {
@@ -219,7 +232,18 @@ export interface InventoryItemState {
   itemType: string;
   quantity: number;
   description: string;
+  /** Equipment slot inferred from name/type. Null = not equippable. */
+  equipSlot: EquipmentSlot | null;
+  /** AC bonus when equipped (armor/shield). */
+  acBonus: number;
+  /** Stat bonuses when equipped. */
+  statBonus: Partial<Stats>;
+  /** Damage notation for weapons (e.g. "1d8+3"). */
+  damageNotation: string;
 }
+
+/** Equipment slots on a character doll. */
+export type EquipmentSlot = "weapon" | "shield" | "head" | "chest" | "legs" | "hands" | "accessory";
 
 export interface ChatMessageState {
   id: string;
@@ -348,6 +372,10 @@ export interface GameStateSnapshot {
   weather: "clear" | "rain" | "fog" | "storm" | "snow";
   /** current world-map position (room coordinates the party is in) */
   currentMapPos: { x: number; y: number } | null;
+  /** crafting stations present in the room */
+  hasAlchemy: boolean;
+  hasForge: boolean;
+  hasEnchant: boolean;
 }
 
 export interface Stats {
@@ -401,6 +429,8 @@ export interface BackgroundPreset {
 }
 
 // ---------- Talents (feats granted on level-up) ----------
+export type StatKey = "str" | "dex" | "con" | "int" | "wis" | "cha";
+
 export type TalentEffect =
   | { type: "counterattack"; chance: number; damageNotation: string }
   | { type: "damage_resistance_pct"; value: number } // 0..1, reduces incoming damage
@@ -415,7 +445,8 @@ export type TalentEffect =
   | { type: "vampiric_pct"; value: number } // heal % of damage dealt
   | { type: "reroll_miss_once" } // reroll one missed attack per turn
   | { type: "save_bonus"; value: number } // bonus to ability checks
-  | { type: "hp_bonus"; value: number }; // +max HP (and current)
+  | { type: "hp_bonus"; value: number } // +max HP (and current)
+  | { type: "asi"; stat: StatKey; value: number }; // +value to a chosen stat (ASI)
 
 export interface Talent {
   id: string;
@@ -423,6 +454,10 @@ export interface Talent {
   name: string;
   description: string;
   effect: TalentEffect;
+  /** Talent tree tier: 1 = available from level 2, 2 = requires a tier-1 talent. */
+  tier?: 1 | 2;
+  /** Required talent id (for tier-2 talents). The player must already have this talent. */
+  requires?: string;
 }
 
 /** A starting location + opening hook for a fresh adventure. */

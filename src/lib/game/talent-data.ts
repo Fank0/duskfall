@@ -15,6 +15,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Второе дыхание",
       description: "Закалённое тело воина получает дополнительный запас выносливости.",
       effect: { type: "hp_bonus", value: 10 },
+      tier: 1,
     },
     {
       id: "fighter_t2",
@@ -22,6 +23,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Оборонительная стойка",
       description: "Боевая выправка добавляет очки к классу брони.",
       effect: { type: "ac_bonus", value: 1 },
+      tier: 1,
     },
     {
       id: "fighter_t3",
@@ -29,6 +31,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Улучшенный критический удар",
       description: "Воин наносит критический удар при выпадении 19 и выше.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 1,
     },
     {
       id: "fighter_t4",
@@ -36,6 +39,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Рипоста",
       description: "При промахе врага в ближнем бою воин с шансом отвечает ударом.",
       effect: { type: "counterattack", chance: 0.3, damageNotation: "1d8+3" },
+      tier: 1,
     },
     {
       id: "fighter_t5",
@@ -43,6 +47,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Владение оружием",
       description: "Отточенная техника добавляет урон каждому удару.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 1,
     },
     {
       id: "fighter_t6",
@@ -50,6 +55,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Дополнительная атака",
       description: "Воин с шансом наносит второй удар за тот же ход.",
       effect: { type: "extra_attack_chance", chance: 0.4 },
+      tier: 2,
+      requires: "fighter_t1",
     },
     {
       id: "fighter_t7",
@@ -57,6 +64,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Стойкость чемпиона",
       description: "Закалённая воля воина гасит часть входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.15 },
+      tier: 2,
+      requires: "fighter_t2",
     },
     {
       id: "fighter_t8",
@@ -64,6 +73,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Повторный замах",
       description: "Один промах за ход можно перекинуть в надежде на попадание.",
       effect: { type: "reroll_miss_once" },
+      tier: 2,
+      requires: "fighter_t3",
     },
     {
       id: "fighter_t9",
@@ -71,6 +82,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Боевой рефлекс",
       description: "Натренированная реакция улучшает инициативу воина.",
       effect: { type: "initiative_bonus", value: 2 },
+      tier: 2,
+      requires: "fighter_t4",
     },
     {
       id: "fighter_t10",
@@ -78,6 +91,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Критическая мощь",
       description: "При критическом попадании воин добавляет лишний куб урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 2,
+      requires: "fighter_t5",
     },
   ],
 
@@ -91,6 +106,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Ярость варвара",
       description: "В пылу боя варвар обрушивает на врага сокрушительные удары.",
       effect: { type: "damage_bonus_flat", value: 3 },
+      tier: 1,
     },
     {
       id: "barbarian_t2",
@@ -98,6 +114,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Дикая стойкость",
       description: "Тело варвара впитывает часть получаемого урона.",
       effect: { type: "damage_resistance_flat", value: 3 },
+      tier: 1,
     },
     {
       id: "barbarian_t3",
@@ -105,6 +122,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Свирепые атаки",
       description: "Критический удар варвара становится ещё разрушительнее.",
       effect: { type: "crit_bonus_dice", dice: 2 },
+      tier: 1,
     },
     {
       id: "barbarian_t4",
@@ -112,6 +130,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Неутомимость",
       description: "При убийстве врага варвар воспрядает силами и лечится.",
       effect: { type: "heal_on_kill", notation: "1d8" },
+      tier: 1,
     },
     {
       id: "barbarian_t5",
@@ -119,6 +138,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Животный инстинкт",
       description: "Первобытное чутьё позволяет варвару действовать раньше.",
       effect: { type: "initiative_bonus", value: 3 },
+      tier: 1,
     },
     {
       id: "barbarian_t6",
@@ -126,6 +146,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кровавый пир",
       description: "Варвар упивается чужой кровью, исцеляясь от нанесённого урона.",
       effect: { type: "vampiric_pct", value: 0.2 },
+      tier: 2,
+      requires: "barbarian_t1",
     },
     {
       id: "barbarian_t7",
@@ -133,6 +155,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Грубая сила",
       description: "Чистая мощь варвара пробивает любую броню.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 2,
+      requires: "barbarian_t2",
     },
     {
       id: "barbarian_t8",
@@ -140,6 +164,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Шкура носорога",
       description: "Загрубевшая шкура варвара снижает долю входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.2 },
+      tier: 2,
+      requires: "barbarian_t3",
     },
     {
       id: "barbarian_t9",
@@ -147,6 +173,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Берсерк",
       description: "В состоянии ярости варвар с шансом наносит второй удар.",
       effect: { type: "extra_attack_chance", chance: 0.3 },
+      tier: 2,
+      requires: "barbarian_t4",
     },
     {
       id: "barbarian_t10",
@@ -154,6 +182,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Крепость жизни",
       description: "Мощное сложение варвара добавляет ему здоровья.",
       effect: { type: "hp_bonus", value: 12 },
+      tier: 2,
+      requires: "barbarian_t5",
     },
   ],
 
@@ -167,6 +197,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Божественная кара",
       description: "Удар паладина несёт в себе свет, обжигающий врага.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 1,
     },
     {
       id: "paladin_t2",
@@ -174,6 +205,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Аура защиты",
       description: "Божественная аура паладина оберегает его от ран.",
       effect: { type: "damage_resistance_pct", value: 0.2 },
+      tier: 1,
     },
     {
       id: "paladin_t3",
@@ -181,6 +213,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Возложение рук",
       description: "Победив врага, паладин лечит свои раны святой силой.",
       effect: { type: "heal_on_kill", notation: "1d8" },
+      tier: 1,
     },
     {
       id: "paladin_t4",
@@ -188,6 +221,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Священный доспех",
       description: "Вера паладина укрепляет его броню.",
       effect: { type: "ac_bonus", value: 1 },
+      tier: 1,
     },
     {
       id: "paladin_t5",
@@ -195,6 +229,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Божественное здоровье",
       description: "Святая стойкость паладина повышает его спасброски.",
       effect: { type: "save_bonus", value: 2 },
+      tier: 1,
     },
     {
       id: "paladin_t6",
@@ -202,6 +237,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Карающий свет",
       description: "Критический удар паладина сияет дополнительными кубами урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 2,
+      requires: "paladin_t1",
     },
     {
       id: "paladin_t7",
@@ -209,6 +246,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Святая жатва",
       description: "Свет небес обращает нанесённый урон в исцеление паладина.",
       effect: { type: "vampiric_pct", value: 0.15 },
+      tier: 2,
+      requires: "paladin_t2",
     },
     {
       id: "paladin_t8",
@@ -216,6 +255,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Доспех веры",
       description: "Непоколебимая вера гасит часть входящего урона.",
       effect: { type: "damage_resistance_flat", value: 2 },
+      tier: 2,
+      requires: "paladin_t3",
     },
     {
       id: "paladin_t9",
@@ -223,6 +264,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Призыв небес",
       description: "Паладин с шансом обрушивает на врага ответный удар.",
       effect: { type: "counterattack", chance: 0.25, damageNotation: "1d8+3" },
+      tier: 2,
+      requires: "paladin_t4",
     },
     {
       id: "paladin_t10",
@@ -230,6 +273,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Небесное покровительство",
       description: "Божественная сила увеличивает запас здоровья паладина.",
       effect: { type: "hp_bonus", value: 8 },
+      tier: 2,
+      requires: "paladin_t5",
     },
   ],
 
@@ -243,6 +288,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Метка охотника",
       description: "Помеченный враг получает дополнительный урон от следопыта.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 1,
     },
     {
       id: "ranger_t2",
@@ -250,6 +296,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Стремительность шага",
       description: "Лёгкая поступь следопыта ускоряет его реакцию в бою.",
       effect: { type: "initiative_bonus", value: 3 },
+      tier: 1,
     },
     {
       id: "ranger_t3",
@@ -257,6 +304,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Покровитель-великан",
       description: "Следопыт с шансом наносит второй выстрел по врагу.",
       effect: { type: "extra_attack_chance", chance: 0.4 },
+      tier: 1,
     },
     {
       id: "ranger_t4",
@@ -264,6 +312,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Сокрушительный удар",
       description: "Критический выстрел следопыта наносит дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 1,
     },
     {
       id: "ranger_t5",
@@ -271,6 +320,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Быстрый рефлекс",
       description: "Следопыт с шансом отвечает на вражескую атаку выстрелом в упор.",
       effect: { type: "counterattack", chance: 0.25, damageNotation: "1d6+3" },
+      tier: 1,
     },
     {
       id: "ranger_t6",
@@ -278,6 +328,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Трофей охотника",
       description: "Сразив врага, следопыт восстанавливает часть сил.",
       effect: { type: "heal_on_kill", notation: "1d6" },
+      tier: 2,
+      requires: "ranger_t1",
     },
     {
       id: "ranger_t7",
@@ -285,6 +337,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Острый взгляд",
       description: "Меткость следопыта расширяет диапазон критических попаданий.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 2,
+      requires: "ranger_t2",
     },
     {
       id: "ranger_t8",
@@ -292,6 +346,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Лесная поступь",
       description: "Знание тайных троп добавляет следопыту здоровья.",
       effect: { type: "hp_bonus", value: 6 },
+      tier: 2,
+      requires: "ranger_t3",
     },
     {
       id: "ranger_t9",
@@ -299,6 +355,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Зоркий выстрел",
       description: "Один промах за ход следопыт может перекинуть.",
       effect: { type: "reroll_miss_once" },
+      tier: 2,
+      requires: "ranger_t4",
     },
     {
       id: "ranger_t10",
@@ -306,6 +364,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Покровительство природы",
       description: "Духи леса хранят следопыта, гася часть урона.",
       effect: { type: "damage_resistance_pct", value: 0.15 },
+      tier: 2,
+      requires: "ranger_t5",
     },
   ],
 
@@ -319,6 +379,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Скрытая атака",
       description: "Точный удар плута в уязвимое место наносит дополнительный урон.",
       effect: { type: "damage_bonus_flat", value: 3 },
+      tier: 1,
     },
     {
       id: "rogue_t2",
@@ -326,6 +387,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Ассасин",
       description: "Плут наносит критический удар при выпадении 19 и выше.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 1,
     },
     {
       id: "rogue_t3",
@@ -333,6 +395,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Смертоносный удар",
       description: "Крит плута обрушивает на врага дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 2 },
+      tier: 1,
     },
     {
       id: "rogue_t4",
@@ -340,6 +403,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Необычный уворот",
       description: "Ловкость плута снижает долю получаемого урона.",
       effect: { type: "damage_resistance_pct", value: 0.2 },
+      tier: 1,
     },
     {
       id: "rogue_t5",
@@ -347,6 +411,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Улучшенная инициатива",
       description: "Острый нюх плута на опасность ускоряет его реакцию.",
       effect: { type: "initiative_bonus", value: 3 },
+      tier: 1,
     },
     {
       id: "rogue_t6",
@@ -354,6 +419,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Парный клинок",
       description: "Плут с шансом наносит второй удар кинжалом.",
       effect: { type: "extra_attack_chance", chance: 0.4 },
+      tier: 2,
+      requires: "rogue_t1",
     },
     {
       id: "rogue_t7",
@@ -361,6 +428,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Повторный выпад",
       description: "Плут может перекинуть один промах за ход.",
       effect: { type: "reroll_miss_once" },
+      tier: 2,
+      requires: "rogue_t2",
     },
     {
       id: "rogue_t8",
@@ -368,6 +437,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Уклонение",
       description: "Ловкий кувырок плута гасит часть входящего урона.",
       effect: { type: "damage_resistance_flat", value: 2 },
+      tier: 2,
+      requires: "rogue_t3",
     },
     {
       id: "rogue_t9",
@@ -375,6 +446,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кровотечение",
       description: "Отравленные клинки плута вытягивают из врага жизнь.",
       effect: { type: "vampiric_pct", value: 0.1 },
+      tier: 2,
+      requires: "rogue_t4",
     },
     {
       id: "rogue_t10",
@@ -382,6 +455,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Двойной удар в спину",
       description: "Критический плута становится ещё сокрушительнее.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 2,
+      requires: "rogue_t5",
     },
   ],
 
@@ -395,6 +470,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Боевые искусства",
       description: "Натренированные удары монаха обрушиваются на врага стремительно.",
       effect: { type: "extra_attack_chance", chance: 0.4 },
+      tier: 1,
     },
     {
       id: "monk_t2",
@@ -402,6 +478,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Терпеливая защита",
       description: "Поток ци монаха укрывает его, повышая класс брони.",
       effect: { type: "ac_bonus", value: 2 },
+      tier: 1,
     },
     {
       id: "monk_t3",
@@ -409,6 +486,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Оглушающий удар",
       description: "Монах с шансом отвечает на вражескую атаку ударом ладони.",
       effect: { type: "counterattack", chance: 0.3, damageNotation: "1d6+2" },
+      tier: 1,
     },
     {
       id: "monk_t4",
@@ -416,6 +494,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Дзен-рефлекс",
       description: "Безмятежность монаха обостряет его реакцию в бою.",
       effect: { type: "initiative_bonus", value: 2 },
+      tier: 1,
     },
     {
       id: "monk_t5",
@@ -423,6 +502,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Тело из ци",
       description: "Поток энергии монача гасит часть входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.2 },
+      tier: 1,
     },
     {
       id: "monk_t6",
@@ -430,6 +510,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Поток пустоты",
       description: "Один промах за ход монах может превратить в попадание.",
       effect: { type: "reroll_miss_once" },
+      tier: 2,
+      requires: "monk_t1",
     },
     {
       id: "monk_t7",
@@ -437,6 +519,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Удар бабочки",
       description: "Точность монаха расширяет диапазон критических попаданий.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 2,
+      requires: "monk_t2",
     },
     {
       id: "monk_t8",
@@ -444,6 +528,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Стальной ветер",
       description: "Уверенные движения монаха добавляют урона каждому удару.",
       effect: { type: "damage_bonus_flat", value: 1 },
+      tier: 2,
+      requires: "monk_t3",
     },
     {
       id: "monk_t9",
@@ -451,6 +537,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Дыхание жизни",
       description: "Гармония тела монаха добавляет ему здоровья.",
       effect: { type: "hp_bonus", value: 6 },
+      tier: 2,
+      requires: "monk_t4",
     },
     {
       id: "monk_t10",
@@ -458,6 +546,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кольцо пустоты",
       description: "Ци монаха впитывает часть входящего урона.",
       effect: { type: "damage_resistance_flat", value: 1 },
+      tier: 2,
+      requires: "monk_t5",
     },
   ],
 
@@ -471,6 +561,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Военная магия",
       description: "Маг добавляет мощь к каждому боевому заклинанию.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 1,
     },
     {
       id: "wizard_t2",
@@ -478,6 +569,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Предвидение",
       description: "Прозрение мага расширяет диапазон его критических заклинаний.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 1,
     },
     {
       id: "wizard_t3",
@@ -485,6 +577,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Магический вампиризм",
       description: "Часть урона, нанесённого заклинанием, обращается в исцеление мага.",
       effect: { type: "vampiric_pct", value: 0.15 },
+      tier: 1,
     },
     {
       id: "wizard_t4",
@@ -492,6 +585,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Силовая волна",
       description: "Критическое заклинание мага обрушивает дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 1,
     },
     {
       id: "wizard_t5",
@@ -499,6 +593,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Магический щит",
       description: "Защитные чары мага гасят долю входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.15 },
+      tier: 1,
     },
     {
       id: "wizard_t6",
@@ -506,6 +601,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Железная воля",
       description: "Дисциплина мага укрепляет его спасброски.",
       effect: { type: "save_bonus", value: 2 },
+      tier: 2,
+      requires: "wizard_t1",
     },
     {
       id: "wizard_t7",
@@ -513,6 +610,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Защитный круг",
       description: "Магический барьер поглощает часть входящего урона.",
       effect: { type: "damage_resistance_flat", value: 2 },
+      tier: 2,
+      requires: "wizard_t2",
     },
     {
       id: "wizard_t8",
@@ -520,6 +619,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Контрзаклинание",
       description: "Маг с шансом отвечает на атаку врага разрядом энергии.",
       effect: { type: "counterattack", chance: 0.25, damageNotation: "1d8" },
+      tier: 2,
+      requires: "wizard_t3",
     },
     {
       id: "wizard_t9",
@@ -527,6 +628,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кристалл силы",
       description: "Запас магической энергии увеличивает здоровье мага.",
       effect: { type: "hp_bonus", value: 5 },
+      tier: 2,
+      requires: "wizard_t4",
     },
     {
       id: "wizard_t10",
@@ -534,6 +637,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Усиленное заклинание",
       description: "Маг с шансом обрушивает на врага второе заклинание.",
       effect: { type: "extra_attack_chance", chance: 0.3 },
+      tier: 2,
+      requires: "wizard_t5",
     },
   ],
 
@@ -547,6 +652,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Усиленное заклинание",
       description: "Метамагия чародея усиливает каждый его удар.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 1,
     },
     {
       id: "sorcerer_t2",
@@ -554,6 +660,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Дикая магия",
       description: "Хаос в крови чародея расширяет диапазон критических попаданий.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 1,
     },
     {
       id: "sorcerer_t3",
@@ -561,6 +668,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Двойное заклинание",
       description: "Чародей с шансом выпускает второе заклинание за тот же ход.",
       effect: { type: "extra_attack_chance", chance: 0.4 },
+      tier: 1,
     },
     {
       id: "sorcerer_t4",
@@ -568,6 +676,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Источник магии",
       description: "Критическое заклинание чародея обрушивает дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 2 },
+      tier: 1,
     },
     {
       id: "sorcerer_t5",
@@ -575,6 +684,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Магическое исцеление",
       description: "Часть урона, нанесённого чародеем, обращается в его исцеление.",
       effect: { type: "vampiric_pct", value: 0.2 },
+      tier: 1,
     },
     {
       id: "sorcerer_t6",
@@ -582,6 +692,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Защитная волна",
       description: "Магическая волна чародея гасит часть входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.15 },
+      tier: 2,
+      requires: "sorcerer_t1",
     },
     {
       id: "sorcerer_t7",
@@ -589,6 +701,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Сила крови",
       description: "Кровь чародея укрепляет его спасброски.",
       effect: { type: "save_bonus", value: 1 },
+      tier: 2,
+      requires: "sorcerer_t2",
     },
     {
       id: "sorcerer_t8",
@@ -596,6 +710,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Хаотический ответ",
       description: "Чародей с шансом отвечает на атаку врага вспышкой энергии.",
       effect: { type: "counterattack", chance: 0.3, damageNotation: "1d8" },
+      tier: 2,
+      requires: "sorcerer_t3",
     },
     {
       id: "sorcerer_t9",
@@ -603,6 +719,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Буря силы",
       description: "Дополнительные кубы урона при критическом попадании чародея.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 2,
+      requires: "sorcerer_t4",
     },
     {
       id: "sorcerer_t10",
@@ -610,6 +728,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Магический резерв",
       description: "Запас магии в теле чародея добавляет ему здоровья.",
       effect: { type: "hp_bonus", value: 5 },
+      tier: 2,
+      requires: "sorcerer_t5",
     },
   ],
 
@@ -623,6 +743,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Клинок_HEX",
       description: "Пакт с тёмной силой усиливает каждый удар колдуна.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 1,
     },
     {
       id: "warlock_t2",
@@ -630,6 +751,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Адское возмездие",
       description: "Колдун с шансом отвечает на атаку врага клинком тьмы.",
       effect: { type: "counterattack", chance: 0.3, damageNotation: "1d8" },
+      tier: 1,
     },
     {
       id: "warlock_t3",
@@ -637,6 +759,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Проклятие клинка",
       description: "Кровь врага, пролитая колдуном, обращается в его исцеление.",
       effect: { type: "vampiric_pct", value: 0.25 },
+      tier: 1,
     },
     {
       id: "warlock_t4",
@@ -644,6 +767,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Пакт тени",
       description: "Тёмные силы колдуна расширяют диапазон критических попаданий.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 1,
     },
     {
       id: "warlock_t5",
@@ -651,6 +775,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Жатва душ",
       description: "При убийстве врага колдун поглощает его жизненную силу.",
       effect: { type: "heal_on_kill", notation: "1d8" },
+      tier: 1,
     },
     {
       id: "warlock_t6",
@@ -658,6 +783,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Адская стойкость",
       description: "Покровитель из Бездны укрепляет спасброски колдуна.",
       effect: { type: "save_bonus", value: 2 },
+      tier: 2,
+      requires: "warlock_t1",
     },
     {
       id: "warlock_t7",
@@ -665,6 +792,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Доспех Агатиса",
       description: "Магическая оболочка колдуна поглощает часть входящего урона.",
       effect: { type: "damage_resistance_flat", value: 2 },
+      tier: 2,
+      requires: "warlock_t2",
     },
     {
       id: "warlock_t8",
@@ -672,6 +801,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Клинок тьмы",
       description: "Критический удар колдуна обрушивает дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 2,
+      requires: "warlock_t3",
     },
     {
       id: "warlock_t9",
@@ -679,6 +810,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Покровительство Бездны",
       description: "Сила инопланарного покровителя добавляет колдуну здоровья.",
       effect: { type: "hp_bonus", value: 6 },
+      tier: 2,
+      requires: "warlock_t4",
     },
     {
       id: "warlock_t10",
@@ -686,6 +819,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Двойное проклятие",
       description: "Колдун с шансом обрушивает на врага второе заклятие.",
       effect: { type: "extra_attack_chance", chance: 0.3 },
+      tier: 2,
+      requires: "warlock_t5",
     },
   ],
 
@@ -699,6 +834,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Благословенный целитель",
       description: "При убийстве врага жрец исцеляется силой своей веры.",
       effect: { type: "heal_on_kill", notation: "1d8" },
+      tier: 1,
     },
     {
       id: "cleric_t2",
@@ -706,6 +842,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Божественная защита",
       description: "Свет божества жреца гасит долю входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.2 },
+      tier: 1,
     },
     {
       id: "cleric_t3",
@@ -713,6 +850,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Священный доспех",
       description: "Вера жреца укрепляет его броню.",
       effect: { type: "ac_bonus", value: 1 },
+      tier: 1,
     },
     {
       id: "cleric_t4",
@@ -720,6 +858,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Божественная благодать",
       description: "Свет божества укрепляет спасброски жреца.",
       effect: { type: "save_bonus", value: 2 },
+      tier: 1,
     },
     {
       id: "cleric_t5",
@@ -727,6 +866,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Свет жизни",
       description: "Часть урона, нанесённого жрецом, обращается в его исцеление.",
       effect: { type: "vampiric_pct", value: 0.15 },
+      tier: 1,
     },
     {
       id: "cleric_t6",
@@ -734,6 +874,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Сила веры",
       description: "Непоколебимая вера добавляет жрецу здоровья.",
       effect: { type: "hp_bonus", value: 8 },
+      tier: 2,
+      requires: "cleric_t1",
     },
     {
       id: "cleric_t7",
@@ -741,6 +883,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кара неверных",
       description: "Удар жреца несёт в себе свет, обжигающий врага.",
       effect: { type: "damage_bonus_flat", value: 1 },
+      tier: 2,
+      requires: "cleric_t2",
     },
     {
       id: "cleric_t8",
@@ -748,6 +892,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Святой барьер",
       description: "Защитный купол жреца поглощает часть входящего урона.",
       effect: { type: "damage_resistance_flat", value: 2 },
+      tier: 2,
+      requires: "cleric_t3",
     },
     {
       id: "cleric_t9",
@@ -755,6 +901,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Божественный гнев",
       description: "Жрец с шансом обрушивает на врага ответный удар света.",
       effect: { type: "counterattack", chance: 0.25, damageNotation: "1d6+2" },
+      tier: 2,
+      requires: "cleric_t4",
     },
     {
       id: "cleric_t10",
@@ -762,6 +910,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кара небес",
       description: "Критический удар жреца обрушивает дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 2,
+      requires: "cleric_t5",
     },
   ],
 
@@ -775,6 +925,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Дикая стойкость",
       description: "Звериная мощь друида впитывает часть входящего урона.",
       effect: { type: "damage_resistance_flat", value: 3 },
+      tier: 1,
     },
     {
       id: "druid_t2",
@@ -782,6 +933,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Природное исцеление",
       description: "При убийстве врага друид восстанавливает силы природы.",
       effect: { type: "heal_on_kill", notation: "1d6" },
+      tier: 1,
     },
     {
       id: "druid_t3",
@@ -789,6 +941,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Силы земли",
       description: "Связь с природой добавляет друиду здоровья.",
       effect: { type: "hp_bonus", value: 10 },
+      tier: 1,
     },
     {
       id: "druid_t4",
@@ -796,6 +949,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Звериные когти",
       description: "Удар друида в облике зверя наносит дополнительный урон.",
       effect: { type: "damage_bonus_flat", value: 2 },
+      tier: 1,
     },
     {
       id: "druid_t5",
@@ -803,6 +957,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кора дуба",
       description: "Друид покрывается магической корой, повышая класс брони.",
       effect: { type: "ac_bonus", value: 1 },
+      tier: 1,
     },
     {
       id: "druid_t6",
@@ -810,6 +965,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Кровь природы",
       description: "Часть урона, нанесённого друидом, обращается в его исцеление.",
       effect: { type: "vampiric_pct", value: 0.15 },
+      tier: 2,
+      requires: "druid_t1",
     },
     {
       id: "druid_t7",
@@ -817,6 +974,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Гнев леса",
       description: "Критический удар друида обрушивает дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 2,
+      requires: "druid_t2",
     },
     {
       id: "druid_t8",
@@ -824,6 +983,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Шкура медведя",
       description: "Звериная шкура друида гасит долю входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.2 },
+      tier: 2,
+      requires: "druid_t3",
     },
     {
       id: "druid_t9",
@@ -831,6 +992,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Парализующий шип",
       description: "Друид с шансом отвечает на вражескую атаку шипом растения.",
       effect: { type: "counterattack", chance: 0.25, damageNotation: "1d6+2" },
+      tier: 2,
+      requires: "druid_t4",
     },
     {
       id: "druid_t10",
@@ -838,6 +1001,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Природная хватка",
       description: "Друид с шансом наносит второй удар когтями.",
       effect: { type: "extra_attack_chance", chance: 0.3 },
+      tier: 2,
+      requires: "druid_t5",
     },
   ],
 
@@ -851,6 +1016,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Вдохновение барда",
       description: "Слова барда укрепляют его спасброски в трудную минуту.",
       effect: { type: "save_bonus", value: 2 },
+      tier: 1,
     },
     {
       id: "bard_t2",
@@ -858,6 +1024,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Острый язык",
       description: "Колкое слово барда ускоряет его реакцию в бою.",
       effect: { type: "initiative_bonus", value: 3 },
+      tier: 1,
     },
     {
       id: "bard_t3",
@@ -865,6 +1032,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Танец клинков",
       description: "Грация барда в танце повышает его класс брони.",
       effect: { type: "ac_bonus", value: 1 },
+      tier: 1,
     },
     {
       id: "bard_t4",
@@ -872,6 +1040,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Песнь победы",
       description: "Критический удар барда обрушивает дополнительные кубы урона.",
       effect: { type: "crit_bonus_dice", dice: 1 },
+      tier: 1,
     },
     {
       id: "bard_t5",
@@ -879,6 +1048,7 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Повтор куплета",
       description: "Один промах за ход бард может перекинуть, словно неудачный куплет.",
       effect: { type: "reroll_miss_once" },
+      tier: 1,
     },
     {
       id: "bard_t6",
@@ -886,6 +1056,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Элегантный уворот",
       description: "Ловкий танец барда гасит долю входящего урона.",
       effect: { type: "damage_resistance_pct", value: 0.15 },
+      tier: 2,
+      requires: "bard_t1",
     },
     {
       id: "bard_t7",
@@ -893,6 +1065,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Песнь клинков",
       description: "Ритмичный удар барда наносит дополнительный урон.",
       effect: { type: "damage_bonus_flat", value: 1 },
+      tier: 2,
+      requires: "bard_t2",
     },
     {
       id: "bard_t8",
@@ -900,6 +1074,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Дерзкий выход",
       description: "Бард с шансом наносит второй удар в ритме песни.",
       effect: { type: "extra_attack_chance", chance: 0.3 },
+      tier: 2,
+      requires: "bard_t3",
     },
     {
       id: "bard_t9",
@@ -907,6 +1083,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Песнь отваги",
       description: "Вдохновляющая мелодия добавляет барду здоровья.",
       effect: { type: "hp_bonus", value: 6 },
+      tier: 2,
+      requires: "bard_t4",
     },
     {
       id: "bard_t10",
@@ -914,6 +1092,8 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
       name: "Гармония клинка",
       description: "Точность барда, вдохновлённая музыкой, расширяет диапазон критических попаданий.",
       effect: { type: "crit_range", minRoll: 19 },
+      tier: 2,
+      requires: "bard_t5",
     },
   ],
 };
@@ -921,4 +1101,62 @@ export const CLASS_TALENTS: Record<string, Talent[]> = {
 /** Returns the 10 talents available to a given class, or [] if unknown. */
 export function getTalentsForClass(classId: string): Talent[] {
   return CLASS_TALENTS[classId] ?? [];
+}
+
+// ---------- ASI (Ability Score Improvement) picks ----------
+// Six synthetic talents granted at levels 5/9/13/17 — each gives +2 to one stat.
+export const ASI_TALENTS: Talent[] = [
+  {
+    id: "asi_str",
+    classId: "asi",
+    name: "Сила +2",
+    description: "Увеличивает Силу на 2 (макс. 20).",
+    effect: { type: "asi", stat: "str", value: 2 },
+    tier: 1,
+  },
+  {
+    id: "asi_dex",
+    classId: "asi",
+    name: "Ловкость +2",
+    description: "Увеличивает Ловкость на 2 (макс. 20).",
+    effect: { type: "asi", stat: "dex", value: 2 },
+    tier: 1,
+  },
+  {
+    id: "asi_con",
+    classId: "asi",
+    name: "Телосложение +2",
+    description: "Увеличивает Телосложение на 2 (макс. 20). +макс. HP за каждый уровень.",
+    effect: { type: "asi", stat: "con", value: 2 },
+    tier: 1,
+  },
+  {
+    id: "asi_int",
+    classId: "asi",
+    name: "Интеллект +2",
+    description: "Увеличивает Интеллект на 2 (макс. 20).",
+    effect: { type: "asi", stat: "int", value: 2 },
+    tier: 1,
+  },
+  {
+    id: "asi_wis",
+    classId: "asi",
+    name: "Мудрость +2",
+    description: "Увеличивает Мудрость на 2 (макс. 20).",
+    effect: { type: "asi", stat: "wis", value: 2 },
+    tier: 1,
+  },
+  {
+    id: "asi_cha",
+    classId: "asi",
+    name: "Харизма +2",
+    description: "Увеличивает Харизму на 2 (макс. 20).",
+    effect: { type: "asi", stat: "cha", value: 2 },
+    tier: 1,
+  },
+];
+
+/** Returns the six ASI pick options (+2 to each stat). */
+export function getASITalents(): Talent[] {
+  return ASI_TALENTS;
 }

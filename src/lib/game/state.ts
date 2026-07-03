@@ -79,9 +79,20 @@ function toPlayer(p: any): PlayerState {
     bonusWis: p.bonusWis,
     bonusCha: p.bonusCha,
     pendingLevelUp: p.pendingLevelUp,
+    pendingASI: Boolean(p.pendingASI),
     spellSlots: parseSpellSlots(p.spellSlots),
     maxSpellSlots: parseSpellSlots(p.maxSpellSlots),
     hitDice: p.hitDice ?? 8,
+    equipment: {
+      weapon: p.eqWeapon ?? null,
+      shield: p.eqShield ?? null,
+      head: p.eqHead ?? null,
+      chest: p.eqChest ?? null,
+      legs: p.eqLegs ?? null,
+      hands: p.eqHands ?? null,
+      accessory1: p.eqAccessory1 ?? null,
+      accessory2: p.eqAccessory2 ?? null,
+    },
   };
 }
 
@@ -104,6 +115,22 @@ function toMonster(m: any): MonsterState {
 }
 
 function toInventory(i: any): InventoryItemState {
+  let statBonus: Partial<Record<"str" | "dex" | "con" | "int" | "wis" | "cha", number>> = {};
+  if (i.statBonus) {
+    try {
+      const parsed = JSON.parse(i.statBonus);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          const num = Number(v) || 0;
+          if (num && (k === "str" || k === "dex" || k === "con" || k === "int" || k === "wis" || k === "cha")) {
+            statBonus[k as "str" | "dex" | "con" | "int" | "wis" | "cha"] = num;
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   return {
     id: i.id,
     playerName: i.playerName,
@@ -111,6 +138,10 @@ function toInventory(i: any): InventoryItemState {
     itemType: i.itemType,
     quantity: i.quantity,
     description: i.description,
+    equipSlot: i.equipSlot ?? null,
+    acBonus: i.acBonus ?? 0,
+    statBonus,
+    damageNotation: i.damageNotation ?? "",
   };
 }
 
@@ -320,6 +351,9 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     timeOfDay,
     weather,
     currentMapPos,
+    hasAlchemy: Boolean(room.hasAlchemy),
+    hasForge: Boolean(room.hasForge),
+    hasEnchant: Boolean(room.hasEnchant),
   };
 }
 
@@ -884,28 +918,47 @@ export function timeOfDayLabelRu(t: string): string {
 }
 
 // ---------- XP / leveling ----------
-/** XP needed to REACH a given level (D&D 5e compressed for short games). */
+/** XP needed to REACH a given level. Extended to level 17 so ASI at 5/9/13/17 is reachable. */
 export const XP_THRESHOLDS: Record<number, number> = {
   1: 0,
   2: 200,
   3: 600,
   4: 1200,
   5: 2000,
+  6: 3500,
+  7: 5500,
+  8: 8000,
+  9: 11000,
+  10: 15000,
+  11: 20000,
+  12: 26000,
+  13: 33000,
+  14: 41000,
+  15: 52000,
+  16: 65000,
+  17: 80000,
 };
+
+/** Levels at which the player gains an ASI (+2 to one stat) on top of a talent pick. */
+export const ASI_LEVELS: ReadonlySet<number> = new Set([5, 9, 13, 17]);
+
+/** Maximum reachable level (matches XP_THRESHOLDS). */
+export const MAX_LEVEL = 17;
 
 /** Proficiency bonus by level (5e standard). */
 export function proficiencyForLevel(level: number): number {
   return 2 + Math.floor((level - 1) / 4);
 }
 
-/** Award XP to a player; sets pendingLevelUp if a threshold is crossed. Returns the new level. */
+/** Award XP to a player; sets pendingLevelUp if a threshold is crossed.
+ *  At levels 5/9/13/17 also sets pendingASI (additional +2 stat pick). */
 export async function awardXP(roomId: string, playerName: string, xp: number): Promise<{ leveledUp: boolean; newLevel: number }> {
   const p = await db.player.findFirst({ where: { name: playerName, roomId } });
   if (!p) return { leveledUp: false, newLevel: 1 };
   const newXp = p.xp + xp;
   let newLevel = p.level;
   let leveledUp = false;
-  while (newLevel < 5 && XP_THRESHOLDS[newLevel + 1] <= newXp) {
+  while (newLevel < MAX_LEVEL && (XP_THRESHOLDS[newLevel + 1] ?? Infinity) <= newXp) {
     newLevel++;
     leveledUp = true;
   }
@@ -920,6 +973,8 @@ export async function awardXP(roomId: string, playerName: string, xp: number): P
     newMaxHp += gain;
     newHp = Math.min(newMaxHp, newHp + gain); // heal the gain
   }
+  // If the new level grants an ASI, set pendingASI in addition to pendingLevelUp.
+  const grantASI = leveledUp && ASI_LEVELS.has(newLevel);
   await db.player.update({
     where: { id: p.id },
     data: {
@@ -929,21 +984,69 @@ export async function awardXP(roomId: string, playerName: string, xp: number): P
       maxHp: newMaxHp,
       hp: newHp,
       pendingLevelUp: leveledUp ? true : p.pendingLevelUp,
+      pendingASI: grantASI ? true : p.pendingASI,
     },
   });
   return { leveledUp, newLevel };
 }
 
-/** Apply a chosen talent on level-up and clear the pending flag. */
+/** Apply a chosen talent on level-up and clear the pending flag.
+ *  Rejects if the talent is already taken, or if it has an unsatisfied prerequisite. */
 export async function applyLevelUpTalent(roomId: string, playerName: string, talentId: string): Promise<boolean> {
   const p = await db.player.findFirst({ where: { name: playerName, roomId } });
   if (!p || !p.pendingLevelUp) return false;
   const existing = p.selectedTalents ? p.selectedTalents.split(",").filter(Boolean) : [];
   if (existing.includes(talentId)) return false; // already taken
+  // Resolve the talent definition to check prerequisites.
+  const classId = (await import("./presets")).getClassIdByCharClass(p.charClass);
+  const { getTalentsForClass } = await import("./talents");
+  const talent = getTalentsForClass(classId).find((t) => t.id === talentId);
+  if (!talent) return false;
+  if (talent.requires && !existing.includes(talent.requires)) return false; // prerequisite not met
   existing.push(talentId);
   await db.player.update({
     where: { id: p.id },
     data: { selectedTalents: existing.join(","), pendingLevelUp: false },
+  });
+  return true;
+}
+
+/** Apply an ASI pick: +2 to a chosen stat (capped at 20). Clears pendingASI.
+ *  Returns true if applied, false otherwise. */
+export async function applyLevelUpASI(
+  roomId: string,
+  playerName: string,
+  stat: "str" | "dex" | "con" | "int" | "wis" | "cha"
+): Promise<boolean> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p || !p.pendingASI) return false;
+  const cap = 20;
+  const cur = (p as any)[stat] as number;
+  const newVal = Math.min(cap, cur + 2);
+  // Bonus-stats record keeps a parallel +2 (so the character sheet can show
+  // how the player spent their ASI picks).
+  const bonusKey = `bonus${stat.charAt(0).toUpperCase()}${stat.slice(1)}` as
+    | "bonusStr" | "bonusDex" | "bonusCon" | "bonusInt" | "bonusWis" | "bonusCha";
+  const newBonus = Math.min(cap, (p as any)[bonusKey] as number + 2);
+  // CON increase raises max HP (and current HP) by 1 per +1 (so +2 → +2 HP per level
+  // retroactively: gain = (newCon - oldCon) * level / 2... we apply the simple version: +1 maxHP per +1 con).
+  let newMaxHp = p.maxHp;
+  let newHp = p.hp;
+  if (stat === "con") {
+    const conDelta = newVal - cur;
+    const hpGain = conDelta * p.level; // +1 maxHP per +1 CON retroactively per level
+    newMaxHp += hpGain;
+    newHp = Math.min(newMaxHp, newHp + hpGain);
+  }
+  await db.player.update({
+    where: { id: p.id },
+    data: {
+      [stat]: newVal,
+      [bonusKey]: newBonus,
+      maxHp: newMaxHp,
+      hp: newHp,
+      pendingASI: false,
+    } as any,
   });
   return true;
 }

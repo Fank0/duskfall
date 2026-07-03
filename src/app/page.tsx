@@ -334,6 +334,26 @@ export default function Home() {
     [session]
   );
 
+  const pickASI = useCallback(
+    async (stat: "str" | "dex" | "con" | "int" | "wis" | "cha") => {
+      if (!session) return;
+      const res = await fetch("/api/game/levelup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, type: "asi", stat }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSnapshot(data.snapshot);
+        pingRoom(session.roomCode);
+        toast.success(`Характеристика повышена: +2 к ${stat.toUpperCase()}!`);
+      } else {
+        toast.error(data.error ?? "Не удалось применить ASI.");
+      }
+    },
+    [session]
+  );
+
   const handleRest = useCallback(
     async (restType: "short" | "long") => {
       if (!session) return;
@@ -678,9 +698,10 @@ export default function Home() {
       {/* ===== Level-up modal ===== */}
       <LevelUpModal
         player={you ?? null}
-        open={Boolean(you?.pendingLevelUp)}
+        open={Boolean(you?.pendingLevelUp || you?.pendingASI)}
         onClose={() => {}}
         onPick={pickTalent}
+        onPickASI={pickASI}
       />
 
       {/* ===== Quest journal modal ===== */}

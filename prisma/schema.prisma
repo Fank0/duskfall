@@ -25,6 +25,10 @@ model Room {
   timeOfDay    String   @default("day") // dawn | day | dusk | night
   turnCount    Int      @default(0) // exploration turns elapsed (drives day/night cycle)
   weather      String   @default("clear") // clear | rain | fog | storm | snow
+  // Crafting stations granted by the DM as the adventure progresses.
+  hasAlchemy   Boolean  @default(false)
+  hasForge     Boolean  @default(false)
+  hasEnchant   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -81,9 +85,19 @@ model Player {
   bonusWis         Int      @default(0)
   bonusCha         Int      @default(0)
   pendingLevelUp   Boolean  @default(false)
+  pendingASI       Boolean  @default(false) // pending Ability Score Improvement pick (levels 5/9/13/17)
   spellSlots       String   @default("") // JSON {"1":2,"2":0,...}
   maxSpellSlots    String   @default("") // JSON {"1":2,"2":0,...}
   hitDice          Int      @default(8)  // hit die size for short-rest healing
+  // Equipment slots (store InventoryItem ids). Null = empty.
+  eqWeapon         String?
+  eqShield         String?
+  eqHead           String?
+  eqChest          String?
+  eqLegs           String?
+  eqHands          String?
+  eqAccessory1     String?
+  eqAccessory2     String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -121,6 +135,14 @@ model InventoryItem {
   itemType    String   @default("misc")
   quantity    Int      @default(1)
   description String   @default("")
+  /// Equipment slot inferred from name/type (weapon|shield|head|chest|legs|hands|accessory). Null = not equippable.
+  equipSlot   String?
+  /// AC bonus granted when this item is equipped (armor/shield).
+  acBonus     Int      @default(0)
+  /// JSON stat bonuses when equipped, e.g. {"str":2,"dex":1}.
+  statBonus   String   @default("")
+  /// Damage notation for weapons/scrolls (e.g. "1d8+3").
+  damageNotation String @default("")
   createdAt   DateTime @default(now())
 }
 

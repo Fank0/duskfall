@@ -2,12 +2,12 @@
 // modifiers and resolve reactive effects (counterattack, healing, etc.).
 
 import type { PlayerState, Talent, TalentEffect } from "./types";
-import { CLASS_TALENTS, getTalentsForClass } from "./talent-data";
+import { CLASS_TALENTS, getTalentsForClass, ASI_TALENTS, getASITalents } from "./talent-data";
 import { getClassIdByCharClass } from "./presets";
 import { rollDice } from "./dice";
 
 /** All Talent records for a class. */
-export { getTalentsForClass, CLASS_TALENTS };
+export { getTalentsForClass, CLASS_TALENTS, ASI_TALENTS, getASITalents };
 
 /** Resolve the list of talent ids a player has into concrete Talent objects. */
 export function resolveTalents(player: { charClass: string; selectedTalents: string[] }): Talent[] {

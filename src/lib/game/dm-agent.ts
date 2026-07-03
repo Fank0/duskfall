@@ -549,7 +549,9 @@ async function resolvePlayerAction(
     bonusStr: 0, bonusDex: 0, bonusCon: 0,
     bonusInt: 0, bonusWis: 0, bonusCha: 0,
     pendingLevelUp: false,
+    pendingASI: false,
     spellSlots: {}, maxSpellSlots: {}, hitDice: 8,
+    equipment: { weapon: null, shield: null, head: null, chest: null, legs: null, hands: null, accessory1: null, accessory2: null },
   };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
@@ -1071,9 +1073,20 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     bonusStr: target.bonusStr, bonusDex: target.bonusDex, bonusCon: target.bonusCon,
     bonusInt: target.bonusInt, bonusWis: target.bonusWis, bonusCha: target.bonusCha,
     pendingLevelUp: target.pendingLevelUp,
+    pendingASI: Boolean((target as any).pendingASI),
     spellSlots: parseSlotsSafe(target.spellSlots),
     maxSpellSlots: parseSlotsSafe(target.maxSpellSlots),
     hitDice: target.hitDice ?? 8,
+    equipment: {
+      weapon: (target as any).eqWeapon ?? null,
+      shield: (target as any).eqShield ?? null,
+      head: (target as any).eqHead ?? null,
+      chest: (target as any).eqChest ?? null,
+      legs: (target as any).eqLegs ?? null,
+      hands: (target as any).eqHands ?? null,
+      accessory1: (target as any).eqAccessory1 ?? null,
+      accessory2: (target as any).eqAccessory2 ?? null,
+    },
   };
   const targetAC = effectiveAC(targetState);
 
