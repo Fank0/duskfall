@@ -288,11 +288,10 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
       connections: r.connections.filter((c) => discoveredKeys.has(`${c.x},${c.y}`)),
     }));
 
-  // Time-of-day / weather fall back to defaults until items 9 & 10 wire the
-  // corresponding Room columns. Reading via cast avoids hard-deps on those
-  // fields existing on the Prisma type yet.
+  // Time-of-day / weather come from the Room columns (added in items 9 & 10).
+  // weather is still optional until item 10 lands, so we read it via cast.
   const roomAny = room as any;
-  const timeOfDay = (roomAny.timeOfDay ?? "day") as "dawn" | "day" | "dusk" | "night";
+  const timeOfDay = (room.timeOfDay ?? "day") as "dawn" | "day" | "dusk" | "night";
   const weather = (roomAny.weather ?? "clear") as "clear" | "rain" | "fog" | "storm" | "snow";
   const currentMapPos =
     room.currentMapX >= 0 && room.currentMapY >= 0
@@ -446,6 +445,9 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       lines.push(`${n.name} [${n.role}, ${n.disposition}]${loc}${notes}`);
     }
   }
+
+  // Time of day.
+  lines.push(`=== Время суток ===\nСейчас: ${timeOfDayLabelRu(snap.timeOfDay)}`);
 
   const recent = snap.chat.slice(-6);
   if (recent.length > 0) {
@@ -780,7 +782,57 @@ export async function advanceExplorationTurn(roomId: string, justActedName: stri
   if (alive.length === 0) return;
   const currentIdx = alive.findIndex((p) => p.name === justActedName);
   const nextIdx = (currentIdx + 1) % alive.length;
-  await db.room.update({ where: { id: roomId }, data: { explorationActorIndex: nextIdx } });
+
+  // Increment turnCount and advance time-of-day every 5 turns.
+  const room = await db.room.findUnique({ where: { id: roomId } });
+  if (room) {
+    const newTurnCount = (room.turnCount ?? 0) + 1;
+    const advanceCycle = newTurnCount % 5 === 0;
+    let newTimeOfDay = room.timeOfDay || "day";
+    if (advanceCycle) {
+      const order: Array<"dawn" | "day" | "dusk" | "night"> = ["dawn", "day", "dusk", "night"];
+      const idx = order.indexOf((newTimeOfDay as any) || "day");
+      const next = order[(idx + 1) % order.length];
+      newTimeOfDay = next;
+    }
+    await db.room.update({
+      where: { id: roomId },
+      data: {
+        explorationActorIndex: nextIdx,
+        turnCount: newTurnCount,
+        timeOfDay: newTimeOfDay,
+      },
+    });
+    if (advanceCycle) {
+      await db.chatMessage.create({
+        data: {
+          roomId,
+          role: "system",
+          speaker: "",
+          round: room.round,
+          content: `Время суток меняется: ${timeOfDayLabelRu(newTimeOfDay)}.`,
+        },
+      });
+    }
+  } else {
+    await db.room.update({ where: { id: roomId }, data: { explorationActorIndex: nextIdx } });
+  }
+}
+
+/** Human-readable Russian label for a time-of-day value. */
+export function timeOfDayLabelRu(t: string): string {
+  switch (t) {
+    case "dawn":
+      return "Рассвет";
+    case "day":
+      return "День";
+    case "dusk":
+      return "Сумерки";
+    case "night":
+      return "Ночь";
+    default:
+      return "День";
+  }
 }
 
 // ---------- XP / leveling ----------

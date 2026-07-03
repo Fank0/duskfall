@@ -485,6 +485,26 @@ export default function Home() {
                 <ScrollText className="h-3.5 w-3.5" /> Мир
               </span>
             )}
+            {/* Time-of-day indicator (item 9) */}
+            <span
+              className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/30 px-2.5 py-1 text-xs text-amber-200"
+              title={`Время суток: ${
+                snapshot.timeOfDay === "dawn" ? "Рассвет" :
+                snapshot.timeOfDay === "day" ? "День" :
+                snapshot.timeOfDay === "dusk" ? "Сумерки" : "Ночь"
+              }`}
+            >
+              <span className="text-sm">
+                {snapshot.timeOfDay === "dawn" ? "🌅" :
+                 snapshot.timeOfDay === "day" ? "☀️" :
+                 snapshot.timeOfDay === "dusk" ? "🌇" : "🌙"}
+              </span>
+              <span className="font-medium">
+                {snapshot.timeOfDay === "dawn" ? "Рассвет" :
+                 snapshot.timeOfDay === "day" ? "День" :
+                 snapshot.timeOfDay === "dusk" ? "Сумерки" : "Ночь"}
+              </span>
+            </span>
           </div>
 
           <Button variant="outline" size="sm" onClick={resetGame} disabled={isThinking} className="gap-1.5 border-border/60">
@@ -593,6 +613,8 @@ export default function Home() {
             scene={snapshot.scene}
             isGenerating={isGeneratingImage}
             location={snapshot.location}
+            timeOfDay={snapshot.timeOfDay}
+            weather={snapshot.weather}
           />
           <CombatGrid
             players={snapshot.players}

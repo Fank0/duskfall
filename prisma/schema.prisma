@@ -22,6 +22,8 @@ model Room {
   explorationActorIndex Int @default(0) // whose turn it is during exploration (index into players by createdAt)
   currentMapX  Int      @default(-1) // world-map x coordinate (-1 = no map yet)
   currentMapY  Int      @default(-1) // world-map y coordinate
+  timeOfDay    String   @default("day") // dawn | day | dusk | night
+  turnCount    Int      @default(0) // exploration turns elapsed (drives day/night cycle)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
