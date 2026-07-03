@@ -522,3 +522,50 @@ Final verification commands run:
 - `bunx tsc --noEmit` → 0 errors
 - `bun run lint` → 0 errors, 0 warnings
 - `bun run build` → ✓ SUCCEEDED (all 29 routes compile, .next/standalone produced)
+
+---
+Task ID: tts-voice-dm
+Agent: tts-agent
+Task: Add TTS voice narration for DM messages
+
+Work Log:
+- Read worklog.md (last 3 sections: opt-frontend-restart, auth-restore, full-audit), package.json (confirmed z-ai-web-dev-sdk ^0.0.18 already installed), src/app/page.tsx (DM SSE streaming via /api/game/action with mechanics/delta/done events; streaming bubble id="streaming" replaced by persisted DB id after `done`), src/components/dnd/ChatPanel.tsx (memoized chat panel, virtualization, MessageBubble), src/lib/game/settings.ts (zustand + persist store with audio settings), src/components/dnd/SettingsMenu.tsx (Dialog with theme/scale/audio sections). Read existing /api/game/image/route.ts for the z-ai-web-dev-sdk singleton pattern (ZAI.create() promise cached). Invoked the TTS skill to confirm SDK API: `zai.audio.tts.create({ input, voice, speed, response_format, stream })` returns a standard Response object — use `await response.arrayBuffer()`; supports wav/pcm/mp3 non-streaming, max 1024 chars input, voices: tongtong/chuichui/xiaochen/jam/kazi/douji/luodo.
+- Item 1 (TTS API route): Created src/app/api/game/tts/route.ts — POST { text, lang?, voice? } synthesizes MP3 audio via zai.audio.tts.create({ input: preparedText, voice, speed:1.0, response_format:"mp3", stream:false }). ZAI singleton via cached ZAI.create() promise (same pattern as image route). Maps user-facing voice keys to SDK voice names: male→tongtong (warm), female→chuichui (lively), narrator→luodo (rich/infectious). Lang param validated against {ru,en,es,de,fr,zh} set — used for logging (X-TTS-Lang header) since the SDK auto-detects language from input text. prepareText() normalizes input: strips **bold** / __underline__ / *italic* markdown, collapses whitespace, hard-caps at 500 chars (TTS is expensive — task spec). Returns audio as audio/mpeg streaming response with no-store cache headers; Uint8Array conversion to satisfy NextResponse BodyInit type. Error path: 500 with Russian message "Ошибка синтеза голоса Мастера." for any exception; 400 with "Нет текста для озвучки." for empty text; 500 with "Не удалось сгенерировать голос." for SDK synthesis failure or empty buffer. tsc + lint clean. Committed b8df2e2.
+- Item 2 (Settings store): Updated src/lib/game/settings.ts — added `ttsEnabled: boolean` (default false — opt-in per task spec), `ttsVolume: number` (default 0.8, clamped 0..1), `ttsVoice: "male"|"female"|"narrator"` (default "male") to SettingsState; added setters setTtsEnabled / setTtsVolume (clamped) / setTtsVoice. Existing zustand persist middleware handles forward-compat: persisted localStorage state from older versions merges with new initial defaults automatically. tsc + lint clean. Committed e946f8c.
+- Item 3 (SettingsMenu UI): Updated src/components/dnd/SettingsMenu.tsx — added "Голос Мастера" section (Mic2 icon) with three controls: (1) Switch "Озвучивать нарратив Мастера" toggling settings.ttsEnabled, (2) Slider "Громкость голоса" 0-100% step 5 bound to settings.ttsVolume (disabled when ttsEnabled false), (3) 3-column voice picker (Мужской/Женский/Рассказчик → male/female/narrator) with primary highlight on the active selection (disabled when ttsEnabled false). Styling mirrors the existing audio section: same border/border-border/50, bg-stone-900/40 card, Slider from @/components/ui/slider, Switch from @/components/ui/switch. All text in Russian. tsc + lint clean. Committed 2cf7212.
+- Item 4 (ChatPanel playback + auto-play): Updated src/components/dnd/ChatPanel.tsx:
+  - Added `ttsEnabled?: boolean` prop to ChatPanelProps.
+  - Reads ttsVoice + ttsVolume from useSettings inside the panel (lang already read).
+  - Maintains single shared audioRef + objectUrlRef + ttsLoadingId + ttsPlayingId state — clicking a new message's TTS button stops the previous one.
+  - playTTS(message): fetches /api/game/tts with { text, lang, voice }, gets blob, creates object URL, plays via `new Audio(url)` with volume = ttsVolume. Tracks onplay/onpause/onended/onerror to update ttsPlayingId. Cleans up object URLs on end/error to avoid leaks. Toast error: "Не удалось озвучить текст" on fetch/blob failure.
+  - stopTts(): pauses audio + revokes object URL + clears ttsPlayingId.
+  - Auto-play useEffect: when ttsEnabled and a NEW non-streaming DM message arrives in messages, triggers playTTS for it. Skips the "streaming" placeholder bubble (waits for the persisted DB id to replace it after SSE done). First-seen DM message is recorded in lastAutoPlayedIdRef but NOT auto-played (avoids blasting the seed intro on every page load). Subsequent new DM message ids trigger TTS. Ref is reset on roomCode change.
+  - MessageBubble: added optional onPlayTTS/onStopTTS/isTtsLoading/isTtsPlaying/anyTtsActive props. DM bubbles now render a 🔊 (Volume2) button in the header next to "Мастер" title. Button states: idle (Volume2 icon, amber-950/30 bg), loading (Loader2 spinner), playing (Square stop icon, amber-500/20 bg — click stops playback). Button is hidden for the streaming bubble (id="streaming") since content is still changing. data-no-click-sfx attr opts the button out of the global click SFX (per full-audit's click-sfx wiring). Button disabled when ttsDisabled (no content / streaming bubble) or when another TTS is in flight.
+  - Unmount cleanup useEffect pauses audio + revokes URL.
+  tsc + lint clean. Committed aecd010.
+- Item 5 (page.tsx integration): Updated src/app/page.tsx — passed `ttsEnabled={settings.ttsEnabled}` prop to <ChatPanel>. No other changes needed: the ChatPanel auto-play useEffect handles the "after SSE stream ends" trigger natively because the `done` event in sendAction calls fetchState which fetches the persisted snapshot — the streaming bubble (id="streaming") is replaced by the real DB id, which the useEffect detects as a new DM message id and triggers TTS. Only DM role messages reach playTTS (the playTTS guard `if (message.role !== "dm") return;` plus the auto-play useEffect's `if (last.role !== "dm") return;` skip system and player messages). tsc + lint clean. Committed d76601c.
+
+Stage Summary:
+- 5 features implemented across 5 commits (one per item):
+  1. TTS API route (POST /api/game/tts — z-ai-web-dev-sdk TTS synthesis, 500-char cap, mp3 stream, Russian error messages, voice/lang params) — b8df2e2
+  2. Settings store (ttsEnabled default false, ttsVolume default 0.8, ttsVoice default "male", 3 setters) — e946f8c
+  3. SettingsMenu UI ("Голос Мастера" section with toggle + volume slider + 3-voice picker, matching audio section styling) — 2cf7212
+  4. ChatPanel playback (per-message 🔊 button with spinner/stop states, shared audio element, auto-play on new DM message id, toast on error) — aecd010
+  5. page.tsx integration (ttsEnabled prop passed; SSE-done → fetchState → real DB id → auto-play trigger; system/player messages never sent to TTS) — d76601c
+- bunx tsc --noEmit: 0 errors (clean).
+- bun run lint: 0 errors, 0 warnings (clean).
+- bun run build: ✓ SUCCEEDED — all 30 routes compile, including the new /api/game/tts route (was 29, now 30). .next/standalone produced.
+- No new dependencies added (z-ai-web-dev-sdk ^0.0.18 was already in package.json).
+- No schema changes (db:push not needed).
+- Did NOT edit src/lib/game/llm.ts or src/lib/game/dm-agent.ts (per constraint).
+- All user-facing text in Russian.
+- z-ai-web-dev-sdk used in backend only (the /api/game/tts route) — never imported client-side.
+- Voice mapping: male → tongtong (warm/intimate), female → chuichui (lively/bright), narrator → luodo (rich/infectious) — chosen to suit D&D DM narration.
+- Auto-play gating: ttsEnabled must be true (opt-in per Item 2 default), message must be role==="dm", message id must differ from lastAutoPlayedIdRef AND must not be "streaming" (waits for SSE `done` → fetchState → persisted DB id). First DM message on room load is recorded but NOT auto-played (no seed-intro blast). Reset on room change.
+- TTS button UX: Volume2 icon when idle, Loader2 spinner when loading, Square icon when playing (click to stop). data-no-click-sfx attribute opts out of global click-SFX. Disabled when another TTS is in flight (avoid overlapping audio).
+- Cleanup: object URLs are revoked on audio end/error and on panel unmount + room change to prevent memory leaks.
+
+Final verification commands run:
+- `bunx tsc --noEmit` → 0 errors
+- `bun run lint` → 0 errors, 0 warnings
+- `bun run build` → ✓ SUCCEEDED (all 30 routes compile, including /api/game/tts; .next/standalone produced)
