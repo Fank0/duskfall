@@ -28,6 +28,17 @@ export async function POST(req: NextRequest) {
       : getPresetByCharClass("Fighter");
     const race = oldPlayer ? getRace(oldPlayer.race) : getRace("human");
     const background = oldPlayer ? getBackground(oldPlayer.background) : getBackground("soldier");
+    // Preserve the player's point-buy bonus stats across reset.
+    const bonusStats = oldPlayer
+      ? {
+          str: oldPlayer.bonusStr,
+          dex: oldPlayer.bonusDex,
+          con: oldPlayer.bonusCon,
+          int: oldPlayer.bonusInt,
+          wis: oldPlayer.bonusWis,
+          cha: oldPlayer.bonusCha,
+        }
+      : { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
 
     // Delete the room (cascade clears everything) and recreate with the same code.
     await db.room.delete({ where: { id: room.id } });
@@ -50,6 +61,7 @@ export async function POST(req: NextRequest) {
       isHost: true,
       positionIndex: 0,
       portraitUrl: oldPlayer?.portraitUrl ?? null,
+      bonusStats,
     });
 
     const snapshot = await getSnapshot(roomCode);

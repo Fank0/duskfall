@@ -307,13 +307,18 @@ export default function Home() {
                       (r: any) => r.purpose === "player_damage" && r.label?.includes(":")
                     );
                     if (dmgRoll) {
-                      const m = /:\s*([^+]+)/.exec(dmgRoll.label);
+                      // Label format: "Урон по: <name>" or "Урон по: <name> (+N талант)".
+                      // Capture everything after ": " up to " (" or end of string.
+                      const m = /:\s*([^(]+)/.exec(dmgRoll.label);
                       if (m) targetName = m[1].trim();
                     }
                   }
                   // Crit detection: any attack roll (d20 notation) with a natural 20.
+                  // Notation is "1d20" (from rollDice); also accept "d20" defensively.
                   const allRolls = [...(ev.playerRolls ?? []), ...(ev.monsterRolls ?? [])];
-                  const isCrit = allRolls.some((r: any) => r.notation === "d20" && r.result === 20);
+                  const isCrit = allRolls.some((r: any) =>
+                    (r.notation === "1d20" || r.notation === "d20") && r.result === 20
+                  );
                   animEventCounter.current += 1;
                   setLastAnimEvent({
                     id: animEventCounter.current,

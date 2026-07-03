@@ -900,9 +900,6 @@ async function resolvePlayerAction(
       const dmg = rollDice(branch.monsterDamage.notation);
       // Talent: bonus flat damage + vampiric heal.
       const bonus = damageBonusFromTalents(actor);
-      const isCrit = playerRolls.some((r) => r.purpose === "СИЛ" || r.purpose === "action" || r.purpose === "ЛОВ")
-        ? false : false; // crit handled via natural roll below
-      void isCrit;
       damageDealtToMonster = dmg.total + bonus;
       await logDiceRoll(roomId, round, actorName, {
         label: `Урон по: ${m.name}` + (bonus ? ` (+${bonus} талант)` : ""),

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSnapshot, logDiceRoll, saveChatMessage } from "@/lib/game/state";
+import { getSnapshot, logDiceRoll, saveChatMessage, recomputePlayerAC } from "@/lib/game/state";
 import { rollD20, abilityModifier } from "@/lib/game/dice";
 import {
   getRecipe,
@@ -163,13 +163,15 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Remove `qty` of an item from a player's inventory (stack-aware). */
+/** Remove `qty` of an item from a player's inventory (stack-aware).
+ *  If an equipped item is removed, the slot is cleared and AC is recomputed. */
 async function removeItemQuantity(roomId: string, playerName: string, itemName: string, qty: number) {
   let remaining = qty;
   const items = await db.inventoryItem.findMany({
     where: { roomId, playerName, itemName },
     orderBy: { createdAt: "asc" },
   });
+  let unequipped = false;
   for (const it of items) {
     if (remaining <= 0) break;
     if (it.quantity > remaining) {
@@ -191,10 +193,15 @@ async function removeItemQuantity(roomId: string, playerName: string, itemName: 
         }
         if (changed) {
           await db.player.update({ where: { id: player.id }, data: updateData });
+          unequipped = true;
         }
       }
       await db.inventoryItem.delete({ where: { id: it.id } });
     }
+  }
+  // Recompute AC if any equipped item was removed (so bonuses don't linger).
+  if (unequipped) {
+    await recomputePlayerAC(roomId, playerName);
   }
 }
 

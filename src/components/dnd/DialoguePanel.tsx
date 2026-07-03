@@ -104,16 +104,16 @@ export function DialoguePanel({
     }
   }
 
-  // Auto-intro on mount (parent remounts this panel via key when switching NPC).
-  // Deferring via setTimeout avoids the "setState in effect" warning while
-  // still firing the intro line once when the dialogue opens.
+  // Auto-intro on mount / when the panel opens or the NPC changes.
+  // The parent remounts this panel via key when switching NPC, but we also
+  // re-fire the intro when the panel is re-opened with the same NPC.
   useEffect(() => {
     if (!open || !npc) return;
     const t = setTimeout(() => {
       void handleAction("intro");
     }, 0);
     return () => clearTimeout(t);
-  }, []);
+  }, [npc?.id, open]);
 
   if (!npc) return null;
   const dispColor = DISPOSITION_COLOR[npc.disposition];
@@ -291,9 +291,8 @@ export function DialoguePanel({
           </div>
         ) : (
           <div className="border-t border-border/50 px-5 py-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-3">
               <ActionButton label="Расскажи о себе" onClick={() => handleAction("about")} disabled={isBusy} />
-              <ActionButton label="Поговорить о деле" onClick={() => handleAction("about")} disabled={isBusy} />
               <ActionButton label="Торговать" onClick={() => handleAction("business")} disabled={isBusy || npc.role !== "merchant"} hint={npc.role !== "merchant" ? "Не торговец" : undefined} />
               <ActionButton label="Попрощаться" onClick={() => handleAction("leave")} disabled={isBusy} />
             </div>

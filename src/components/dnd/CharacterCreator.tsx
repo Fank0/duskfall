@@ -276,7 +276,7 @@ export function CharacterCreator({
                     <label className="text-xs uppercase tracking-wide text-muted-foreground">Имя героя</label>
                     <Input
                       value={playerName}
-                      onChange={(e) => setPlayerName(e.target.value.slice(0, 24))}
+                      onChange={(e) => setPlayerName(e.target.value.slice(0, 20))}
                       placeholder="Алдрик"
                       autoFocus
                       onKeyDown={(e) => { if (e.key === "Enter" && canNext) next(); }}
