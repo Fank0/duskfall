@@ -418,3 +418,55 @@ Stage Summary:
 - commit: fd216c9
 - No auth route exists in the project (POST /api/auth/register test skipped — task said "if auth exists").
 - Known remaining non-issues: encounters.ts is dead code (superseded by dungeon-populate.ts) — left in place as it causes no bugs; useSettings() hook returns whole state causing minor re-renders on unrelated setting changes — performance optimization, not a bug.
+
+---
+Task ID: auth-restore
+Agent: auth-restore-agent
+Task: Restore auth system (Account/SaveSlot models, auth API, AuthScreen, MySavesDialog, translate route)
+
+Work Log:
+- Read worklog.md (last 9 sections including final-audit-restart), package.json (confirmed bcryptjs ^3.0.3 + @types/bcryptjs ^3.0.0 already installed), prisma/schema.prisma, src/lib/game/state.ts, src/lib/game/seed.ts, src/components/dnd/Lobby.tsx, src/app/page.tsx, src/lib/game/llm.ts, src/lib/game/validate.ts, src/lib/game/rate-limit.ts, src/lib/game/sanitize.ts, src/components/ui/dialog.tsx + tabs.tsx + button.tsx + input.tsx, existing API routes (room/create, room/join, levelup), CharacterCreator.tsx for context.
+- Item 1 (Account + SaveSlot models): Added model Account { id, username @unique, passwordHash, createdAt, saves SaveSlot[] } and model SaveSlot { id, accountId, account (Cascade), slotNumber, name, roomId?, room (SetNull), playerId?, charName?, charClass?, charRace?, charLevel @default(1), lastPlayed @default(now()), createdAt @default(now()), @@unique([accountId, slotNumber]), @@index([accountId]) }. Added `saves SaveSlot[]` relation to Room and `hostAccountId String?` field. Ran `bun run db:push` — schema synced, Prisma client regenerated. Committed 16a8dfa.
+- Item 2 (Session helpers): Created src/lib/auth/session.ts with HMAC-SHA256 signed cookies. Format: `<accountId>.<hexSig>`. SESSION_SECRET env var (ephemeral 64-byte random fallback with console warning if unset). Functions: signAccountId, verifySigned (constant-time compare), buildSessionCookie (httpOnly, SameSite=Lax, Secure in prod, 30-day Max-Age, Path=/), buildClearSessionCookie (Max-Age=0 + 1970 Expires), readSessionAccountId(cookieHeader). Used Web Crypto subtle.importKey+sign for HMAC — no Node-only deps, works in edge runtime. Created src/lib/auth/get-account.ts: getAccountFromRequest(cookieHeader) → Account | null (verifies signature + loads Account row). tsc clean. Committed 32095d0.
+- Item 3 (Auth API routes): Created 4 routes:
+  - /api/auth/register: POST { username, password }. Validates username 3-20 chars [A-Za-z0-9_], password >=8 chars (no whitespace/control). bcrypt.hash(password, 10). Username uniqueness check. Creates Account. Sets signed cookie. Returns { ok, accountId, username } 201. Rate limit 3/10min/IP.
+  - /api/auth/login: POST { username, password }. Finds account. Always runs bcrypt.compare (against a dummy hash when account missing — prevents timing-based username enumeration). On success sets signed cookie + returns account. On failure 401 with generic Russian message. Rate limit 5/10min/IP.
+  - /api/auth/logout: POST. Clears cookie (Max-Age=0). Always returns { ok: true }.
+  - /api/auth/me: GET. Reads cookie via getAccountFromRequest, returns { ok, accountId, username } or 401.
+  tsc clean. Committed 40311a4.
+- Item 4 (Saves API): Created 3 routes all requiring auth via getAccountFromRequest:
+  - /api/game/saves/list: GET. Loads all SaveSlots for the account (with room.code join), returns array of 3 slots (filled ones with char info + roomCode, empty ones { slotNumber, filled: false }).
+  - /api/game/saves/delete: POST { slotNumber }. Validates slot 1..3. deleteMany on { accountId, slotNumber } (ownership guaranteed by unique index). Returns { ok, deleted }.
+  - /api/game/saves/update: POST { slotNumber, name }. Validates slot + name (1..80 chars). updateMany on { accountId, slotNumber }. 404 if not found.
+  tsc clean. Committed f5f878f.
+- Item 5 (Translate route): Created /api/game/translate POST { roomCode, lang }. Validates roomCode + lang. Loads up to 50 ChatMessages for the room. For each non-empty message, calls chatComplete (preferFast=true) with a system prompt instructing literary translation to the target language, preserving tone/names/dice notations. Sanitizes output via sanitizeLLMOutput. Updates the message row in place if the translation differs. Returns { ok, roomCode, lang, total, translated, skipped }. Simple sequential batch — no retries beyond chatComplete's built-in chain. tsc clean. Committed a656ca9.
+- Item 6 (AuthScreen + MySavesDialog + Lobby integration):
+  - Created src/components/dnd/AuthScreen.tsx: Tabs (Вход / Регистрация). Username + password inputs. Client-side validation mirroring server (3-20 chars [A-Za-z0-9_], password >=8). On success calls onAuthenticated({ accountId, username }). Uses shadcn Tabs/Card/Button/Input, lucide icons, sonner toasts. All Russian text.
+  - Created src/components/dnd/MySavesDialog.tsx: Dialog showing 3 save slots. Loads via /api/game/saves/list on open. Filled slots: char info (name, race, class, level, lastPlayed date, roomCode badge) + 3 buttons (Продолжить → onContinue(roomCode, slot); Переименовать → inline Input with Save/Cancel; Удалить → confirm + DELETE). Empty slots: "Пустой слот" + hint. Loading + busySlot states.
+  - Updated src/components/dnd/Lobby.tsx: On mount, calls /api/auth/me to auto-restore session (with authChecked loading state). If logged in: emerald account bar showing username + "Мои сохранения" (opens MySavesDialog) + "Выйти" (POST /api/auth/logout then clears local state). If not logged in: shows AuthScreen above the create/join room card. "Продолжить" in MySavesDialog calls onEntered(roomCode, charName) to resume the saved campaign.
+  tsc + lint clean. Committed 47b60e7.
+- Item 7 (Room create/join save-slot binding + levelup bump):
+  - Created src/lib/auth/save-slot.ts with helpers: validateSlotNumber(slot) → 1..3 or null; upsertSaveSlotForPlayer({ accountId, slotNumber, roomId, playerId, charName, charClass, charRace, charLevel, name? }) — uses upsert on the [accountId, slotNumber] unique key; bumpSaveSlotLevel({ accountId, roomId, playerId, newLevel }) — updateMany that mirrors new level + lastPlayed.
+  - Updated /api/game/room/create: After createRoomWithHost, if authenticated (cookie) AND body.slotNumber is a valid 1..3, sets Room.hostAccountId = account.id and upserts the SaveSlot with charName=playerName, charClass=preset.charClass, charRace=race.name, charLevel=1. Failures are logged + swallowed (don't block room creation). Response now includes slotBound boolean.
+  - Updated /api/game/room/join: Same pattern after joinRoomAsPlayer — upserts SaveSlot on auth + valid slotNumber.
+  - Updated /api/game/levelup: Added maybeBumpSaveSlot(req, roomId, playerId, snapshot) helper called in BOTH the ASI branch and the talent branch (after the snapshot re-fetch). If authenticated, finds the player in the refreshed snapshot, calls bumpSaveSlotLevel with the new level. Failures logged + swallowed.
+  tsc + lint clean. Committed 25023ee.
+
+Stage Summary:
+- 7 features implemented across 7 commits (one per item):
+  1. Account + SaveSlot Prisma models + Room.hostAccountId — 16a8dfa
+  2. Session helpers (HMAC-SHA256 signed cookies, 30-day, httpOnly+SameSite=Lax+Secure-in-prod) + getAccountFromRequest — 32095d0
+  3. Auth API routes (register with bcrypt + 3/10min rate limit, login with timing-safe dummy-hash compare + 5/10min rate limit, logout, me) — 40311a4
+  4. Saves API (list 3 slots with null fills, delete with ownership, update/rename) — f5f878f
+  5. /api/game/translate (sequential batch LLM translation of up to 50 chat messages, sanitizeLLMOutput applied) — a656ca9
+  6. AuthScreen (Tabs login/register with client validation) + MySavesDialog (3 slots, rename/delete/continue) + Lobby integration (auto-restore session, account bar, saves dialog, logout) — 47b60e7
+  7. Save-slot binding on room create (sets hostAccountId + upserts slot) + room join (upserts slot) + levelup bumps charLevel + lastPlayed on matched slots — 25023ee
+- bunx tsc --noEmit: 0 errors (clean).
+- bun run lint: 0 errors, 0 warnings (clean).
+- bun run db:push: ran successfully after Item 1 schema changes (Account + SaveSlot + Room.hostAccountId added).
+- bun run build: ✓ SUCCEEDED — all 29 routes compile, including the 4 new auth routes (/api/auth/{login,logout,me,register}), the 3 new saves routes (/api/game/saves/{list,delete,update}), and the new /api/game/translate route. This was the critical Railway build fix.
+- New files: prisma/schema.prisma (models added), src/lib/auth/{session,get-account,save-slot}.ts, src/app/api/auth/{register,login,logout,me}/route.ts, src/app/api/game/saves/{list,delete,update}/route.ts, src/app/api/game/translate/route.ts, src/components/dnd/{AuthScreen,MySavesDialog}.tsx.
+- Updated files: src/components/dnd/Lobby.tsx (auth integration), src/app/api/game/room/{create,join}/route.ts (save-slot binding + hostAccountId), src/app/api/game/levelup/route.ts (slot level bump).
+- Constraints honoured: bcryptjs (already in package.json) used for password hashing; existing shadcn/ui components (Tabs, Dialog, Card, Button, Input, Badge) used throughout; all user-facing text in Russian; did NOT edit llm.ts, dm-agent.ts, state.ts, CombatGrid.tsx, or page.tsx; all schema changes pushed via `bun run db:push`.
+- Auth flow: anonymous play still works (no cookie → no slot binding, just create/join room as before). Authenticated users get 3 persistent save slots that bind on room create/join and bump charLevel on level-up, restorable from the Lobby via "Мои сохранения" → "Продолжить".
+- Build verified end-to-end: `bun run build` produced .next/standalone successfully — the Railway build failure (missing bcryptjs + missing auth/translate routes) is resolved.
