@@ -10,6 +10,7 @@ import {
 import { randomStartLocation } from "./locations";
 import { generateDungeonMap } from "./world-map";
 import { inferEquipProps } from "./item-props";
+import { randomBiomeId } from "./dungeon-biomes";
 
 /** Serialize a Partial<Stats> into a JSON string for storage. */
 function serializeEquipStats(stats: Partial<Record<"str" | "dex" | "con" | "int" | "wis" | "cha", number>>): string {
@@ -58,9 +59,14 @@ export async function seedRoomContent(roomId: string, input: CreatePlayerInput) 
   // Update the room's location label.
   await db.room.update({ where: { id: roomId }, data: { location: loc.name } });
 
+  // Pick a random biome for the procedural dungeon (Пункт 36).
+  const biomeId = randomBiomeId();
+
   // Generate a procedural dungeon map for the room (entrance auto-discovered).
+  // The biome drives themed room labels + per-room-type image prompts; depth
+  // scales the room count (1 → 8 rooms).
   try {
-    await generateDungeonMap(roomId, 1);
+    await generateDungeonMap(roomId, 1, biomeId);
   } catch (e) {
     console.error("[seed] generateDungeonMap failed:", e);
   }

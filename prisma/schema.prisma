@@ -50,6 +50,7 @@ model Room {
   quests       Quest[]
   mapRooms     MapRoom[]
   npcs         Npc[]
+  traps        Trap[]
 }
 
 /// A player character belonging to a room (a party member).
@@ -296,4 +297,24 @@ model Npc {
   @@unique([roomId, name])
   @@index([roomId, role])
   @@index([roomId, isAlive])
+}
+
+/// A trap placed in a dungeon room (Пункт 36). Triggers when a player steps on
+/// its (x, y) cell unless discovered (Perception) or disarmed (Thieves' Tools).
+model Trap {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /// MapRoom key this trap belongs to ("x,y") — for grouping traps per room.
+  mapRoomKey  String   @default("")
+  x           Int      @default(0)
+  y           Int      @default(0)
+  type        String   @default("spike") // spike | pit | arrow | poison | rune | fire
+  damage      Int      @default(2)       // number of d6 dice rolled on trigger
+  dc          Int      @default(13)      // perception DC to detect + DEX save DC for half
+  discovered  Boolean  @default(false)
+  disarmed    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([roomId, mapRoomKey])
 }

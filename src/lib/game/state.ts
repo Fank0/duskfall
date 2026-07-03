@@ -320,7 +320,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
 
   // Take only the last 100 chat messages (descending then reverse to keep asc order).
   // Older messages are loadable on demand via /api/game/chat-history.
-  const [players, monsters, inventory, chatDesc, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs] = await Promise.all([
+  const [players, monsters, inventory, chatDesc, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs, trapRows] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
@@ -332,6 +332,9 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     db.quest.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.mapRoom.findMany({ where: { roomId: room.id }, orderBy: [{ y: "asc" }, { x: "asc" }] }),
     db.npc.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    // Traps (Пункт 36): only discovered traps reach the client. Disarmed traps
+    // are still shown (so the player can see they were neutralized).
+    db.trap.findMany({ where: { roomId: room.id, discovered: true } }),
   ]);
   // Reverse the chat so the snapshot exposes ascending chronological order.
   const chat = chatDesc.slice().reverse();
@@ -371,9 +374,14 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
       return { x, y, itemName: it.itemName };
     });
 
-  // ===== Traps (item 20) =====
-  // No Trap model exists yet — DM can populate later. Return empty array for now.
-  const traps: { x: number; y: number; discovered: boolean }[] = [];
+  // ===== Traps (Пункт 36) =====
+  // Only discovered traps reach the client (so hidden traps aren't spoiled).
+  // Disarmed traps are still listed so the player can see they were neutralized.
+  const traps: { x: number; y: number; discovered: boolean }[] = trapRows.map((t) => ({
+    x: t.x,
+    y: t.y,
+    discovered: Boolean(t.discovered),
+  }));
 
   const snapshot: GameStateSnapshot = {
     roomCode: room.code,
