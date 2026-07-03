@@ -8,6 +8,7 @@ import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, Book
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
+import { BottomPanel } from "@/components/dnd/BottomPanel";
 import type { AoEOverlay, CombatAnimEvent } from "@/components/dnd/CombatGrid";
 import { SceneViewer } from "@/components/dnd/SceneViewer";
 import { ChatPanel } from "@/components/dnd/ChatPanel";
@@ -994,97 +995,93 @@ export default function Home() {
       </header>
 
       {/* ===== Main =====
-        Layout per user's hand-drawn plan:
-          LEFT  (~20%): Character sheet (stats, abilities, equipment, inventory)
-          CENTER (~60%): Scene image + tactical grid
-          RIGHT (~20%): Chat panel (DM narrative + action input + quick actions)
-        No `order` classes — HTML order = visual order (left → right on desktop,
-        top → bottom on mobile).
+        Layout per user's hand-drawn plan (verified 4×):
+          TOP-LEFT   (~25%): PartyPanel → CombatGrid (square) → DiceLog (small)
+          TOP-CENTER (~50%): ChatPanel (dialogue — full height of top section)
+          TOP-RIGHT  (~25%): SceneViewer (16:9) → CharacterSheet (stats)
+          BOTTOM (full width): BottomPanel — inventory + abilities + spell slots
+        HTML order = visual order.
       */}
-      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row sm:p-4">
-        {/* ===== LEFT: Character sheet + dice log ===== */}
-        <aside className="flex flex-col gap-3 lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
-          {you && (
-            <CharacterSheet
-              player={you}
-              inventory={yourInventory}
-              isYou
-              isTurn={isYourTurn && snapshot.combatActive}
-              conditions={snapshot.conditions.filter((c) => c.targetName === you.name)}
-              onEquip={equipItem}
-              onUnequip={unequipItem}
-              hasAlchemy={snapshot.hasAlchemy}
-              hasForge={snapshot.hasForge}
-              hasEnchant={snapshot.hasEnchant}
-              onCraft={craftItem}
-              /*
-               * Quick-use system (restored): clicking an ability or inventory
-               * item in your sheet sends a contextual action to the DM via the
-               * chat / action stream — e.g. clicking "Огненный шар" sends
-               * `Я использую "Огненный шар" против врага!`. The handler is the
-               * same sendAction the chat input uses, so it routes through the
-               * SSE mechanics pipeline (dice rolls, HP changes, etc.).
-               */
-              onQuickAction={sendAction}
+      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
+        {/* ===== TOP: 3 columns ===== */}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          {/* ===== LEFT: Party → Grid → Dice ===== */}
+          <aside className="flex flex-col gap-3 lg:w-[25%] lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
+            <PartyPanel
+              players={snapshot.players}
+              youName={session.playerName}
+              currentTurnName={snapshot.currentTurnName}
             />
-          )}
-          <DiceLog rolls={snapshot.diceLog} />
-        </aside>
+            <CombatGrid
+              players={snapshot.players}
+              monsters={snapshot.monsters}
+              combatActive={snapshot.combatActive}
+              round={snapshot.round}
+              currentTurnName={snapshot.currentTurnName}
+              conditions={snapshot.conditions}
+              aoe={lastAoe}
+              lastAnimEvent={lastAnimEvent}
+              gridExtras={{
+                lootCells: snapshot.lootCells,
+                traps: snapshot.traps,
+              }}
+            />
+            <DiceLog rolls={snapshot.diceLog} />
+          </aside>
 
-        {/* ===== CENTER: Party strip + scene + tactical grid ===== */}
-        <section className="flex min-h-0 flex-1 flex-col gap-3 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
-          {/* Party panel — compact horizontal strip above the scene */}
-          <PartyPanel
-            players={snapshot.players}
-            youName={session.playerName}
-            currentTurnName={snapshot.currentTurnName}
-          />
-          <SceneViewer
-            scene={snapshot.scene}
-            isGenerating={isGeneratingImage}
-            location={snapshot.location}
-            timeOfDay={snapshot.timeOfDay}
-            weather={snapshot.weather}
-          />
-          <CombatGrid
-            players={snapshot.players}
-            monsters={snapshot.monsters}
-            combatActive={snapshot.combatActive}
-            round={snapshot.round}
-            currentTurnName={snapshot.currentTurnName}
-            conditions={snapshot.conditions}
-            aoe={lastAoe}
-            lastAnimEvent={lastAnimEvent}
-            gridExtras={{
-              lootCells: snapshot.lootCells,
-              traps: snapshot.traps,
-            }}
-          />
-        </section>
+          {/* ===== CENTER: Chat (full height of top section) ===== */}
+          <section className="h-[55vh] min-h-0 shrink-0 lg:h-full lg:flex-1">
+            <ChatPanel
+              messages={snapshot.chat}
+              isThinking={isThinking}
+              isYourTurn={isYourTurn}
+              isDead={isDead}
+              combatActive={snapshot.combatActive}
+              yourName={session.playerName}
+              currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
+              onSend={sendAction}
+              onRest={handleRest}
+              roomCode={session.roomCode}
+              ttsEnabled={settings.ttsEnabled}
+            />
+          </section>
 
-        {/* ===== RIGHT: Chat panel (DM narrative + actions) ===== */}
-        <section className="h-[65vh] min-h-0 shrink-0 lg:h-full lg:w-[400px]">
-          <ChatPanel
-            messages={snapshot.chat}
-            isThinking={isThinking}
-            isYourTurn={isYourTurn}
-            isDead={isDead}
-            combatActive={snapshot.combatActive}
-            yourName={session.playerName}
-            currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
-            onSend={sendAction}
-            onRest={handleRest}
-            roomCode={session.roomCode}
-            /*
-             * Pass ttsEnabled to ChatPanel (task tts-voice-dm). When true,
-             * ChatPanel auto-triggers TTS for the latest DM message after the
-             * SSE stream ends (i.e. once the "streaming" placeholder bubble
-             * resolves to a persisted DB id via fetchState). System messages
-             * and player messages are never sent to TTS — only DM role ones.
-             */
-            ttsEnabled={settings.ttsEnabled}
+          {/* ===== RIGHT: Scene → Character sheet (stats only) ===== */}
+          <aside className="flex flex-col gap-3 lg:w-[25%] lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
+            <SceneViewer
+              scene={snapshot.scene}
+              isGenerating={isGeneratingImage}
+              location={snapshot.location}
+              timeOfDay={snapshot.timeOfDay}
+              weather={snapshot.weather}
+            />
+            {you && (
+              <CharacterSheet
+                player={you}
+                inventory={yourInventory}
+                isYou
+                isTurn={isYourTurn && snapshot.combatActive}
+                conditions={snapshot.conditions.filter((c) => c.targetName === you.name)}
+                onEquip={equipItem}
+                onUnequip={unequipItem}
+                hasAlchemy={snapshot.hasAlchemy}
+                hasForge={snapshot.hasForge}
+                hasEnchant={snapshot.hasEnchant}
+                onCraft={craftItem}
+                onQuickAction={sendAction}
+              />
+            )}
+          </aside>
+        </div>
+
+        {/* ===== BOTTOM: Full-width inventory + abilities + spells ===== */}
+        {you && (
+          <BottomPanel
+            player={you}
+            inventory={yourInventory}
+            onQuickAction={sendAction}
           />
-        </section>
+        )}
       </main>
 
       {/* ===== Footer ===== */}
