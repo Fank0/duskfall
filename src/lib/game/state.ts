@@ -14,6 +14,7 @@ import type {
   SceneState,
   InitiativeEntryState,
   ConditionState,
+  QuestState,
   ResolvedRoll,
   InventoryChange,
 } from "./types";
@@ -183,6 +184,22 @@ function toCondition(c: any): ConditionState {
   };
 }
 
+function toQuest(q: any): QuestState {
+  return {
+    id: q.id,
+    title: q.title,
+    description: q.description ?? "",
+    status: (q.status ?? "active") as "active" | "completed" | "failed",
+    objectives: (q.objectives ?? "")
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean),
+    reward: q.reward ?? "",
+    createdAt: q.createdAt.toISOString(),
+    updatedAt: q.updatedAt.toISOString(),
+  };
+}
+
 // ---------- room helpers ----------
 export async function getRoomByCode(code: string) {
   const c = String(code || "").toUpperCase().trim();
@@ -208,7 +225,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
   const room = await getRoomByCode(roomCode);
   if (!room) return null;
 
-  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions] = await Promise.all([
+  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions, quests] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
@@ -217,6 +234,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     db.scene.findFirst({ where: { roomId: room.id, isActive: true }, orderBy: { createdAt: "desc" } }),
     db.initiativeEntry.findMany({ where: { roomId: room.id }, orderBy: { order: "asc" } }),
     db.condition.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    db.quest.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
   ]);
 
   const order = initiatives;
@@ -240,6 +258,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     currentTurnType: (currentEntry?.combatantType as "player" | "monster") ?? null,
     currentExplorerName: room.combatActive ? null : (players.filter((p) => p.isAlive && p.hp > 0)[room.explorationActorIndex % Math.max(1, players.filter((p) => p.isAlive && p.hp > 0).length)]?.name ?? players[0]?.name ?? null),
     conditions: conditions.map(toCondition),
+    quests: quests.map(toQuest),
   };
 }
 
@@ -324,6 +343,17 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       lines.push(
         `${c.targetName} (${c.targetType}): ${icon} ${nameRu} — ${c.duration} раундов. Источник: ${c.source || "—"}.`
       );
+    }
+  }
+
+  // Active quests (for the DM to know what's pending).
+  const activeQuests = snap.quests.filter((q) => q.status === "active");
+  if (activeQuests.length > 0) {
+    lines.push("=== Журнал квестов (активные) ===");
+    for (const q of activeQuests) {
+      const objs = q.objectives.length > 0 ? ` | Цели: ${q.objectives.join(", ")}` : "";
+      const rew = q.reward ? ` | Награда: ${q.reward}` : "";
+      lines.push(`«${q.title}» — ${q.description || "(без описания)"}${objs}${rew}`);
     }
   }
 
@@ -936,4 +966,47 @@ export function computeAoECells(
     }
   }
   return cells;
+}
+
+// ---------- Quest Journal ----------
+/** Create a new quest in the room's journal. Returns the created quest. */
+export async function createQuest(
+  roomId: string,
+  title: string,
+  description = "",
+  objectives = "",
+  reward = ""
+): Promise<QuestState | null> {
+  const cleanTitle = (title || "").trim().slice(0, 120);
+  if (!cleanTitle) return null;
+  const q = await db.quest.create({
+    data: {
+      roomId,
+      title: cleanTitle,
+      description: (description || "").trim().slice(0, 600),
+      objectives: (objectives || "").trim().slice(0, 400),
+      reward: (reward || "").trim().slice(0, 200),
+      status: "active",
+    },
+  });
+  return toQuest(q);
+}
+
+/** Update the status of an existing quest (active → completed/failed). */
+export async function updateQuestStatus(
+  roomId: string,
+  questId: string,
+  status: "active" | "completed" | "failed"
+): Promise<boolean> {
+  const res = await db.quest.updateMany({
+    where: { id: questId, roomId },
+    data: { status },
+  });
+  return res.count > 0;
+}
+
+/** Fetch all quests for a room (any status). */
+export async function getQuests(roomId: string): Promise<QuestState[]> {
+  const list = await db.quest.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+  return list.map(toQuest);
 }

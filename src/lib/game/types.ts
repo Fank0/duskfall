@@ -43,6 +43,18 @@ export interface OutcomeEffects {
   sceneChange?: boolean;
   /** Conditions applied to a player/monster by this outcome. */
   conditions?: PlannedCondition[];
+  /** Optional quest journal update — create a new quest or change an existing one's status. */
+  quest?: PlannedQuest | null;
+}
+
+/** A quest the DM planned to add/update in the room's journal. */
+export interface PlannedQuest {
+  title: string;
+  description?: string;
+  objectives?: string;
+  reward?: string;
+  /** "active" creates a new quest; "completed"/"failed" can update an existing quest with the same title. */
+  status: "active" | "completed" | "failed";
 }
 
 /** A condition the DM planned to apply to a target. */
@@ -252,6 +264,18 @@ export interface ConditionState {
   createdAt: string;
 }
 
+/** A quest tracked in the room's quest journal. */
+export interface QuestState {
+  id: string;
+  title: string;
+  description: string;
+  status: "active" | "completed" | "failed";
+  objectives: string[];
+  reward: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface GameStateSnapshot {
   roomCode: string;
   hostName: string;
@@ -273,6 +297,8 @@ export interface GameStateSnapshot {
   currentExplorerName: string | null;
   /** active conditions on every player/monster in the room */
   conditions: ConditionState[];
+  /** quests tracked in the room's journal */
+  quests: QuestState[];
 }
 
 export interface Stats {

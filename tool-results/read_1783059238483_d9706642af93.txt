@@ -1,0 +1,940 @@
+     1→     1→// Database helpers: fetch / mutate the room-scoped D&D game state.
+     2→     2→
+     3→     3→import { db } from "@/lib/db";
+     4→     4→import { abilityModifier } from "./dice";
+     5→     5→import { rollD20 } from "./dice";
+     6→     6→import { CONDITIONS, getCondition } from "./conditions";
+     7→     7→import type {
+     8→     8→  GameStateSnapshot,
+     9→     9→  PlayerState,
+    10→    10→  MonsterState,
+    11→    11→  InventoryItemState,
+    12→    12→  ChatMessageState,
+    13→    13→  DiceRollState,
+    14→    14→  SceneState,
+    15→    15→  InitiativeEntryState,
+    16→    16→  ConditionState,
+    17→    17→  ResolvedRoll,
+    18→    18→  InventoryChange,
+    19→    19→} from "./types";
+    20→    20→
+    21→    21→export const GRID_SIZE = 10;
+    22→    22→
+    23→    23→// ---------- mappers ----------
+    24→    24→function parseSpellSlots(raw: string | null | undefined): Record<string, number> {
+    25→    25→  if (!raw) return {};
+    26→    26→  try {
+    27→    27→    const parsed = JSON.parse(raw);
+    28→    28→    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    29→    29→      const out: Record<string, number> = {};
+    30→    30→      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    31→    31→        out[k] = Math.max(0, Math.floor(Number(v) || 0));
+    32→    32→      }
+    33→    33→      return out;
+    34→    34→    }
+    35→    35→  } catch {
+    36→    36→    /* ignore */
+    37→    37→  }
+    38→    38→  return {};
+    39→    39→}
+    40→    40→
+    41→    41→function toPlayer(p: any): PlayerState {
+    42→    42→  return {
+    43→    43→    id: p.id,
+    44→    44→    name: p.name,
+    45→    45→    charClass: p.charClass,
+    46→    46→    level: p.level,
+    47→    47→    hp: p.hp,
+    48→    48→    maxHp: p.maxHp,
+    49→    49→    ac: p.ac,
+    50→    50→    str: p.str,
+    51→    51→    dex: p.dex,
+    52→    52→    con: p.con,
+    53→    53→    int: p.int,
+    54→    54→    wis: p.wis,
+    55→    55→    cha: p.cha,
+    56→    56→    proficiencyBonus: p.proficiencyBonus,
+    57→    57→    gold: p.gold,
+    58→    58→    posX: p.posX,
+    59→    59→    posY: p.posY,
+    60→    60→    color: p.color,
+    61→    61→    weaponName: p.weaponName,
+    62→    62→    weaponNotation: p.weaponNotation,
+    63→    63→    portraitUrl: p.portraitUrl,
+    64→    64→    isHost: p.isHost,
+    65→    65→    isAlive: p.isAlive,
+    66→    66→    race: p.race,
+    67→    67→    raceName: p.raceName,
+    68→    68→    background: p.background,
+    69→    69→    backgroundName: p.backgroundName,
+    70→    70→    xp: p.xp,
+    71→    71→    selectedTalents: p.selectedTalents ? p.selectedTalents.split(",").filter(Boolean) : [],
+    72→    72→    bonusStr: p.bonusStr,
+    73→    73→    bonusDex: p.bonusDex,
+    74→    74→    bonusCon: p.bonusCon,
+    75→    75→    bonusInt: p.bonusInt,
+    76→    76→    bonusWis: p.bonusWis,
+    77→    77→    bonusCha: p.bonusCha,
+    78→    78→    pendingLevelUp: p.pendingLevelUp,
+    79→    79→    spellSlots: parseSpellSlots(p.spellSlots),
+    80→    80→    maxSpellSlots: parseSpellSlots(p.maxSpellSlots),
+    81→    81→    hitDice: p.hitDice ?? 8,
+    82→    82→  };
+    83→    83→}
+    84→    84→
+    85→    85→function toMonster(m: any): MonsterState {
+    86→    86→  return {
+    87→    87→    id: m.id,
+    88→    88→    name: m.name,
+    89→    89→    label: m.label,
+    90→    90→    hp: m.hp,
+    91→    91→    maxHp: m.maxHp,
+    92→    92→    ac: m.ac,
+    93→    93→    damageNotation: m.damageNotation,
+    94→    94→    attackBonus: m.attackBonus,
+    95→    95→    posX: m.posX,
+    96→    96→    posY: m.posY,
+    97→    97→    color: m.color,
+    98→    98→    description: m.description,
+    99→    99→    isActive: m.isActive,
+   100→   100→  };
+   101→   101→}
+   102→   102→
+   103→   103→function toInventory(i: any): InventoryItemState {
+   104→   104→  return {
+   105→   105→    id: i.id,
+   106→   106→    playerName: i.playerName,
+   107→   107→    itemName: i.itemName,
+   108→   108→    itemType: i.itemType,
+   109→   109→    quantity: i.quantity,
+   110→   110→    description: i.description,
+   111→   111→  };
+   112→   112→}
+   113→   113→
+   114→   114→function toChat(c: any): ChatMessageState {
+   115→   115→  return {
+   116→   116→    id: c.id,
+   117→   117→    role: c.role,
+   118→   118→    speaker: c.speaker,
+   119→   119→    content: c.content,
+   120→   120→    imageUrl: c.imageUrl,
+   121→   121→    round: c.round,
+   122→   122→    createdAt: c.createdAt.toISOString(),
+   123→   123→  };
+   124→   124→}
+   125→   125→
+   126→   126→function toDice(d: any): DiceRollState {
+   127→   127→  let allRolls: number[] | null = null;
+   128→   128→  if (d.allRolls) {
+   129→   129→    try {
+   130→   130→      const parsed = JSON.parse(d.allRolls);
+   131→   131→      if (Array.isArray(parsed)) allRolls = parsed.map((n: any) => Number(n));
+   132→   132→    } catch {
+   133→   133→      allRolls = null;
+   134→   134→    }
+   135→   135→  }
+   136→   136→  return {
+   137→   137→    id: d.id,
+   138→   138→    round: d.round,
+   139→   139→    roller: d.roller,
+   140→   140→    label: d.label,
+   141→   141→    notation: d.notation,
+   142→   142→    modifier: d.modifier,
+   143→   143→    result: d.result,
+   144→   144→    total: d.total,
+   145→   145→    target: d.target,
+   146→   146→    success: d.success,
+   147→   147→    advantageMode: d.advantageMode ?? null,
+   148→   148→    allRolls,
+   149→   149→    createdAt: d.createdAt.toISOString(),
+   150→   150→  };
+   151→   151→}
+   152→   152→
+   153→   153→function toScene(s: any): SceneState {
+   154→   154→  return {
+   155→   155→    id: s.id,
+   156→   156→    imageUrl: s.imageUrl,
+   157→   157→    prompt: s.prompt,
+   158→   158→    title: s.title,
+   159→   159→  };
+   160→   160→}
+   161→   161→
+   162→   162→function toInitiative(i: any): InitiativeEntryState {
+   163→   163→  return {
+   164→   164→    id: i.id,
+   165→   165→    combatantName: i.combatantName,
+   166→   166→    combatantType: i.combatantType,
+   167→   167→    initiative: i.initiative,
+   168→   168→    order: i.order,
+   169→   169→    monsterId: i.monsterId,
+   170→   170→    isAlive: i.isAlive,
+   171→   171→  };
+   172→   172→}
+   173→   173→
+   174→   174→function toCondition(c: any): ConditionState {
+   175→   175→  return {
+   176→   176→    id: c.id,
+   177→   177→    targetName: c.targetName,
+   178→   178→    targetType: c.targetType,
+   179→   179→    condition: c.condition,
+   180→   180→    duration: c.duration,
+   181→   181→    source: c.source,
+   182→   182→    createdAt: c.createdAt.toISOString(),
+   183→   183→  };
+   184→   184→}
+   185→   185→
+   186→   186→// ---------- room helpers ----------
+   187→   187→export async function getRoomByCode(code: string) {
+   188→   188→  const c = String(code || "").toUpperCase().trim();
+   189→   189→  if (!c) return null;
+   190→   190→  return db.room.findUnique({ where: { code: c } });
+   191→   191→}
+   192→   192→
+   193→   193→/** Generate a unique 6-char room code. */
+   194→   194→export async function generateRoomCode(): Promise<string> {
+   195→   195→  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no confusing chars
+   196→   196→  for (let attempt = 0; attempt < 20; attempt++) {
+   197→   197→    let code = "";
+   198→   198→    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+   199→   199→    const exists = await db.room.findUnique({ where: { code } });
+   200→   200→    if (!exists) return code;
+   201→   201→  }
+   202→   202→  // Fallback (extremely unlikely collision)
+   203→   203→  return "DND" + Math.floor(1000 + Math.random() * 9000);
+   204→   204→}
+   205→   205→
+   206→   206→// ---------- snapshot ----------
+   207→   207→export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot | null> {
+   208→   208→  const room = await getRoomByCode(roomCode);
+   209→   209→  if (!room) return null;
+   210→   210→
+   211→   211→  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions] = await Promise.all([
+   212→   212→    db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+   213→   213→    db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+   214→   214→    db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+   215→   215→    db.chatMessage.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+   216→   216→    db.diceRoll.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, take: 50 }),
+   217→   217→    db.scene.findFirst({ where: { roomId: room.id, isActive: true }, orderBy: { createdAt: "desc" } }),
+   218→   218→    db.initiativeEntry.findMany({ where: { roomId: room.id }, orderBy: { order: "asc" } }),
+   219→   219→    db.condition.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+   220→   220→  ]);
+   221→   221→
+   222→   222→  const order = initiatives;
+   223→   223→  const currentEntry = order[room.turnIndex] ?? null;
+   224→   224→
+   225→   225→  return {
+   226→   226→    roomCode: room.code,
+   227→   227→    hostName: room.hostName,
+   228→   228→    players: players.map(toPlayer),
+   229→   229→    monsters: monsters.map(toMonster),
+   230→   230→    inventory: inventory.map(toInventory),
+   231→   231→    chat: chat.map(toChat),
+   232→   232→    diceLog: diceLog.map(toDice),
+   233→   233→    scene: activeScene ? toScene(activeScene) : null,
+   234→   234→    initiatives: order.map(toInitiative),
+   235→   235→    combatActive: room.combatActive,
+   236→   236→    round: room.round,
+   237→   237→    location: room.location,
+   238→   238→    turnIndex: room.turnIndex,
+   239→   239→    currentTurnName: currentEntry?.combatantName ?? null,
+   240→   240→    currentTurnType: (currentEntry?.combatantType as "player" | "monster") ?? null,
+   241→   241→    currentExplorerName: room.combatActive ? null : (players.filter((p) => p.isAlive && p.hp > 0)[room.explorationActorIndex % Math.max(1, players.filter((p) => p.isAlive && p.hp > 0).length)]?.name ?? players[0]?.name ?? null),
+   242→   242→    conditions: conditions.map(toCondition),
+   243→   243→  };
+   244→   244→}
+   245→   245→
+   246→   246→// ---------- DM context ----------
+   247→   247→/** Return a compact, DM-readable summary of the room's current situation. */
+   248→   248→export async function getDMContext(roomCode: string, actorName: string): Promise<string> {
+   249→   249→  const snap = await getSnapshot(roomCode);
+   250→   250→  if (!snap) return "Комната не найдена.";
+   251→   251→  const lines: string[] = [];
+   252→   252→  lines.push(
+   253→   253→    `=== Состояние игры ===\nЛокация: ${snap.location}\nРаунд: ${snap.round}\nБой активен: ${snap.combatActive ? "да" : "нет"}`
+   254→   254→  );
+   255→   255→  lines.push(`Действует сейчас: ${actorName}`);
+   256→   256→
+   257→   257→  const alivePlayers = snap.players.filter((p) => p.isAlive && p.hp > 0);
+   258→   258→  lines.push(`=== Группа (${alivePlayers.length} в строю) ===`);
+   259→   259→  for (const p of snap.players) {
+   260→   260→    const mod = (k: number) => abilityModifier(k);
+   261→   261→    const status = p.isAlive && p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : "ПАЛ";
+   262→   262→    const slotEntries = Object.entries(p.maxSpellSlots).filter(([, v]) => v > 0);
+   263→   263→    const slotInfo =
+   264→   264→      slotEntries.length > 0
+   265→   265→        ? ` | Ячейки заклинаний: ${slotEntries
+   266→   266→            .map(([lv, max]) => `ур.${lv}:${p.spellSlots[lv] ?? 0}/${max}`)
+   267→   267→            .join(", ")}`
+   268→   268→        : "";
+   269→   269→    lines.push(
+   270→   270→      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo} | Позиция (${p.posX},${p.posY})`
+   271→   271→    );
+   272→   272→  }
+   273→   273→
+   274→   274→  const items = snap.inventory;
+   275→   275→  if (items.length > 0) {
+   276→   276→    const byPlayer = new Map<string, string[]>();
+   277→   277→    for (const it of items) {
+   278→   278→      if (!byPlayer.has(it.playerName)) byPlayer.set(it.playerName, []);
+   279→   279→      const scrollTag = it.itemType === "scroll" ? " [расходуемое заклинание-свиток]" : "";
+   280→   280→      byPlayer.get(it.playerName)!.push(`${it.itemName} x${it.quantity}${scrollTag}`);
+   281→   281→    }
+   282→   282→    for (const [name, list] of byPlayer) {
+   283→   283→      lines.push(`Инвентарь ${name}: ${list.join(", ")}`);
+   284→   284→    }
+   285→   285→  }
+   286→   286→
+   287→   287→  const activeMonsters = snap.monsters.filter((m) => m.isActive);
+   288→   288→  const hiddenMonsters = snap.monsters.filter((m) => !m.isActive);
+   289→   289→  if (activeMonsters.length > 0) {
+   290→   290→    lines.push("=== Противники (на сетке) ===");
+   291→   291→    for (const m of activeMonsters) {
+   292→   292→      lines.push(
+   293→   293→        `${m.name} (${m.label}): HP ${m.hp}/${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY})`
+   294→   294→      );
+   295→   295→    }
+   296→   296→  }
+   297→   297→  if (hiddenMonsters.length > 0) {
+   298→   298→    lines.push("=== Скрытые угрозы (появятся, если начнётся бой) ===");
+   299→   299→    for (const m of hiddenMonsters) {
+   300→   300→      lines.push(
+   301→   301→        `${m.name} (${m.label}): HP ${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY}) | ${m.description}`
+   302→   302→      );
+   303→   303→    }
+   304→   304→  }
+   305→   305→  if (activeMonsters.length === 0 && hiddenMonsters.length === 0) {
+   306→   306→    lines.push("Противники: нет");
+   307→   307→  }
+   308→   308→
+   309→   309→  if (snap.combatActive && snap.initiatives.length > 0) {
+   310→   310→    lines.push("=== Порядок инициативы ===");
+   311→   311→    snap.initiatives.forEach((e, i) => {
+   312→   312→      const cur = i === snap.turnIndex ? " <- СЕЙЧАС" : "";
+   313→   313→      lines.push(`${i + 1}. ${e.combatantName} (${e.combatantType}, инициатива ${e.initiative})${cur}`);
+   314→   314→    });
+   315→   315→  }
+   316→   316→
+   317→   317→  // Active conditions per target.
+   318→   318→  if (snap.conditions.length > 0) {
+   319→   319→    lines.push("=== Активные состояния ===");
+   320→   320→    for (const c of snap.conditions) {
+   321→   321→      const def = getCondition(c.condition);
+   322→   322→      const nameRu = def?.name ?? c.condition;
+   323→   323→      const icon = def?.icon ?? "❓";
+   324→   324→      lines.push(
+   325→   325→        `${c.targetName} (${c.targetType}): ${icon} ${nameRu} — ${c.duration} раундов. Источник: ${c.source || "—"}.`
+   326→   326→      );
+   327→   327→    }
+   328→   328→  }
+   329→   329→
+   330→   330→  const recent = snap.chat.slice(-6);
+   331→   331→  if (recent.length > 0) {
+   332→   332→    lines.push("=== Недавние события ===");
+   333→   333→    for (const c of recent) {
+   334→   334→      const who = c.role === "player" ? `Игрок ${c.speaker}` : c.role === "system" ? "Система" : "Мастер";
+   335→   335→      lines.push(`${who}: ${c.content.slice(0, 300)}`);
+   336→   336→    }
+   337→   337→  }
+   338→   338→  return lines.join("\n");
+   339→   339→}
+   340→   340→
+   341→   341→// ---------- mutations ----------
+   342→   342→export async function logDiceRoll(
+   343→   343→  roomId: string,
+   344→   344→  round: number,
+   345→   345→  roller: string,
+   346→   346→  roll: ResolvedRoll
+   347→   347→): Promise<void> {
+   348→   348→  await db.diceRoll.create({
+   349→   349→    data: {
+   350→   350→      roomId,
+   351→   351→      round,
+   352→   352→      roller,
+   353→   353→      label: roll.label,
+   354→   354→      notation: roll.notation,
+   355→   355→      modifier: roll.modifier,
+   356→   356→      result: roll.result,
+   357→   357→      total: roll.total,
+   358→   358→      target: roll.target ?? null,
+   359→   359→      success: roll.success ?? null,
+   360→   360→      advantageMode: roll.advantageMode ?? null,
+   361→   361→      allRolls: roll.allRolls && roll.allRolls.length > 0 ? JSON.stringify(roll.allRolls) : null,
+   362→   362→    },
+   363→   363→  });
+   364→   364→}
+   365→   365→
+   366→   366→export async function damageMonster(roomId: string, monsterId: string, amount: number) {
+   367→   367→  const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
+   368→   368→  if (!m) return { hp: 0, died: false };
+   369→   369→  const newHp = Math.max(0, m.hp - amount);
+   370→   370→  await db.monster.update({
+   371→   371→    where: { id: m.id },
+   372→   372→    data: { hp: newHp, isActive: newHp > 0 },
+   373→   373→  });
+   374→   374→  // Keep initiative entry alive-state in sync.
+   375→   375→  if (newHp <= 0) {
+   376→   376→    await db.initiativeEntry.updateMany({
+   377→   377→      where: { roomId, combatantName: m.name },
+   378→   378→      data: { isAlive: false },
+   379→   379→    });
+   380→   380→  }
+   381→   381→  return { hp: newHp, died: newHp <= 0 };
+   382→   382→}
+   383→   383→
+   384→   384→export async function damagePlayer(roomId: string, name: string, amount: number) {
+   385→   385→  const p = await db.player.findFirst({ where: { name, roomId } });
+   386→   386→  if (!p) return { hp: 0, died: false };
+   387→   387→  const newHp = Math.max(0, p.hp - amount);
+   388→   388→  const died = newHp <= 0;
+   389→   389→  await db.player.update({
+   390→   390→    where: { id: p.id },
+   391→   391→    data: { hp: newHp, isAlive: !died },
+   392→   392→  });
+   393→   393→  if (died) {
+   394→   394→    await db.initiativeEntry.updateMany({
+   395→   395→      where: { roomId, combatantName: name },
+   396→   396→      data: { isAlive: false },
+   397→   397→    });
+   398→   398→  }
+   399→   399→  return { hp: newHp, died };
+   400→   400→}
+   401→   401→
+   402→   402→export async function healPlayer(roomId: string, name: string, amount: number) {
+   403→   403→  const p = await db.player.findFirst({ where: { name, roomId } });
+   404→   404→  if (!p) return 0;
+   405→   405→  const newHp = Math.min(p.maxHp, p.hp + amount);
+   406→   406→  await db.player.update({
+   407→   407→    where: { id: p.id },
+   408→   408→    data: { hp: newHp, isAlive: true },
+   409→   409→  });
+   410→   410→  return newHp;
+   411→   411→}
+   412→   412→
+   413→   413→export async function moveToken(
+   414→   414→  roomId: string,
+   415→   415→  name: string,
+   416→   416→  newX: number,
+   417→   417→  newY: number,
+   418→   418→  isPlayer: boolean
+   419→   419→) {
+   420→   420→  const x = Math.max(0, Math.min(GRID_SIZE - 1, newX));
+   421→   421→  const y = Math.max(0, Math.min(GRID_SIZE - 1, newY));
+   422→   422→  if (isPlayer) {
+   423→   423→    await db.player.updateMany({ where: { name, roomId }, data: { posX: x, posY: y } });
+   424→   424→  } else {
+   425→   425→    const m = await db.monster.findFirst({ where: { name, roomId } });
+   426→   426→    if (m) await db.monster.update({ where: { id: m.id }, data: { posX: x, posY: y } });
+   427→   427→  }
+   428→   428→}
+   429→   429→
+   430→   430→export async function applyInventoryChanges(
+   431→   431→  roomId: string,
+   432→   432→  playerName: string,
+   433→   433→  changes: InventoryChange[]
+   434→   434→) {
+   435→   435→  for (const c of changes) {
+   436→   436→    if (c.action === "add") {
+   437→   437→      const existing = await db.inventoryItem.findFirst({
+   438→   438→        where: { roomId, playerName, itemName: c.item },
+   439→   439→      });
+   440→   440→      if (existing) {
+   441→   441→        await db.inventoryItem.update({
+   442→   442→          where: { id: existing.id },
+   443→   443→          data: { quantity: existing.quantity + 1 },
+   444→   444→        });
+   445→   445→      } else {
+   446→   446→        await db.inventoryItem.create({
+   447→   447→          data: {
+   448→   448→            roomId,
+   449→   449→            playerName,
+   450→   450→            itemName: c.item,
+   451→   451→            itemType: c.type || "misc",
+   452→   452→            quantity: 1,
+   453→   453→            description: c.description || "",
+   454→   454→          },
+   455→   455→        });
+   456→   456→      }
+   457→   457→    } else if (c.action === "remove") {
+   458→   458→      const existing = await db.inventoryItem.findFirst({
+   459→   459→        where: { roomId, playerName, itemName: c.item },
+   460→   460→      });
+   461→   461→      if (existing) {
+   462→   462→        if (existing.quantity > 1) {
+   463→   463→          await db.inventoryItem.update({
+   464→   464→            where: { id: existing.id },
+   465→   465→            data: { quantity: existing.quantity - 1 },
+   466→   466→          });
+   467→   467→        } else {
+   468→   468→          await db.inventoryItem.delete({ where: { id: existing.id } });
+   469→   469→        }
+   470→   470→      }
+   471→   471→    }
+   472→   472→  }
+   473→   473→}
+   474→   474→
+   475→   475→export async function adjustGold(roomId: string, name: string, amount: number) {
+   476→   476→  const p = await db.player.findFirst({ where: { name, roomId } });
+   477→   477→  if (!p) return;
+   478→   478→  await db.player.update({
+   479→   479→    where: { id: p.id },
+   480→   480→    data: { gold: Math.max(0, p.gold + amount) },
+   481→   481→  });
+   482→   482→}
+   483→   483→
+   484→   484→export async function saveChatMessage(
+   485→   485→  roomId: string,
+   486→   486→  role: "dm" | "player" | "system",
+   487→   487→  speaker: string,
+   488→   488→  content: string,
+   489→   489→  round: number,
+   490→   490→  imageUrl?: string | null
+   491→   491→) {
+   492→   492→  await db.chatMessage.create({
+   493→   493→    data: { roomId, role, speaker, content, round, imageUrl: imageUrl ?? null },
+   494→   494→  });
+   495→   495→}
+   496→   496→
+   497→   497→export async function setRoomState(roomId: string, data: Partial<{
+   498→   498→  combatActive: boolean;
+   499→   499→  round: number;
+   500→   500→  location: string;
+   501→   501→  turnIndex: number;
+   502→   502→  introShown: boolean;
+   503→   503→}>) {
+   504→   504→  await db.room.update({ where: { id: roomId }, data });
+   505→   505→}
+   506→   506→
+   507→   507→/** Find the nearest alive player to a monster (Chebyshev distance). */
+   508→   508→export async function nearestAlivePlayer(roomId: string, fromX: number, fromY: number) {
+   509→   509→  const players = await db.player.findMany({ where: { roomId, isAlive: true } });
+   510→   510→  const alive = players.filter((p) => p.hp > 0);
+   511→   511→  if (alive.length === 0) return null;
+   512→   512→  let best = alive[0];
+   513→   513→  let bestDist = Infinity;
+   514→   514→  for (const p of alive) {
+   515→   515→    const d = Math.max(Math.abs(p.posX - fromX), Math.abs(p.posY - fromY));
+   516→   516→    if (d < bestDist) {
+   517→   517→      bestDist = d;
+   518→   518→      best = p;
+   519→   519→    }
+   520→   520→  }
+   521→   521→  return { player: toPlayer(best), distance: bestDist };
+   522→   522→}
+   523→   523→
+   524→   524→/** Find the nearest active monster to a player. */
+   525→   525→export async function nearestActiveMonster(roomId: string, fromX: number, fromY: number) {
+   526→   526→  const monsters = await db.monster.findMany({ where: { roomId, isActive: true } });
+   527→   527→  if (monsters.length === 0) return null;
+   528→   528→  let best = monsters[0];
+   529→   529→  let bestDist = Infinity;
+   530→   530→  for (const m of monsters) {
+   531→   531→    const d = Math.max(Math.abs(m.posX - fromX), Math.abs(m.posY - fromY));
+   532→   532→    if (d < bestDist) {
+   533→   533→      bestDist = d;
+   534→   534→      best = m;
+   535→   535→    }
+   536→   536→  }
+   537→   537→  return { monster: toMonster(best), distance: bestDist };
+   538→   538→}
+   539→   539→
+   540→   540→/** Move a monster toward the nearest alive player (up to 2 cells). */
+   541→   541→export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: string) {
+   542→   542→  const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
+   543→   543→  if (!m) return { newX: 0, newY: 0, distBefore: 0, distAfter: 0, targetName: null };
+   544→   544→  const nearest = await nearestAlivePlayer(roomId, m.posX, m.posY);
+   545→   545→  if (!nearest) return { newX: m.posX, newY: m.posY, distBefore: 0, distAfter: 0, targetName: null };
+   546→   546→  const p = nearest.player;
+   547→   547→  const distBefore = nearest.distance;
+   548→   548→  let nx = m.posX;
+   549→   549→  let ny = m.posY;
+   550→   550→  let steps = 2;
+   551→   551→  while (steps > 0 && (nx !== p.posX || ny !== p.posY)) {
+   552→   552→    const dx = p.posX - nx;
+   553→   553→    const dy = p.posY - ny;
+   554→   554→    if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) nx += Math.sign(dx);
+   555→   555→    else if (dy !== 0) ny += Math.sign(dy);
+   556→   556→    else break;
+   557→   557→    steps--;
+   558→   558→  }
+   559→   559→  nx = Math.max(0, Math.min(GRID_SIZE - 1, nx));
+   560→   560→  ny = Math.max(0, Math.min(GRID_SIZE - 1, ny));
+   561→   561→  await db.monster.update({ where: { id: m.id }, data: { posX: nx, posY: ny } });
+   562→   562→  const distAfter = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+   563→   563→  return { newX: nx, newY: ny, distBefore, distAfter, targetName: p.name };
+   564→   564→}
+   565→   565→
+   566→   566→export async function setActiveScene(roomId: string, imageUrl: string, prompt: string, title: string) {
+   567→   567→  await db.scene.updateMany({ where: { roomId, isActive: true }, data: { isActive: false } });
+   568→   568→  await db.scene.create({ data: { roomId, imageUrl, prompt, title, isActive: true } });
+   569→   569→}
+   570→   570→
+   571→   571→// ---------- initiative ----------
+   572→   572→/** Roll initiative for all players + active monsters and persist the order. */
+   573→   573→export async function rollInitiative(roomId: string): Promise<InitiativeEntryState[]> {
+   574→   574→  const [players, monsters] = await Promise.all([
+   575→   575→    db.player.findMany({ where: { roomId, isAlive: true } }),
+   576→   576→    db.monster.findMany({ where: { roomId, isActive: true } }),
+   577→   577→  ]);
+   578→   578→
+   579→   579→  type Entry = { name: string; type: "player" | "monster"; init: number; monsterId: string | null };
+   580→   580→  const entries: Entry[] = [];
+   581→   581→  for (const p of players) {
+   582→   582→    if (p.hp <= 0) continue;
+   583→   583→    const init = rollD20(abilityModifier(p.dex)).total;
+   584→   584→    entries.push({ name: p.name, type: "player", init, monsterId: null });
+   585→   585→  }
+   586→   586→  for (const m of monsters) {
+   587→   587→    const init = rollD20(2).total; // monsters use a flat +2 (typical DEX)
+   588→   588→    entries.push({ name: m.name, type: "monster", init, monsterId: m.id });
+   589→   589→  }
+   590→   590→  // Sort descending by initiative; tie-break by type (players first) then name.
+   591→   591→  entries.sort((a, b) => {
+   592→   592→    if (b.init !== a.init) return b.init - a.init;
+   593→   593→    if (a.type !== b.type) return a.type === "player" ? -1 : 1;
+   594→   594→    return a.name.localeCompare(b.name);
+   595→   595→  });
+   596→   596→
+   597→   597→  // Clear old entries and write new ones.
+   598→   598→  await db.initiativeEntry.deleteMany({ where: { roomId } });
+   599→   599→  for (let i = 0; i < entries.length; i++) {
+   600→   600→    const e = entries[i];
+   601→   601→    await db.initiativeEntry.create({
+   602→   602→      data: {
+   603→   603→        roomId,
+   604→   604→        combatantName: e.name,
+   605→   605→        combatantType: e.type,
+   606→   606→        initiative: e.init,
+   607→   607→        order: i,
+   608→   608→        monsterId: e.monsterId,
+   609→   609→        isAlive: true,
+   610→   610→      },
+   611→   611→    });
+   612→   612→    // Log the initiative roll.
+   613→   613→    await db.diceRoll.create({
+   614→   614→      data: {
+   615→   615→        roomId,
+   616→   616→        round: 0,
+   617→   617→        roller: e.name,
+   618→   618→        label: "Инициатива",
+   619→   619→        notation: "1d20",
+   620→   620→        modifier: e.type === "player" ? abilityModifier((players.find((p) => p.name === e.name))!.dex) : 2,
+   621→   621→        result: e.init - (e.type === "player" ? abilityModifier(players.find((p) => p.name === e.name)!.dex) : 2),
+   622→   622→        total: e.init,
+   623→   623→        target: null,
+   624→   624→        success: null,
+   625→   625→      },
+   626→   626→    });
+   627→   627→  }
+   628→   628→  const saved = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+   629→   629→  return saved.map(toInitiative);
+   630→   630→}
+   631→   631→
+   632→   632→/** Get the combatant whose turn it is. */
+   633→   633→export async function getCurrentCombatant(roomId: string) {
+   634→   634→  const room = await db.room.findUnique({ where: { id: roomId } });
+   635→   635→  if (!room || !room.combatActive) return null;
+   636→   636→  const order = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+   637→   637→  return order[room.turnIndex] ?? null;
+   638→   638→}
+   639→   639→
+   640→   640→/** Count alive players / monsters. */
+   641→   641→export async function countAlive(roomId: string) {
+   642→   642→  const [players, monsters] = await Promise.all([
+   643→   643→    db.player.findMany({ where: { roomId, isAlive: true } }),
+   644→   644→    db.monster.findMany({ where: { roomId, isActive: true } }),
+   645→   645→  ]);
+   646→   646→  const alivePlayers = players.filter((p) => p.hp > 0);
+   647→   647→  const aliveMonsters = monsters.filter((m) => m.hp > 0);
+   648→   648→  return {
+   649→   649→    players: alivePlayers.length,
+   650→   650→    monsters: aliveMonsters.length,
+   651→   651→    anyPlayerAlive: alivePlayers.length > 0,
+   652→   652→    anyMonsterAlive: aliveMonsters.length > 0,
+   653→   653→  };
+   654→   654→}
+   655→   655→
+   656→   656→/** Advance the exploration turn to the next alive player (by createdAt order). */
+   657→   657→export async function advanceExplorationTurn(roomId: string, justActedName: string) {
+   658→   658→  const players = await db.player.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+   659→   659→  const alive = players.filter((p) => p.isAlive && p.hp > 0);
+   660→   660→  if (alive.length === 0) return;
+   661→   661→  const currentIdx = alive.findIndex((p) => p.name === justActedName);
+   662→   662→  const nextIdx = (currentIdx + 1) % alive.length;
+   663→   663→  await db.room.update({ where: { id: roomId }, data: { explorationActorIndex: nextIdx } });
+   664→   664→}
+   665→   665→
+   666→   666→// ---------- XP / leveling ----------
+   667→   667→/** XP needed to REACH a given level (D&D 5e compressed for short games). */
+   668→   668→export const XP_THRESHOLDS: Record<number, number> = {
+   669→   669→  1: 0,
+   670→   670→  2: 200,
+   671→   671→  3: 600,
+   672→   672→  4: 1200,
+   673→   673→  5: 2000,
+   674→   674→};
+   675→   675→
+   676→   676→/** Proficiency bonus by level (5e standard). */
+   677→   677→export function proficiencyForLevel(level: number): number {
+   678→   678→  return 2 + Math.floor((level - 1) / 4);
+   679→   679→}
+   680→   680→
+   681→   681→/** Award XP to a player; sets pendingLevelUp if a threshold is crossed. Returns the new level. */
+   682→   682→export async function awardXP(roomId: string, playerName: string, xp: number): Promise<{ leveledUp: boolean; newLevel: number }> {
+   683→   683→  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+   684→   684→  if (!p) return { leveledUp: false, newLevel: 1 };
+   685→   685→  const newXp = p.xp + xp;
+   686→   686→  let newLevel = p.level;
+   687→   687→  let leveledUp = false;
+   688→   688→  while (newLevel < 5 && XP_THRESHOLDS[newLevel + 1] <= newXp) {
+   689→   689→    newLevel++;
+   690→   690→    leveledUp = true;
+   691→   691→  }
+   692→   692→  const prof = proficiencyForLevel(newLevel);
+   693→   693→  // On level-up: +max HP (use CON modifier * level delta + class hit die avg), restore a bit.
+   694→   694→  let newMaxHp = p.maxHp;
+   695→   695→  let newHp = p.hp;
+   696→   696→  if (leveledUp) {
+   697→   697→    const conMod = abilityModifier(p.con);
+   698→   698→    const hpPerLevel = Math.max(1, 5 + conMod); // ~d8 average
+   699→   699→    const gain = hpPerLevel * (newLevel - p.level);
+   700→   700→    newMaxHp += gain;
+   701→   701→    newHp = Math.min(newMaxHp, newHp + gain); // heal the gain
+   702→   702→  }
+   703→   703→  await db.player.update({
+   704→   704→    where: { id: p.id },
+   705→   705→    data: {
+   706→   706→      xp: newXp,
+   707→   707→      level: newLevel,
+   708→   708→      proficiencyBonus: prof,
+   709→   709→      maxHp: newMaxHp,
+   710→   710→      hp: newHp,
+   711→   711→      pendingLevelUp: leveledUp ? true : p.pendingLevelUp,
+   712→   712→    },
+   713→   713→  });
+   714→   714→  return { leveledUp, newLevel };
+   715→   715→}
+   716→   716→
+   717→   717→/** Apply a chosen talent on level-up and clear the pending flag. */
+   718→   718→export async function applyLevelUpTalent(roomId: string, playerName: string, talentId: string): Promise<boolean> {
+   719→   719→  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+   720→   720→  if (!p || !p.pendingLevelUp) return false;
+   721→   721→  const existing = p.selectedTalents ? p.selectedTalents.split(",").filter(Boolean) : [];
+   722→   722→  if (existing.includes(talentId)) return false; // already taken
+   723→   723→  existing.push(talentId);
+   724→   724→  await db.player.update({
+   725→   725→    where: { id: p.id },
+   726→   726→    data: { selectedTalents: existing.join(","), pendingLevelUp: false },
+   727→   727→  });
+   728→   728→  return true;
+   729→   729→}
+   730→   730→
+   731→   731→// ---------- Spell slots ----------
+   732→   732→function safeParseSlots(raw: string): Record<string, number> {
+   733→   733→  try {
+   734→   734→    const parsed = JSON.parse(raw);
+   735→   735→    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+   736→   736→      const out: Record<string, number> = {};
+   737→   737→      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+   738→   738→        out[k] = Math.max(0, Math.floor(Number(v) || 0));
+   739→   739→      }
+   740→   740→      return out;
+   741→   741→    }
+   742→   742→  } catch {
+   743→   743→    /* ignore */
+   744→   744→  }
+   745→   745→  return {};
+   746→   746→}
+   747→   747→
+   748→   748→function serializeSlots(slots: Record<string, number>): string {
+   749→   749→  return JSON.stringify(slots);
+   750→   750→}
+   751→   751→
+   752→   752→/** Try to spend a spell slot of `level` (or higher if needed). Returns the
+   753→   753→ *  spent level on success, or null if no slot was available. */
+   754→   754→export async function spendSpellSlot(
+   755→   755→  roomId: string,
+   756→   756→  playerName: string,
+   757→   757→  level: number
+   758→   758→): Promise<{ ok: boolean; level: number }> {
+   759→   759→  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+   760→   760→  if (!p) return { ok: false, level: 0 };
+   761→   761→  const slots = safeParseSlots(p.spellSlots);
+   762→   762→  // Try the requested level first, then ascend.
+   763→   763→  const tryLevels = [level, level + 1, level + 2, level + 3, level + 4, level + 5];
+   764→   764→  for (const lv of tryLevels) {
+   765→   765→    const key = String(lv);
+   766→   766→    if ((slots[key] ?? 0) > 0) {
+   767→   767→      slots[key] -= 1;
+   768→   768→      await db.player.update({ where: { id: p.id }, data: { spellSlots: serializeSlots(slots) } });
+   769→   769→      return { ok: true, level: lv };
+   770→   770→    }
+   771→   771→  }
+   772→   772→  return { ok: false, level: 0 };
+   773→   773→}
+   774→   774→
+   775→   775→/** Restore ALL spell slots to max (used on long rest). */
+   776→   776→export async function restoreAllSpellSlots(roomId: string, playerName: string): Promise<void> {
+   777→   777→  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+   778→   778→  if (!p) return;
+   779→   779→  const max = safeParseSlots(p.maxSpellSlots);
+   780→   780→  await db.player.update({ where: { id: p.id }, data: { spellSlots: serializeSlots({ ...max }) } });
+   781→   781→}
+   782→   782→
+   783→   783→/** Restore spell slots for a specific class (e.g. warlock on short rest). */
+   784→   784→export async function restoreSpellSlotsForShortRest(roomId: string, playerName: string, charClass: string): Promise<void> {
+   785→   785→  // Warlock: restore all slots on short rest. Other casters keep their slots.
+   786→   786→  const isWarlock = charClass.toLowerCase() === "warlock";
+   787→   787→  if (!isWarlock) return;
+   788→   788→  await restoreAllSpellSlots(roomId, playerName);
+   789→   789→}
+   790→   790→
+   791→   791→/** Standard XP reward per monster CR (compressed). */
+   792→   792→export function xpForMonster(maxHp: number): number {
+   793→   793→  if (maxHp <= 8) return 25;
+   794→   794→  if (maxHp <= 13) return 50;
+   795→   795→  if (maxHp <= 20) return 100;
+   796→   796→  return 150;
+   797→   797→}
+   798→   798→
+   799→   799→// ---------- Conditions ----------
+   800→   800→/** Apply a condition to a target. Refreshes duration if already active for the same condition. */
+   801→   801→export async function applyCondition(
+   802→   802→  roomId: string,
+   803→   803→  targetName: string,
+   804→   804→  targetType: "player" | "monster",
+   805→   805→  type: string,
+   806→   806→  duration: number,
+   807→   807→  source: string
+   808→   808→): Promise<ConditionState | null> {
+   809→   809→  // Only accept known condition ids — silently skip unknown ones.
+   810→   810→  if (!CONDITIONS[type]) return null;
+   811→   811→  const safeDuration = Math.max(1, Math.min(50, Math.floor(duration) || 3));
+   812→   812→  // If an active condition of the same type already exists on the target, refresh it.
+   813→   813→  const existing = await db.condition.findFirst({
+   814→   814→    where: { roomId, targetName, condition: type },
+   815→   815→  });
+   816→   816→  if (existing) {
+   817→   817→    await db.condition.update({
+   818→   818→      where: { id: existing.id },
+   819→   819→      data: { duration: Math.max(existing.duration, safeDuration), source: source || existing.source },
+   820→   820→    });
+   821→   821→    const refreshed = await db.condition.findUnique({ where: { id: existing.id } });
+   822→   822→    return refreshed ? toCondition(refreshed) : null;
+   823→   823→  }
+   824→   824→  const created = await db.condition.create({
+   825→   825→    data: { roomId, targetName, targetType, condition: type, duration: safeDuration, source },
+   826→   826→  });
+   827→   827→  return toCondition(created);
+   828→   828→}
+   829→   829→
+   830→   830→/** Get all conditions in a room (optionally filtered by target name). */
+   831→   831→export async function getConditions(
+   832→   832→  roomId: string,
+   833→   833→  targetName?: string
+   834→   834→): Promise<ConditionState[]> {
+   835→   835→  const where = targetName ? { roomId, targetName } : { roomId };
+   836→   836→  const list = await db.condition.findMany({ where, orderBy: { createdAt: "asc" } });
+   837→   837→  return list.map(toCondition);
+   838→   838→}
+   839→   839→
+   840→   840→/** Decrement all conditions in the room by 1 round and remove expired ones.
+   841→   841→ *  Also applies damagePerRound effects (e.g. burning) to the affected targets.
+   842→   842→ *  Returns a brief human-readable summary of damage applied. */
+   843→   843→export async function tickConditions(roomId: string): Promise<string[]> {
+   844→   844→  const list = await db.condition.findMany({ where: { roomId } });
+   845→   845→  const messages: string[] = [];
+   846→   846→  for (const c of list) {
+   847→   847→    const def = CONDITIONS[c.condition];
+   848→   848→    // Apply end-of-round damage (burning) BEFORE decrementing/expiring.
+   849→   849→    if (def?.damagePerRound) {
+   850→   850→      // Roll 1d{N} damage.
+   851→   851→      const dmg = Math.floor(Math.random() * def.damagePerRound) + 1;
+   852→   852→      if (dmg > 0) {
+   853→   853→        if (c.targetType === "player") {
+   854→   854→          await damagePlayer(roomId, c.targetName, dmg);
+   855→   855→        } else {
+   856→   856→          // Find the monster by name.
+   857→   857→          const m = await db.monster.findFirst({ where: { name: c.targetName, roomId } });
+   858→   858→          if (m) await damageMonster(roomId, m.id, dmg);
+   859→   859→        }
+   860→   860→        messages.push(`${c.targetName} получает ${dmg} урона от ${def.name.toLowerCase()} (${def.icon}).`);
+   861→   861→      }
+   862→   862→    }
+   863→   863→    const newDuration = c.duration - 1;
+   864→   864→    if (newDuration <= 0) {
+   865→   865→      await db.condition.delete({ where: { id: c.id } });
+   866→   866→      const nameRu = def?.name ?? c.condition;
+   867→   867→      messages.push(`Состояние «${nameRu}» спадает с ${c.targetName}.`);
+   868→   868→    } else {
+   869→   869→      await db.condition.update({ where: { id: c.id }, data: { duration: newDuration } });
+   870→   870→    }
+   871→   871→  }
+   872→   872→  return messages;
+   873→   873→}
+   874→   874→
+   875→   875→/** Remove all conditions from a target (e.g. on death, rest). */
+   876→   876→export async function clearConditionsForTarget(roomId: string, targetName: string): Promise<void> {
+   877→   877→  await db.condition.deleteMany({ where: { roomId, targetName } });
+   878→   878→}
+   879→   879→
+   880→   880→// ---------- AoE (area of effect) ----------
+   881→   881→/** Compute the grid cells affected by an area-of-effect spell.
+   882→   882→ *  - circle: all cells within Chebyshev distance `size` of `origin` (includes origin).
+   883→   883→ *  - line: cells from origin outward along `direction` for `size` cells (includes origin).
+   884→   884→ *  - cone: a 90° wedge from `origin` along `direction`, `size` cells deep.
+   885→   885→ *  Cells are clamped to the grid (0..GRID_SIZE-1). */
+   886→   886→export function computeAoECells(
+   887→   887→  shape: "circle" | "cone" | "line",
+   888→   888→  size: number,
+   889→   889→  origin: { x: number; y: number },
+   890→   890→  direction?: { x: number; y: number }
+   891→   891→): { x: number; y: number }[] {
+   892→   892→  const r = Math.max(1, Math.min(8, Math.floor(size) || 1));
+   893→   893→  const ox = Math.max(0, Math.min(GRID_SIZE - 1, Math.floor(origin.x)));
+   894→   894→  const oy = Math.max(0, Math.min(GRID_SIZE - 1, Math.floor(origin.y)));
+   895→   895→  const cells: { x: number; y: number }[] = [];
+   896→   896→  const seen = new Set<string>();
+   897→   897→  const push = (x: number, y: number) => {
+   898→   898→    if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return;
+   899→   899→    const key = `${x},${y}`;
+   900→   900→    if (seen.has(key)) return;
+   901→   901→    seen.add(key);
+   902→   902→    cells.push({ x, y });
+   903→   903→  };
+   904→   904→
+   905→   905→  if (shape === "circle") {
+   906→   906→    for (let dx = -r; dx <= r; dx++) {
+   907→   907→      for (let dy = -r; dy <= r; dy++) {
+   908→   908→        if (Math.max(Math.abs(dx), Math.abs(dy)) <= r) push(ox + dx, oy + dy);
+   909→   909→      }
+   910→   910→    }
+   911→   911→    return cells;
+   912→   912→  }
+   913→   913→
+   914→   914→  // Normalize direction (default to +x if missing/zero).
+   915→   915→  let dx = direction?.x ?? 1;
+   916→   916→  let dy = direction?.y ?? 0;
+   917→   917→  if (dx === 0 && dy === 0) { dx = 1; dy = 0; }
+   918→   918→  dx = Math.sign(dx);
+   919→   919→  dy = Math.sign(dy);
+   920→   920→
+   921→   921→  if (shape === "line") {
+   922→   922→    push(ox, oy);
+   923→   923→    for (let s = 1; s <= r; s++) push(ox + dx * s, oy + dy * s);
+   924→   924→    return cells;
+   925→   925→  }
+   926→   926→
+   927→   927→  // cone: 90° wedge. parallel = (cell-orig)·dir, perp = |(cell-orig)×dir|.
+   928→   928→  // Include cells where parallel in [0, r] and |perp| <= parallel.
+   929→   929→  for (let cx = 0; cx < GRID_SIZE; cx++) {
+   930→   930→    for (let cy = 0; cy < GRID_SIZE; cy++) {
+   931→   931→      const rx = cx - ox;
+   932→   932→      const ry = cy - oy;
+   933→   933→      const parallel = rx * dx + ry * dy;
+   934→   934→      const perp = Math.abs(ry * dx - rx * dy);
+   935→   935→      if (parallel >= 0 && parallel <= r && perp <= parallel) push(cx, cy);
+   936→   936→    }
+   937→   937→  }
+   938→   938→  return cells;
+   939→   939→}
+   940→   940→

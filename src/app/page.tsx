@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -15,6 +15,7 @@ import { PartyPanel } from "@/components/dnd/PartyPanel";
 import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
 import { Lobby } from "@/components/dnd/Lobby";
 import { LevelUpModal } from "@/components/dnd/LevelUpModal";
+import { QuestJournal } from "@/components/dnd/QuestJournal";
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, ResolvedEvent } from "@/lib/game/types";
 
@@ -54,6 +55,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [lastAoe, setLastAoe] = useState<AoEOverlay | null>(null);
+  const [questOpen, setQuestOpen] = useState(false);
 
   // Restore session on mount.
   useEffect(() => {
@@ -386,6 +388,21 @@ export default function Home() {
             {isThinking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
             <span className="hidden sm:inline">Заново</span>
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setQuestOpen(true)}
+            className="gap-1.5 border-amber-800/50 bg-amber-950/20 text-amber-200 hover:bg-amber-950/40"
+            title="Журнал квестов"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Журнал</span>
+            {snapshot.quests.filter((q) => q.status === "active").length > 0 && (
+              <span className="ml-0.5 rounded-full bg-amber-700 px-1.5 text-[9px] font-bold leading-4 text-amber-50">
+                {snapshot.quests.filter((q) => q.status === "active").length}
+              </span>
+            )}
+          </Button>
           <Button variant="ghost" size="sm" onClick={leaveRoom} className="text-muted-foreground">
             Выйти
           </Button>
@@ -474,6 +491,13 @@ export default function Home() {
         open={Boolean(you?.pendingLevelUp)}
         onClose={() => {}}
         onPick={pickTalent}
+      />
+
+      {/* ===== Quest journal modal ===== */}
+      <QuestJournal
+        open={questOpen}
+        onOpenChange={setQuestOpen}
+        quests={snapshot.quests}
       />
     </div>
   );

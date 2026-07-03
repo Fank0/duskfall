@@ -1,0 +1,568 @@
+   800→   800→    // Single-target damage (non-AoE).
+   801→   801→    const targetName = branch.monsterDamage.target;
+   802→   802→    let m = await db.monster.findFirst({ where: { name: { contains: targetName }, roomId, isActive: true } });
+   803→   803→    if (!m) m = await db.monster.findFirst({ where: { label: { contains: targetName }, roomId, isActive: true } });
+   804→   804→    if (!m) {
+   805→   805→      const near = await nearestActiveMonster(roomId, 0, 0);
+   806→   806→      if (near) m = await db.monster.findFirst({ where: { id: near.monster.id, roomId } });
+   807→   807→    }
+   808→   808→    if (m) {
+   809→   809→      const dmg = rollDice(branch.monsterDamage.notation);
+   810→   810→      // Talent: bonus flat damage + vampiric heal.
+   811→   811→      const bonus = damageBonusFromTalents(actor);
+   812→   812→      const isCrit = playerRolls.some((r) => r.purpose === "СИЛ" || r.purpose === "action" || r.purpose === "ЛОВ")
+   813→   813→        ? false : false; // crit handled via natural roll below
+   814→   814→      void isCrit;
+   815→   815→      damageDealtToMonster = dmg.total + bonus;
+   816→   816→      await logDiceRoll(roomId, round, actorName, {
+   817→   817→        label: `Урон по: ${m.name}` + (bonus ? ` (+${bonus} талант)` : ""),
+   818→   818→        notation: branch.monsterDamage.notation + (bonus ? `+${bonus}` : ""),
+   819→   819→        modifier: bonus, result: dmg.raw, total: damageDealtToMonster, purpose: "player_damage",
+   820→   820→      });
+   821→   821→      const result = await damageMonster(roomId, m.id, damageDealtToMonster);
+   822→   822→      // Vampiric heal.
+   823→   823→      const vampHeal = rollVampiricHeal(actor, damageDealtToMonster);
+   824→   824→      if (vampHeal > 0) {
+   825→   825→        await healPlayer(roomId, actorName, vampHeal);
+   826→   826→        healingToPlayer += vampHeal;
+   827→   827→        healedPlayer = actorName;
+   828→   828→        await logDiceRoll(roomId, round, actorName, {
+   829→   829→          label: "Вампиризм", notation: `${vampHeal}`, modifier: 0, result: vampHeal, total: vampHeal, purpose: "healing",
+   830→   830→        });
+   831→   831→      }
+   832→   832→      if (result.died) {
+   833→   833→        monsterThatDied = m.name;
+   834→   834→        // Heal-on-kill talent.
+   835→   835→        const killHeal = rollHealOnKill(actor);
+   836→   836→        if (killHeal > 0) {
+   837→   837→          await healPlayer(roomId, actorName, killHeal);
+   838→   838→          healingToPlayer += killHeal;
+   839→   839→          healedPlayer = actorName;
+   840→   840→          await logDiceRoll(roomId, round, actorName, {
+   841→   841→            label: "Лечение за убийство", notation: healOnKillNotation(actor) || `${killHeal}`, modifier: 0, result: killHeal, total: killHeal, purpose: "healing",
+   842→   842→          });
+   843→   843→        }
+   844→   844→        // Award XP to the killing player.
+   845→   845→        const xp = xpForMonster(m.maxHp);
+   846→   846→        await awardXP(roomId, actorName, xp);
+   847→   847→        await db.chatMessage.create({
+   848→   848→          data: { roomId, role: "system", speaker: "", round, content: `${actorName} получает ${xp} опыта за победу над ${m.name}.` },
+   849→   849→        });
+   850→   850→      }
+   851→   851→    }
+   852→   852→  }
+   853→   853→
+   854→   854→  if (branch.playerDamage) {
+   855→   855→    let dmg = rollDice(branch.playerDamage.notation);
+   856→   856→    let total = dmg.total;
+   857→   857→    // Talent: damage reduction.
+   858→   858→    total = applyDamageReduction(actor, total);
+   859→   859→    damageDealtToPlayer = total;
+   860→   860→    damagedPlayer = actorName; // failure backlash hits the actor
+   861→   861→    await logDiceRoll(roomId, round, actorName, {
+   862→   862→      label: "Урон по герою" + (total < dmg.total ? ` (−${dmg.total - total} сопр.)` : ""),
+   863→   863→      notation: branch.playerDamage.notation, modifier: 0, result: dmg.raw, total, purpose: "player_damage",
+   864→   864→    });
+   865→   865→    await damagePlayer(roomId, actorName, total);
+   866→   866→  }
+   867→   867→
+   868→   868→  if (branch.healing) {
+   869→   869→    const heal = rollDice(branch.healing.notation);
+   870→   870→    healingToPlayer += heal.total;
+   871→   871→    healedPlayer = branch.healing.target || actorName;
+   872→   872→    await logDiceRoll(roomId, round, actorName, {
+   873→   873→      label: "Лечение", notation: branch.healing.notation,
+   874→   874→      modifier: 0, result: heal.raw, total: heal.total, purpose: "healing",
+   875→   875→    });
+   876→   876→    await healPlayer(roomId, healedPlayer, heal.total);
+   877→   877→  }
+   878→   878→
+   879→   879→  if (inventoryChanges.length > 0) {
+   880→   880→    await applyInventoryChanges(roomId, actorName, inventoryChanges);
+   881→   881→  }
+   882→   882→  if (goldChange) {
+   883→   883→    await adjustGold(roomId, actorName, goldChange);
+   884→   884→  }
+   885→   885→
+   886→   886→  // Apply conditions the DM planned for this outcome (success or failure).
+   887→   887→  // Determine target type (player/monster) and write a system chat line.
+   888→   888→  const plannedConditions: PlannedCondition[] = Array.isArray(branch.conditions) ? branch.conditions : [];
+   889→   889→  let appliedConditionCount = 0;
+   890→   890→  if (plannedConditions.length > 0) {
+   891→   891→    const players = await db.player.findMany({ where: { roomId }, select: { name: true } });
+   892→   892→    const monsters = await db.monster.findMany({ where: { roomId }, select: { name: true } });
+   893→   893→    const playerNames = new Set(players.map((p) => p.name));
+   894→   894→    const monsterNames = new Set(monsters.map((m) => m.name));
+   895→   895→    for (const pc of plannedConditions) {
+   896→   896→      if (!pc || !pc.target || !pc.type) continue;
+   897→   897→      const targetType: "player" | "monster" = playerNames.has(pc.target) ? "player"
+   898→   898→        : monsterNames.has(pc.target) ? "monster"
+   899→   899→        : pc.target === actorName ? "player"
+   900→   900→        : "monster";
+   901→   901→      const applied = await applyCondition(roomId, pc.target, targetType, pc.type, pc.duration ?? 3, pc.source ?? actorName);
+   902→   902→      if (applied) {
+   903→   903→        appliedConditionCount++;
+   904→   904→        const def = getCondition(applied.condition);
+   905→   905→        const nameRu = def?.name ?? applied.condition;
+   906→   906→        const icon = def?.icon ?? "❓";
+   907→   907→        await db.chatMessage.create({
+   908→   908→          data: {
+   909→   909→            roomId, role: "system", speaker: "", round,
+   910→   910→            content: `${pc.target} получает состояние: ${icon} ${nameRu} (${applied.duration} раундов).`,
+   911→   911→          },
+   912→   912→        });
+   913→   913→      }
+   914→   914→    }
+   915→   915→  }
+   916→   916→
+   917→   917→  return {
+   918→   918→    playerRolls, outcome,
+   919→   919→    damageDealtToMonster, monsterThatDied,
+   920→   920→    damageDealtToPlayer, damagedPlayer,
+   921→   921→    healingToPlayer, healedPlayer,
+   922→   922→    inventoryChanges, goldChange,
+   923→   923→    category: plan.category,
+   924→   924→    imagePrompt: plan.imagePrompt, imageNeeded: plan.imageNeeded,
+   925→   925→    branchNarrative: branch.narrative,
+   926→   926→    appliedConditionCount,
+   927→   927→    aoe: aoeResult,
+   928→   928→  };
+   929→   929→}
+   930→   930→
+   931→   931→// ---------- monster turn ----------
+   932→   932→interface MonsterTurnResult {
+   933→   933→  taken: boolean;
+   934→   934→  rolls: ResolvedRoll[];
+   935→   935→  damageToPlayer: number;
+   936→   936→  damagedPlayer: string | null;
+   937→   937→  monsterName: string | null;
+   938→   938→  moved: boolean;
+   939→   939→  narrativeLine: string;
+   940→   940→}
+   941→   941→
+   942→   942→async function runMonsterTurn(roomId: string, round: number, monsterId: string): Promise<MonsterTurnResult> {
+   943→   943→  const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
+   944→   944→  if (!m) return emptyMonster();
+   945→   945→  const room = await db.room.findUnique({ where: { id: roomId } });
+   946→   946→  if (!room) return emptyMonster();
+   947→   947→
+   948→   948→  const nearest = await nearestActiveMonster(roomId, m.posX, m.posY); // not used; we want nearest player
+   949→   949→  void nearest;
+   950→   950→  const targetRes = await moveMonsterTowardNearestPlayer(roomId, m.id);
+   951→   951→  const dist = targetRes.distAfter;
+   952→   952→  const targetName: string = targetRes.targetName ?? "";
+   953→   953→
+   954→   954→  const rolls: ResolvedRoll[] = [];
+   955→   955→
+   956→   956→  // Not adjacent — move closer (already done), end turn.
+   957→   957→  if (dist > 1) {
+   958→   958→    return {
+   959→   959→      taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
+   960→   960→      monsterName: m.name, moved: true,
+   961→   961→      narrativeLine: `${m.name} приближается к ${targetName || "героям"}.`,
+   962→   962→    };
+   963→   963→  }
+   964→   964→
+   965→   965→  // Adjacent — attack the target.
+   966→   966→  const target = await db.player.findFirst({ where: { name: targetName, roomId } });
+   967→   967→  if (!target) return emptyMonster();
+   968→   968→
+   969→   969→  // Build a PlayerState-like view for talent modifiers.
+   970→   970→  const targetState: PlayerState = {
+   971→   971→    id: target.id, name: target.name, charClass: target.charClass, level: target.level,
+   972→   972→    hp: target.hp, maxHp: target.maxHp, ac: target.ac,
+   973→   973→    str: target.str, dex: target.dex, con: target.con, int: target.int, wis: target.wis, cha: target.cha,
+   974→   974→    proficiencyBonus: target.proficiencyBonus, gold: target.gold, posX: target.posX, posY: target.posY,
+   975→   975→    color: target.color, weaponName: target.weaponName, weaponNotation: target.weaponNotation,
+   976→   976→    portraitUrl: target.portraitUrl, isHost: target.isHost, isAlive: target.isAlive,
+   977→   977→    race: target.race, raceName: target.raceName, background: target.background, backgroundName: target.backgroundName,
+   978→   978→    xp: target.xp,
+   979→   979→    selectedTalents: target.selectedTalents ? target.selectedTalents.split(",").filter(Boolean) : [],
+   980→   980→    bonusStr: target.bonusStr, bonusDex: target.bonusDex, bonusCon: target.bonusCon,
+   981→   981→    bonusInt: target.bonusInt, bonusWis: target.bonusWis, bonusCha: target.bonusCha,
+   982→   982→    pendingLevelUp: target.pendingLevelUp,
+   983→   983→    spellSlots: parseSlotsSafe(target.spellSlots),
+   984→   984→    maxSpellSlots: parseSlotsSafe(target.maxSpellSlots),
+   985→   985→    hitDice: target.hitDice ?? 8,
+   986→   986→  };
+   987→   987→  const targetAC = effectiveAC(targetState);
+   988→   988→
+   989→   989→  const atk = rollD20(m.attackBonus);
+   990→   990→  const hit = atk.total >= targetAC;
+   991→   991→  rolls.push({
+   992→   992→    label: `Атака ${m.name}`, notation: "1d20", modifier: m.attackBonus,
+   993→   993→    result: atk.rolls[0], total: atk.total, target: targetAC, success: hit,
+   994→   994→    purpose: "monster_attack",
+   995→   995→  });
+   996→   996→  await logDiceRoll(roomId, round, m.name, rolls[rolls.length - 1]);
+   997→   997→
+   998→   998→  if (!hit) {
+   999→   999→    return {
+  1000→  1000→      taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
+  1001→  1001→      monsterName: m.name, moved: false,
+  1002→  1002→      narrativeLine: `${m.name} бьёт по ${targetName}, но промахивается (${atk.total} против AC ${targetAC}).`,
+  1003→  1003→    };
+  1004→  1004→  }
+  1005→  1005→
+  1006→  1006→  const rawDmg = rollDice(m.damageNotation);
+  1007→  1007→  // Talent: damage reduction.
+  1008→  1008→  const dmg = applyDamageReduction(targetState, rawDmg.total);
+  1009→  1009→  await logDiceRoll(roomId, round, m.name, {
+  1010→  1010→    label: `Урон: ${m.name}` + (dmg < rawDmg.total ? ` (−${rawDmg.total - dmg} сопр.)` : ""),
+  1011→  1011→    notation: m.damageNotation, modifier: 0, result: rawDmg.raw, total: dmg, purpose: "monster_damage",
+  1012→  1012→  });
+  1013→  1013→  await damagePlayer(roomId, targetName, dmg);
+  1014→  1014→
+  1015→  1015→  // Talent: counterattack — the target may strike back.
+  1016→  1016→  const counterDmg = rollCounterattack(targetState);
+  1017→  1017→  let counterLine = "";
+  1018→  1018→  if (counterDmg > 0) {
+  1019→  1019→    const monsterResult = await damageMonster(roomId, m.id, counterDmg);
+  1020→  1020→    await logDiceRoll(roomId, round, targetName, {
+  1021→  1021→      label: `Контратака ${targetName}`, notation: "талант",
+  1022→  1022→      modifier: 0, result: counterDmg, total: counterDmg, purpose: "player_damage",
+  1023→  1023→    });
+  1024→  1024→    counterLine = ` ${targetName} отвечает контратакой (${counterDmg} урона)!`;
+  1025→  1025→    if (monsterResult.died) {
+  1026→  1026→      const xp = xpForMonster(m.maxHp);
+  1027→  1027→      await awardXP(roomId, targetName, xp);
+  1028→  1028→      await db.chatMessage.create({
+  1029→  1029→        data: { roomId, role: "system", speaker: "", round, content: `${targetName} получает ${xp} опыта за победу над ${m.name}.` },
+  1030→  1030→      });
+  1031→  1031→    }
+  1032→  1032→  }
+  1033→  1033→
+  1034→  1034→  return {
+  1035→  1035→    taken: true, rolls, damageToPlayer: dmg, damagedPlayer: targetName,
+  1036→  1036→    monsterName: m.name, moved: false,
+  1037→  1037→    narrativeLine: `${m.name} бьёт ${targetName} и попадает! ${dmg} урона (${atk.total} против AC ${targetAC}).${counterLine}`,
+  1038→  1038→  };
+  1039→  1039→}
+  1040→  1040→
+  1041→  1041→function emptyMonster(): MonsterTurnResult {
+  1042→  1042→  return { taken: false, rolls: [], damageToPlayer: 0, damagedPlayer: null, monsterName: null, moved: false, narrativeLine: "" };
+  1043→  1043→}
+  1044→  1044→
+  1045→  1045→// ---------- turn advancement ----------
+  1046→  1046→async function advanceTurn(roomCode: string, roomId: string): Promise<{
+  1047→  1047→  ended: boolean;
+  1048→  1048→  monsterTurns: { name: string; narrative: string; result: MonsterTurnResult }[];
+  1049→  1049→  nextTurnName: string | null;
+  1050→  1050→  nextTurnType: "player" | "monster" | null;
+  1051→  1051→}> {
+  1052→  1052→  const monsterTurns: { name: string; narrative: string; result: MonsterTurnResult }[] = [];
+  1053→  1053→  const room = await db.room.findUnique({ where: { id: roomId } });
+  1054→  1054→  if (!room || !room.combatActive) {
+  1055→  1055→    return { ended: false, monsterTurns, nextTurnName: null, nextTurnType: null };
+  1056→  1056→  }
+  1057→  1057→
+  1058→  1058→  let order = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+  1059→  1059→  if (order.length === 0) {
+  1060→  1060→    return { ended: true, monsterTurns, nextTurnName: null, nextTurnType: null };
+  1061→  1061→  }
+  1062→  1062→
+  1063→  1063→  // Loop: advance turnIndex, run monster turns until a living player is up.
+  1064→  1064→  let safety = 0;
+  1065→  1065→  while (safety++ < 50) {
+  1066→  1066→    let nextIndex = room.turnIndex + 1;
+  1067→  1067→    let round = room.round;
+  1068→  1068→    let roundAdvanced = false;
+  1069→  1069→    if (nextIndex >= order.length) {
+  1070→  1070→      nextIndex = 0;
+  1071→  1071→      round += 1;
+  1072→  1072→      roundAdvanced = true;
+  1073→  1073→    }
+  1074→  1074→    await setRoomState(roomId, { turnIndex: nextIndex, round });
+  1075→  1075→    // re-read room + order
+  1076→  1076→    const room2 = await db.room.findUnique({ where: { id: roomId } });
+  1077→  1077→    if (!room2) break;
+  1078→  1078→    room.turnIndex = room2.turnIndex;
+  1079→  1079→    room.round = room2.round;
+  1080→  1080→    order = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+  1081→  1081→    // At the start of a new round, tick all conditions (decrement durations,
+  1082→  1082→    // apply per-round damage like burning, remove expired).
+  1083→  1083→    if (roundAdvanced) {
+  1084→  1084→      const tickMessages = await tickConditions(roomId);
+  1085→  1085→      for (const msg of tickMessages) {
+  1086→  1086→        await db.chatMessage.create({
+  1087→  1087→          data: { roomId, role: "system", speaker: "", round, content: msg },
+  1088→  1088→        });
+  1089→  1089→      }
+  1090→  1090→    }
+  1091→  1091→    const current = order[room.turnIndex];
+  1092→  1092→    if (!current) {
+  1093→  1093→      return { ended: true, monsterTurns, nextTurnName: null, nextTurnType: null };
+  1094→  1094→    }
+  1095→  1095→
+  1096→  1096→    // Combat end checks.
+  1097→  1097→    const alive = await countAlive(roomId);
+  1098→  1098→    if (!alive.anyMonsterAlive || !alive.anyPlayerAlive) {
+  1099→  1099→      await setRoomState(roomId, { combatActive: false });
+  1100→  1100→      return { ended: true, monsterTurns, nextTurnName: null, nextTurnType: null };
+  1101→  1101→    }
+  1102→  1102→
+  1103→  1103→    if (current.combatantType === "player") {
+  1104→  1104→      // Skip dead players.
+  1105→  1105→      const p = await db.player.findFirst({ where: { name: current.combatantName, roomId } });
+  1106→  1106→      if (!p || p.hp <= 0 || !p.isAlive) {
+  1107→  1107→        // mark entry dead, continue advancing
+  1108→  1108→        await db.initiativeEntry.updateMany({ where: { id: current.id }, data: { isAlive: false } });
+  1109→  1109→        continue;
+  1110→  1110→      }
+  1111→  1111→      return { ended: false, monsterTurns, nextTurnName: current.combatantName, nextTurnType: "player" };
+  1112→  1112→    }
+  1113→  1113→
+  1114→  1114→    // Monster turn.
+  1115→  1115→    const monster = await db.monster.findFirst({ where: { name: current.combatantName, roomId } });
+  1116→  1116→    if (!monster || !monster.isActive || monster.hp <= 0) {
+  1117→  1117→      await db.initiativeEntry.updateMany({ where: { id: current.id }, data: { isAlive: false } });
+  1118→  1118→      continue;
+  1119→  1119→    }
+  1120→  1120→    const result = await runMonsterTurn(roomId, room.round, monster.id);
+  1121→  1121→    if (result.taken) {
+  1122→  1122→      const snap = await getSnapshot(roomCode);
+  1123→  1123→      const narrative = await narrateMonsterTurn(roomCode, {
+  1124→  1124→        monsterName: result.monsterName!,
+  1125→  1125→        moved: result.moved,
+  1126→  1126→        targetName: result.damagedPlayer ?? null,
+  1127→  1127→        hit: result.damageToPlayer > 0 ? true : result.narrativeLine.includes("промах") ? false : (result.moved ? null : false),
+  1128→  1128→        damage: result.damageToPlayer,
+  1129→  1129→        attackTotal: result.rolls[0]?.total ?? null,
+  1130→  1130→        ac: result.rolls[0]?.target ?? null,
+  1131→  1131→        location: snap?.location ?? "",
+  1132→  1132→      });
+  1133→  1133→      await db.chatMessage.create({
+  1134→  1134→        data: { roomId, role: "dm", speaker: "", round: room.round, content: narrative },
+  1135→  1135→      });
+  1136→  1136→      monsterTurns.push({ name: result.monsterName!, narrative, result });
+  1137→  1137→    }
+  1138→  1138→    // Check combat end after monster turn.
+  1139→  1139→    const alive2 = await countAlive(roomId);
+  1140→  1140→    if (!alive2.anyMonsterAlive || !alive2.anyPlayerAlive) {
+  1141→  1141→      await setRoomState(roomId, { combatActive: false });
+  1142→  1142→      return { ended: true, monsterTurns, nextTurnName: null, nextTurnType: null };
+  1143→  1143→    }
+  1144→  1144→  }
+  1145→  1145→  return { ended: false, monsterTurns, nextTurnName: null, nextTurnType: null };
+  1146→  1146→}
+  1147→  1147→
+  1148→  1148→// ---------- main entry ----------
+  1149→  1149→export interface MechanicsResult extends Omit<ResolvedEvent, "finalNarrative"> {
+  1150→  1150→  branchNarrative: string;
+  1151→  1151→  playerAction: string;
+  1152→  1152→  location: string;
+  1153→  1153→}
+  1154→  1154→
+  1155→  1155→/** Resolve all mechanics (plan, dice, effects, monster turns) WITHOUT the
+  1156→  1156→ *  final narrative. Returns everything the SSE route needs to then stream
+  1157→  1157→ *  the narrative token-by-token. */
+  1158→  1158→export async function resolvePlayerMechanics(
+  1159→  1159→  roomCode: string,
+  1160→  1160→  actorName: string,
+  1161→  1161→  playerAction: string
+  1162→  1162→): Promise<MechanicsResult> {
+  1163→  1163→  const room = await db.room.findUnique({ where: { code: roomCode.toUpperCase() } });
+  1164→  1164→  if (!room) throw new Error("Комната не найдена.");
+  1165→  1165→  const roomId = room.id;
+  1166→  1166→
+  1167→  1167→  const actor = await db.player.findFirst({ where: { name: actorName, roomId } });
+  1168→  1168→  if (!actor) throw new Error("Герой не найден в комнате.");
+  1169→  1169→  if (!actor.isAlive || actor.hp <= 0) throw new Error("Павший герой не может действовать.");
+  1170→  1170→
+  1171→  1171→  const wasCombatActive = room.combatActive;
+  1172→  1172→  const round = room.round;
+  1173→  1173→
+  1174→  1174→  // Turn enforcement.
+  1175→  1175→  if (wasCombatActive) {
+  1176→  1176→    // In combat: must be the actor's initiative turn.
+  1177→  1177→    const order = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+  1178→  1178→    const current = order[room.turnIndex];
+  1179→  1179→    if (!current || current.combatantName !== actorName || current.combatantType !== "player") {
+  1180→  1180→      throw new Error("Сейчас не ваш ход. Дождитесь своей инициативы.");
+  1181→  1181→    }
+  1182→  1182→  } else {
+  1183→  1183→    // Exploration: must be the actor's exploration turn.
+  1184→  1184→    const players = await db.player.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+  1185→  1185→    const alive = players.filter((p) => p.isAlive && p.hp > 0);
+  1186→  1186→    if (alive.length > 1) {
+  1187→  1187→      const current = alive[room.explorationActorIndex % alive.length];
+  1188→  1188→      if (!current || current.name !== actorName) {
+  1189→  1189→        throw new Error(`Сейчас ход: ${current?.name ?? "?"}. Дождитесь своей очереди.`);
+  1190→  1190→      }
+  1191→  1191→    }
+  1192→  1192→  }
+  1193→  1193→
+  1194→  1194→  // 1. Plan the mechanics first.
+  1195→  1195→  const plan = await planResolution(roomCode, actorName, playerAction);
+  1196→  1196→
+  1197→  1197→  // Spell-slot detection: if the action text mentions a slot-consuming
+  1198→  1198→  // ability for the actor's class, try to spend a spell slot. If none remain,
+  1199→  1199→  // override the plan as invalid.
+  1200→  1200→  if (plan.category !== "invalid") {
+  1201→  1201→    const classId = getClassIdByCharClass(actor.charClass);
+  1202→  1202→    const isCaster = isCasterClass(classId);
+  1203→  1203→    const slotAbilities = SLOT_CONSUMING_ABILITIES[classId] ?? [];
+  1204→  1204→    const actionLower = playerAction.toLowerCase();
+  1205→  1205→    const usedSlotAbility =
+  1206→  1206→      isCaster && slotAbilities.some((name) => actionLower.includes(name.toLowerCase()));
+  1207→  1207→    if (usedSlotAbility) {
+  1208→  1208→      const spend = await spendSpellSlot(roomId, actorName, 1);
+  1209→  1209→      if (!spend.ok) {
+  1210→  1210→        plan.category = "invalid";
+  1211→  1211→        plan.invalidReason =
+  1212→  1212→          "Закончились ячейки заклинаний. Отдохните, чтобы восстановить их.";
+  1213→  1213→      } else {
+  1214→  1214→        // Log the spent slot so it shows up in the dice log.
+  1215→  1215→        await logDiceRoll(roomId, round, actorName, {
+  1216→  1216→          label: `Ячейка заклинания ур.${spend.level}`,
+  1217→  1217→          notation: "slot",
+  1218→  1218→          modifier: 0,
+  1219→  1219→          result: spend.level,
+  1220→  1220→          total: spend.level,
+  1221→  1221→          purpose: "spell_slot",
+  1222→  1222→        });
+  1223→  1223→      }
+  1224→  1224→    }
+  1225→  1225→  }
+  1226→  1226→
+  1227→  1227→  // INVALID action: the DM rejected it as impossible. Do NOT consume the turn,
+  1228→  1228→  // do NOT apply effects — just narrate the rejection.
+  1229→  1229→  if (plan.category === "invalid") {
+  1230→  1230→    const reason = plan.invalidReason || "Это действие невозможно в данных обстоятельствах.";
+  1231→  1231→    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+  1232→  1232→    await db.chatMessage.create({ data: { roomId, role: "dm", speaker: "", round, content: reason } });
+  1233→  1233→    const snap = await getSnapshot(roomCode);
+  1234→  1234→    return {
+  1235→  1235→      actorName,
+  1236→  1236→      playerRolls: [],
+  1237→  1237→      monsterRolls: [],
+  1238→  1238→      outcome: "failure",
+  1239→  1239→      combatStarted: false,
+  1240→  1240→      combatEnded: false,
+  1241→  1241→      damageDealtToMonster: 0,
+  1242→  1242→      monsterThatDied: null,
+  1243→  1243→      damageDealtToPlayer: 0,
+  1244→  1244→      damagedPlayer: null,
+  1245→  1245→      healingToPlayer: 0,
+  1246→  1246→      healedPlayer: null,
+  1247→  1247→      inventoryChanges: [],
+  1248→  1248→      goldChange: 0,
+  1249→  1249→      imagePrompt: "",
+  1250→  1250→      imageNeeded: false,
+  1251→  1251→      branchNarrative: reason,
+  1252→  1252→      playerAction,
+  1253→  1253→      location: snap?.location ?? "",
+  1254→  1254→      nextTurn: wasCombatActive ? null : actorName, // turn NOT advanced for invalid actions
+  1255→  1255→      nextTurnType: wasCombatActive ? null : "player",
+  1256→  1256→      round,
+  1257→  1257→    };
+  1258→  1258→  }
+  1259→  1259→
+  1260→  1260→  // If this is the opening combat action, reveal hidden monsters so the
+  1261→  1261→  // attack can actually hit them.
+  1262→  1262→  let combatStarted = false;
+  1263→  1263→  if (!wasCombatActive && plan.category === "combat") {
+  1264→  1264→    await db.monster.updateMany({ where: { roomId, isActive: false }, data: { isActive: true } });
+  1265→  1265→  }
+  1266→  1266→
+  1267→  1267→  // 2. Resolve the player's action with the pre-computed plan (no monster turn).
+  1268→  1268→  const res = await resolvePlayerAction(roomCode, roomId, actorName, playerAction, round, plan);
+  1269→  1269→  let combatEnded = false;
+  1270→  1270→
+  1271→  1271→  // 3. If the action triggered combat, roll initiative (monsters already active).
+  1272→  1272→  if (!wasCombatActive && res.category === "combat") {
+  1273→  1273→    await rollInitiative(roomId);
+  1274→  1274→    await setRoomState(roomId, { combatActive: true, round: 1, turnIndex: 0 });
+  1275→  1275→    combatStarted = true;
+  1276→  1276→  }
+  1277→  1277→
+  1278→  1278→  // Snapshot for location (narrative will be streamed by the route).
+  1279→  1279→  const snap1 = await getSnapshot(roomCode);
+  1280→  1280→
+  1281→  1281→  // Persist the player's message immediately (DM narrative is saved by the route after streaming).
+  1282→  1282→  await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+  1283→  1283→
+  1284→  1284→  // 4. Check immediate combat end (e.g. one-shot kill before initiative, or last monster died).
+  1285→  1285→  const aliveCheck = await countAlive(roomId);
+  1286→  1286→  if (combatStarted && (!aliveCheck.anyMonsterAlive || !aliveCheck.anyPlayerAlive)) {
+  1287→  1287→    await setRoomState(roomId, { combatActive: false });
+  1288→  1288→    combatEnded = true;
+  1289→  1289→  }
+  1290→  1290→  // Also if already in combat and the player's action ended it.
+  1291→  1291→  if (wasCombatActive && !aliveCheck.anyMonsterAlive) {
+  1292→  1292→    await setRoomState(roomId, { combatActive: false });
+  1293→  1293→    combatEnded = true;
+  1294→  1294→  }
+  1295→  1295→
+  1296→  1296→  // 5. Advance turn (run monster turns until a player is up), unless combat just ended.
+  1297→  1297→  let nextTurnName: string | null = null;
+  1298→  1298→  let nextTurnType: "player" | "monster" | null = null;
+  1299→  1299→  let monsterRolls: ResolvedRoll[] = [];
+  1300→  1300→
+  1301→  1301→  if (combatStarted && !combatEnded) {
+  1302→  1302→    // After a combat-triggering opening strike: advance from turnIndex 0.
+  1303→  1303→    // If order[0] is the actor (who just acted), skip to the next combatant.
+  1304→  1304→    const order = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+  1305→  1305→    const first = order[0];
+  1306→  1306→    if (first && first.combatantName === actorName && first.combatantType === "player") {
+  1307→  1307→      // The actor already acted (opening strike) — advance once.
+  1308→  1308→      const adv = await advanceTurn(roomCode, roomId);
+  1309→  1309→      if (adv.ended) combatEnded = true;
+  1310→  1310→      nextTurnName = adv.nextTurnName;
+  1311→  1311→      nextTurnType = adv.nextTurnType;
+  1312→  1312→      for (const mt of adv.monsterTurns) monsterRolls.push(...mt.result.rolls);
+  1313→  1313→    } else {
+  1314→  1314→      // Start from turnIndex 0. If it's a monster, run monster turns.
+  1315→  1315→      const adv = await advanceTurn(roomCode, roomId);
+  1316→  1316→      if (adv.ended) combatEnded = true;
+  1317→  1317→      nextTurnName = adv.nextTurnName;
+  1318→  1318→      nextTurnType = adv.nextTurnType;
+  1319→  1319→      for (const mt of adv.monsterTurns) monsterRolls.push(...mt.result.rolls);
+  1320→  1320→      // If next is a player, that's whose turn it is now.
+  1321→  1321→    }
+  1322→  1322→  } else if (wasCombatActive && !combatEnded) {
+  1323→  1323→    // Normal in-combat advance after the player's turn.
+  1324→  1324→    const adv = await advanceTurn(roomCode, roomId);
+  1325→  1325→    if (adv.ended) combatEnded = true;
+  1326→  1326→    nextTurnName = adv.nextTurnName;
+  1327→  1327→    nextTurnType = adv.nextTurnType;
+  1328→  1328→    for (const mt of adv.monsterTurns) monsterRolls.push(...mt.result.rolls);
+  1329→  1329→  } else if (!wasCombatActive) {
+  1330→  1330→    // Exploration: advance to the next alive player.
+  1331→  1331→    await advanceExplorationTurn(roomId, actorName);
+  1332→  1332→    const snap2 = await getSnapshot(roomCode);
+  1333→  1333→    nextTurnName = snap2?.currentExplorerName ?? null;
+  1334→  1334→    nextTurnType = nextTurnName ? "player" : null;
+  1335→  1335→  }
+  1336→  1336→
+  1337→  1337→  // Final snapshot for round reporting.
+  1338→  1338→  const finalRoom = await db.room.findUnique({ where: { id: roomId } });
+  1339→  1339→
+  1340→  1340→  return {
+  1341→  1341→    actorName: actorName,
+  1342→  1342→    playerRolls: res.playerRolls,
+  1343→  1343→    monsterRolls,
+  1344→  1344→    outcome: res.outcome,
+  1345→  1345→    combatStarted,
+  1346→  1346→    combatEnded,
+  1347→  1347→    damageDealtToMonster: res.damageDealtToMonster,
+  1348→  1348→    monsterThatDied: res.monsterThatDied,
+  1349→  1349→    damageDealtToPlayer: res.damageDealtToPlayer,
+  1350→  1350→    damagedPlayer: res.damagedPlayer,
+  1351→  1351→    healingToPlayer: res.healingToPlayer,
+  1352→  1352→    healedPlayer: res.healedPlayer,
+  1353→  1353→    inventoryChanges: res.inventoryChanges,
+  1354→  1354→    goldChange: res.goldChange,
+  1355→  1355→    imagePrompt: res.imagePrompt,
+  1356→  1356→    imageNeeded: res.imageNeeded,
+  1357→  1357→    branchNarrative: res.branchNarrative,
+  1358→  1358→    playerAction,
+  1359→  1359→    location: snap1?.location ?? "",
+  1360→  1360→    nextTurn: nextTurnName,
+  1361→  1361→    nextTurnType,
+  1362→  1362→    round: finalRoom?.round ?? round,
+  1363→  1363→    aoe: res.aoe,
+  1364→  1364→  };
+  1365→  1365→}
+
+[showing lines 800-1365 of 1366; use offset=1366 with limit to continue reading]
