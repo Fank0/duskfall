@@ -1013,6 +1013,14 @@ export default function Home() {
             onSend={sendAction}
             onRest={handleRest}
             roomCode={session.roomCode}
+            /*
+             * Pass ttsEnabled to ChatPanel (task tts-voice-dm). When true,
+             * ChatPanel auto-triggers TTS for the latest DM message after the
+             * SSE stream ends (i.e. once the "streaming" placeholder bubble
+             * resolves to a persisted DB id via fetchState). System messages
+             * and player messages are never sent to TTS — only DM role ones.
+             */
+            ttsEnabled={settings.ttsEnabled}
           />
         </section>
       </main>
