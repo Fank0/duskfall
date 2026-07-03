@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 const VERSION = "2.0-restart";
 const BUILD_DATE = "2026-07-03";
-const COMMITS = 65;
+const COMMITS = 84;
 
 export async function GET() {
   return NextResponse.json({
