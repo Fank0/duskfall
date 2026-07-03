@@ -1,0 +1,7 @@
+DUSKFALL v2.0 (restart session)
+Build: $(date)
+Commits: $(git rev-list --count HEAD)
+HEAD: $(git rev-parse --short HEAD)
+
+DIAGNOSTIC: If you see "[start] LLM provider: custom" in Railway logs,
+you are running OLD code. The new code logs "[start] LLM chain: GLM(glm-4.6)...".
