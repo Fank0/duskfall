@@ -613,3 +613,56 @@ Final verification commands run:
 - `bunx tsc --noEmit` → 0 errors
 - `bun run lint` → 0 errors, 0 warnings
 - `bun run build` → ✓ SUCCEEDED (all 31 routes compile, .next/standalone produced)
+
+---
+Task ID: spellbook
+Agent: spellbook-agent
+Task: Create 30+ spell spellbook with schools, levels, UI, caster integration
+
+Work Log:
+- Read worklog.md (last 3 sections — auth-restore, final-audit-restart, main) + abilities.ts + types.ts + presets.ts to understand the existing ability/scroll system, caster classes, and spell-slot structure.
+- Item 1: Created src/lib/game/spellbook.ts with:
+  - SpellSchool union (8 schools: evocation, transmutation, enchantment, illusion, necromancy, divination, abjuration, conjuration) + schoolLabelRu() + schoolColor() helpers (badge/ring/dot/text/bar Tailwind classes per school).
+  - Spell interface (id, name RU, nameEn, level 0-5, school, castingTime, range, duration, components, description, damage?, saveAbility?, saveDC?, aoeShape?, aoeSize?).
+  - SPELLBOOK catalogue with 34 entries: 4 cantrips (Fire Bolt, Ray of Frost, Sacred Flame, Acid Splash), 8 L1 (Magic Missile, Shield, Cure Wounds, Bless, Thunderwave, Chromatic Orb, Sleep, Mage Armor), 6 L2 (Fireball, Web, Invisibility, Hold Person, Lesser Restoration, Scorching Ray), 6 L3 (Lightning Bolt, Cone of Cold, Mass Cure Wounds, Dispel Magic, Fireball-upcast, Fly), 5 L4 (Wall of Fire, Stoneskin, Polymorph, Ice Storm, Death Ward), 5 L5 (Cone of Cold-upcast, Cloudkill, Mass Cure Wounds-upcast, Wall of Stone, Flame Strike). Upcast variants use distinct `_upcast` IDs + "(усиленный)" Russian suffix.
+  - Helpers: getSpellsByLevel, getSpellsBySchool, getSpellById, findSpellByName, formatSpellLevel, saveAbilityLabelRu, classBaseSpells (per-class thematic loadout per spec: L1 = 2 cantrips + 4 L1 spells, L3 = +2 L2 spells, L5 = +2 L3 spells for all 8 caster classes), resolveKnownSpells (base + extra learned).
+  - Committed df41895.
+- Item 2: Created src/components/dnd/SpellbookPanel.tsx (mirrors BestiaryPanel pattern):
+  - Dialog with level tabs (Заговоры, Круг 1-5, "Все"), search box filtering by RU/EN name + description + school.
+  - Each SpellCard shows: name (RU), nameEn italic, school badge (color-coded), level number, casting time/range/duration/components stats grid, description, damage/save/AoE badges.
+  - School color coding matches spec: evocation=red, transmutation=amber, enchantment=pink, illusion=purple, necromancy=zinc/gray, divination=blue, abjuration=emerald/green, conjuration=orange.
+  - Footer legend showing all 8 schools with per-school spell counts.
+  - Added SpellbookPanel dynamic import + spellbookOpen state + purple-themed "Книга заклинаний" button in src/app/page.tsx header (between Bestiary and Map).
+  - Committed 62aaba5.
+- Item 3: Updated src/lib/game/abilities.ts:
+  - Extended Ability.source union to include "spell".
+  - Added `spellbookSpells?: string[]` field to Ability type — for spell abilities, holds the single-element array `[spellId]` of the spell this ability entry provides.
+  - computeAbilities() now appends one Ability entry per known spell for casters (via resolveKnownSpells + getSpellById). Cantrips omit slotLevel; leveled spells set slotLevel = spell.level. castNotation = spell.damage, castType inferred (heal/buff/damage/utility via id-based classifier).
+  - Added knownSpellIdsForPlayer() and knownSpellsForPlayer() exports for DM context use.
+  - Added `spellbookSpells?: string[]` field to PlayerState in types.ts (extra learned spells beyond class base).
+  - Updated src/components/dnd/CharacterSheet.tsx to render the new "spell" source: fuchsia badge labeled "закл.", purple Sparkles icon, slot-level badge ("яч.N") for leveled spells.
+  - Committed 5edefea.
+- Item 4: DM context + learning scrolls:
+  - Added `learnSpell?: string` field to OutcomeEffects in types.ts (spell ID for the actor to learn from a found scroll).
+  - Added `spellbookSpells String @default("")` column to Player model in prisma/schema.prisma. Ran `bun run db:push` — schema synced, Prisma client regenerated.
+  - Updated toPlayer() in state.ts to parse spellbookSpells (comma-separated → string[]).
+  - Added learnSpell() helper in state.ts — appends spell ID to player.spellbookSpells, returns true if newly added.
+  - Updated getDMContext() in state.ts — for each caster player, lists known spells grouped as "Заговоры: ... | Заклинания: <name> (Круг N), ..." under a "Книга заклинаний <name>:" line, so the DM agent can reference them.
+  - Updated src/lib/game/dm-agent.ts:
+    · Imported getSpellById, knownSpellsForPlayer, learnSpell.
+    · Added learnSpell section to the system prompt: explains the field, gives example ("читаю свиток огненного шара" → success.learnSpell = "fireball"), restricts to caster classes.
+    · Added "ЗАКЛИНАНИЯ ИЗ КНИГИ ЗАКЛИНАНИЙ" prompt section: instructs the LLM to use SRD mechanics for known spells, treat unknown spells as invalid, set AoE fields for zonal spells.
+    · Updated the JSON output schema example to show learnSpell in success/failure.
+    · In resolvePlayerAction: after applying inventory/stations, checks branch.learnSpell; if it's a known spell ID and actor is a caster, persists via learnSpell() and posts a system chat line "📖 <name> изучает заклинание «<spell>» (<nameEn>) и вписывает его в книгу заклинаний."
+    · Enhanced spell-slot detection in resolvePlayerMechanics: now also detects when action text matches a known spell's RU/EN name (via knownSpellsForPlayer(actorState)); spends a slot of the spell's exact level (auto-upcasts if exhausted).
+    · Fetches the actor's PlayerState via getSnapshot (cached) for known-spell lookup — needed because the raw Prisma actor lacks the equipment/spellbookSpells fields.
+  - Committed e7685ae.
+- Final verification:
+  - bun run lint: clean (no warnings/errors).
+  - bunx tsc --noEmit: clean (no errors).
+  - bun run build: ✓ Compiled successfully in 8.4s, all 30 routes generated.
+
+Stage Summary:
+- Key features: 34-spell catalogue (4 cantrips + 30 leveled) covering 8 schools + 6 level tiers; spellbook viewer dialog with search + level tabs + school color coding; full abilities-system integration (each known spell becomes an Ability entry with proper slotLevel + castType); per-class spell loadouts derived from level (L1/L3/L5 milestones); DM agent prompt now references the player's spellbook and supports `success.learnSpell` for scroll learning; spell-slot detection extended to known spells by RU/EN name match.
+- Lint: clean. TSC: clean. Build: ✓ success.
+- Commits: df41895 (item 1), 62aaba5 (item 2), 5edefea (item 3), e7685ae (item 4).
