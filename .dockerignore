@@ -1,6 +1,7 @@
 node_modules
 .next
 .git
+.gitignore
 db/*.db
 db/*.db-journal
 dev.log
@@ -9,6 +10,16 @@ game-sync.log
 preview-*.png
 worklog.md
 download
+upload
+tool-results
 README.md
 .env*
+.env.local
+.env.production
 skills
+*.log
+.editorconfig
+EXECUTION-PLAN.md
+DEVELOPMENT-PLAN.md
+FUTURE-PLAN.md
+VERSION.txt

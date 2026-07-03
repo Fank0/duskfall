@@ -36,6 +36,10 @@ model Room {
   dungeonDepth     Int      @default(1)
   // True once the boss of the current dungeon depth has been slain.
   dungeonCleared   Boolean  @default(false)
+  // ===== Account system (auth-restore) =====
+  // Optional link to the Account that hosts this room (set when an
+  // authenticated user creates a room). Nullable so anonymous play still works.
+  hostAccountId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -51,6 +55,41 @@ model Room {
   mapRooms     MapRoom[]
   npcs         Npc[]
   traps        Trap[]
+  saves        SaveSlot[]
+}
+
+/// A registered user account (auth-restore). Stores a bcrypt password hash;
+/// never stores the plaintext password. Identified by a unique username.
+model Account {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  saves        SaveSlot[]
+}
+
+/// A persistent save slot bound to an Account. Each account has 3 slots
+/// (slotNumber 1..3) that remember the room + character so the player can
+/// resume a campaign later. Filled slots point at a Room + playerId; empty
+/// slots are simply absent rows (the /saves/list route fills in nulls).
+model SaveSlot {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  slotNumber  Int
+  name        String
+  roomId      String?
+  room        Room?    @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  playerId    String?
+  charName    String?
+  charClass   String?
+  charRace    String?
+  charLevel   Int      @default(1)
+  lastPlayed  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, slotNumber])
+  @@index([accountId])
 }
 
 /// A player character belonging to a room (a party member).
