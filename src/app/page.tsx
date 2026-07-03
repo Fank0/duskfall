@@ -119,6 +119,7 @@ export default function Home() {
   const [questOpen, setQuestOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [isMovingRoom, setIsMovingRoom] = useState(false);
+  const [isNewDungeonBusy, setIsNewDungeonBusy] = useState(false);
   const [dialogueOpen, setDialogueOpen] = useState(false);
   const [dialogueNpc, setDialogueNpc] = useState<NpcState | null>(null);
   const [isDialogueBusy, setIsDialogueBusy] = useState(false);
@@ -601,6 +602,33 @@ export default function Home() {
     [session, isMovingRoom, fetchState]
   );
 
+  // ===== New dungeon (Пункт 36) =====
+  // Host-only: regenerates the procedural dungeon map (wipes MapRoom + Trap +
+  // ground loot + inactive monsters, picks a fresh biome or increments depth).
+  const startNewDungeon = useCallback(async () => {
+    if (!session || isNewDungeonBusy) return;
+    setIsNewDungeonBusy(true);
+    try {
+      const res = await fetch("/api/game/new-dungeon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSnapshot(data.snapshot);
+        pingRoom(session.roomCode);
+        toast.success(`Новое подземелье: ${data.biome ?? ""} (глубина ${data.depth ?? 1})`);
+      } else {
+        toast.error(data.error ?? "Не удалось создать новое подземелье.");
+      }
+    } catch {
+      toast.error("Ошибка генерации подземелья.");
+    } finally {
+      setIsNewDungeonBusy(false);
+    }
+  }, [session, isNewDungeonBusy]);
+
   const handleDialogueAction = useCallback(
     async (
       action: "intro" | "about" | "business" | "leave" | "buy" | "sell",
@@ -931,6 +959,11 @@ export default function Home() {
         currentPos={snapshot.currentMapPos}
         onMove={moveRoom}
         isMoving={isMovingRoom}
+        dungeonBiome={snapshot.dungeonBiome}
+        dungeonDepth={snapshot.dungeonDepth}
+        dungeonCleared={snapshot.dungeonCleared}
+        onNewDungeon={startNewDungeon}
+        isNewDungeonBusy={isNewDungeonBusy}
       />
 
       {/* ===== Dialogue modal ===== */}

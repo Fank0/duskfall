@@ -647,6 +647,56 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
       where: { roomId, combatantName: m.name },
       data: { isAlive: false },
     });
+    // ===== Boss death reward (Пункт 36) =====
+    // When a boss dies: award 3× XP to ALL alive players, spawn treasure loot
+    // on the ground (playerName="__ground__"), and mark the dungeon cleared.
+    // The DM agent already awards 1× XP to the actor; this bonus is party-wide
+    // so the killer gets an effective 4× (1 from DM + 3 from boss reward) and
+    // every other party member gets 3× — matching the spec's "award 3× XP".
+    if (m.isBoss) {
+      const alivePlayers = await db.player.findMany({ where: { roomId, isAlive: true } });
+      const baseXp = xpForMonster(m.maxHp);
+      const bossXp = baseXp * 3;
+      for (const p of alivePlayers) {
+        if (p.hp > 0) await awardXP(roomId, p.name, bossXp);
+      }
+      // Spawn 3 treasure items on the ground (loot items).
+      const room = await db.room.findUnique({ where: { id: roomId }, select: { dungeonBiome: true } });
+      const biomeId = (room?.dungeonBiome ?? "dungeon") as
+        | "catacombs" | "caves" | "tower" | "forest" | "dungeon";
+      const { getBiome } = await import("./dungeon-biomes");
+      const biomeDef = getBiome(biomeId);
+      const lootCount = Math.min(3, biomeDef.loot.length);
+      // Pick distinct items from the biome loot pool.
+      const lootPool = [...biomeDef.loot];
+      for (let i = 0; i < lootCount && lootPool.length > 0; i++) {
+        const idx = Math.floor(Math.random() * lootPool.length);
+        const item = lootPool.splice(idx, 1)[0];
+        await db.inventoryItem.create({
+          data: {
+            roomId,
+            playerName: "__ground__",
+            itemName: item.name,
+            itemType: item.type,
+            quantity: 1,
+            description: item.description,
+          },
+        });
+      }
+      await db.room.update({
+        where: { id: roomId },
+        data: { dungeonCleared: true },
+      });
+      await db.chatMessage.create({
+        data: {
+          roomId,
+          role: "system",
+          speaker: "",
+          content: `Босс «${m.name}» повержен! Подземелье зачищено! Партия получает ${bossXp} XP каждому. На полу появляется сокровище.`,
+          round: 0,
+        },
+      });
+    }
   }
   invalidateSnapshotCache(roomId);
   return { hp: newHp, died: newHp <= 0 };

@@ -9,7 +9,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Map as MapIcon, Loader2, Footprints } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Map as MapIcon, Loader2, Footprints, Skull, Star, Sparkles } from "lucide-react";
 import type { MapRoomState, MapRoomType } from "@/lib/game/types";
 
 const TYPE_COLOR: Record<MapRoomType, string> = {
@@ -45,6 +46,24 @@ const TYPE_ICON: Record<MapRoomType, string> = {
   trap: "⚠️",
 };
 
+/** Russian display name for a biome id. */
+const BIOME_LABEL: Record<string, string> = {
+  catacombs: "Катакомбы",
+  caves: "Пещеры",
+  tower: "Башня",
+  forest: "Лес",
+  dungeon: "Подземелье",
+};
+
+/** Accent colour for the biome badge (matches DUNGEON_BIOMES accent). */
+const BIOME_ACCENT: Record<string, string> = {
+  catacombs: "#a8a29e",
+  caves: "#0ea5e9",
+  tower: "#7c3aed",
+  forest: "#16a34a",
+  dungeon: "#b91c1c",
+};
+
 const CELL_SIZE = 90;
 const CELL_GAP = 30;
 const PADDING = 40;
@@ -56,6 +75,11 @@ export function WorldMap({
   currentPos,
   onMove,
   isMoving,
+  dungeonBiome = "dungeon",
+  dungeonDepth = 1,
+  dungeonCleared = false,
+  onNewDungeon,
+  isNewDungeonBusy = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -63,6 +87,16 @@ export function WorldMap({
   currentPos: { x: number; y: number } | null;
   onMove: (x: number, y: number) => void;
   isMoving: boolean;
+  /** Active biome id (catacombs | caves | tower | forest | dungeon). */
+  dungeonBiome?: string;
+  /** Current dungeon depth (1 = first level). */
+  dungeonDepth?: number;
+  /** True once the boss of the current depth has been slain. */
+  dungeonCleared?: boolean;
+  /** Called when the user clicks the "Новое подземелье" button. */
+  onNewDungeon?: () => void;
+  /** True while a new-dungeon request is in flight (disables the button). */
+  isNewDungeonBusy?: boolean;
 }) {
   // Compute the SVG bounds from the discovered rooms.
   const { width, height } = useMemo(() => {
@@ -91,18 +125,62 @@ export function WorldMap({
     return new Set(here.connections.map((c) => `${c.x},${c.y}`));
   }, [rooms, currentPos]);
 
+  const biomeLabel = BIOME_LABEL[dungeonBiome] ?? "Подземелье";
+  const biomeAccent = BIOME_ACCENT[dungeonBiome] ?? "#b91c1c";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[88vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <MapIcon className="h-5 w-5 text-amber-300" />
-            Карта мира
+            Карта подземелья
+            {/* Biome badge + depth */}
+            <Badge
+              variant="outline"
+              className="ml-1 text-[10px]"
+              style={{ borderColor: `${biomeAccent}99`, color: biomeAccent }}
+            >
+              {biomeLabel}
+            </Badge>
+            <Badge variant="outline" className="text-[10px] border-amber-800/60 text-amber-200">
+              Глубина {dungeonDepth}
+            </Badge>
           </DialogTitle>
           <DialogDescription className="text-xs">
             Открытые комнаты подземелья. Кликните соседнюю комнату, чтобы войти.
           </DialogDescription>
         </DialogHeader>
+
+        {/* ===== "Подземелье зачищено!" banner ===== */}
+        {dungeonCleared && (
+          <div className="mx-5 mb-3 flex flex-wrap items-center gap-3 rounded-md border border-emerald-700/60 bg-emerald-950/40 px-4 py-3 text-emerald-100">
+            <Sparkles className="h-5 w-5 text-emerald-300" />
+            <div className="min-w-0 flex-1">
+              <div className="font-serif text-sm font-bold text-emerald-200">
+                Подземелье зачищено!
+              </div>
+              <div className="text-[11px] text-emerald-200/70">
+                Босс повержен. Можно спуститься на следующий уровень.
+              </div>
+            </div>
+            {onNewDungeon && (
+              <Button
+                size="sm"
+                onClick={onNewDungeon}
+                disabled={isNewDungeonBusy}
+                className="gap-1.5 border-emerald-700/60 bg-emerald-900/60 text-emerald-100 hover:bg-emerald-900/80"
+              >
+                {isNewDungeonBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                <span>Новое подземелье</span>
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-auto px-5 pb-5">
           {rooms.length === 0 ? (
@@ -126,6 +204,10 @@ export function WorldMap({
                     {label}
                   </span>
                 ))}
+                <span className="flex items-center gap-1 rounded-full border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200">
+                  <Star className="h-2.5 w-2.5 fill-amber-300 text-amber-300" />
+                  Тайная
+                </span>
               </div>
 
               <svg
@@ -169,6 +251,8 @@ export function WorldMap({
                   const isCurrent = currentPos && currentPos.x === r.x && currentPos.y === r.y;
                   const isReachable = reachable.has(`${r.x},${r.y}`);
                   const color = TYPE_COLOR[r.roomType];
+                  const isSecret = Boolean(r.secret);
+                  const isBoss = r.roomType === "boss";
                   return (
                     <g
                       key={`${r.x},${r.y}`}
@@ -218,8 +302,50 @@ export function WorldMap({
                       >
                         ({r.x},{r.y})
                       </text>
-                      {/* Current marker */}
-                      {isCurrent && (
+                      {/* Boss skull badge (top-right corner) */}
+                      {isBoss && (
+                        <g>
+                          <circle
+                            cx={CELL_SIZE - 12}
+                            cy={12}
+                            r={9}
+                            fill="#000000"
+                            opacity={0.7}
+                          />
+                          <text
+                            x={CELL_SIZE - 12}
+                            y={12}
+                            textAnchor="middle"
+                            fontSize={12}
+                            dominantBaseline="middle"
+                          >
+                            💀
+                          </text>
+                        </g>
+                      )}
+                      {/* Secret star badge (top-left corner) — only on discovered secret rooms */}
+                      {isSecret && !isBoss && (
+                        <g>
+                          <circle
+                            cx={12}
+                            cy={12}
+                            r={9}
+                            fill="#000000"
+                            opacity={0.7}
+                          />
+                          <text
+                            x={12}
+                            y={12}
+                            textAnchor="middle"
+                            fontSize={12}
+                            dominantBaseline="middle"
+                          >
+                            ⭐
+                          </text>
+                        </g>
+                      )}
+                      {/* Current marker (amber pulsing dot, only when not a boss to avoid overlap) */}
+                      {isCurrent && !isBoss && (
                         <circle
                           cx={CELL_SIZE - 12}
                           cy={12}
@@ -251,7 +377,7 @@ export function WorldMap({
                       <div className="flex items-start gap-2">
                         <span className="text-2xl">{TYPE_ICON[here.roomType]}</span>
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <h4 className="font-serif text-sm font-bold gold-text">{here.label}</h4>
                             <Badge
                               variant="outline"
@@ -263,6 +389,15 @@ export function WorldMap({
                             >
                               {TYPE_LABEL[here.roomType]}
                             </Badge>
+                            {here.secret && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] border-amber-700/60 text-amber-200"
+                              >
+                                <Star className="mr-1 h-2.5 w-2.5 fill-amber-300 text-amber-300" />
+                                Тайная
+                              </Badge>
+                            )}
                           </div>
                           {here.description && (
                             <p className="mt-1 text-[11px] leading-snug text-foreground/70">
@@ -284,9 +419,17 @@ export function WorldMap({
                         Доступно соседних комнат: {reachable.size}. Кликните по пунктирной ячейке, чтобы войти.
                       </span>
                     ) : (
-                      <span>Тупик. Возвращайтесь explored комнатами.</span>
+                      <span>Тупик. Возвращайтесь исследованными комнатами.</span>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Boss hint footer (shown if there is a boss room in the snapshot) */}
+              {rooms.some((r) => r.roomType === "boss") && (
+                <div className="mt-2 flex items-center gap-2 rounded border border-red-900/40 bg-red-950/20 px-3 py-2 text-[11px] text-red-200">
+                  <Skull className="h-3.5 w-3.5 text-red-400" />
+                  Где-то здесь обитает босс подземелья. Победа принесёт 3× XP и сокровища.
                 </div>
               )}
             </>

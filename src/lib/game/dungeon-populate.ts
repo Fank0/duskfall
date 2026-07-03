@@ -87,9 +87,10 @@ async function spawnBoss(
       posY: b.posY,
       color: b.color,
       description: b.description,
-      // Bosses start ACTIVE so the boss fight can begin immediately when the
-      // party enters the boss room (no need for a player attack to trigger).
-      isActive: true,
+      // Bosses start HIDDEN (isActive=false); the DM agent reveals all
+      // inactive monsters when the player's first combat action triggers
+      // combat. This matches the existing monster-spawn pattern.
+      isActive: false,
       isBoss: true,
       specialAbility: b.specialAbility,
     },
