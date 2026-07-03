@@ -130,7 +130,7 @@ export function Lobby({
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-1.5 border-amber-800/40 bg-amber-950/20 text-amber-200 hover:bg-amber-950/40"
+                className="gap-1.5 border-amber-800/40 bg-amber-950/20 text-amber-200 hover:bg-stone-800/50"
                 onClick={() => setSavesOpen(true)}
               >
                 <Save className="h-3.5 w-3.5" /> {tt("lobby.my_saves")}

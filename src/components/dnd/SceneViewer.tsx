@@ -45,17 +45,18 @@ export function SceneViewer({
 
   return (
     <Card className="parchment rune-border border-border/80 overflow-hidden gap-0">
-      {/* Image container: fixed 16:9 aspect ratio, image fills with object-cover
-          (crops rather than stretches). No vignette or heavy overlays that
-          could look like "distortion" on the edges. */}
-      <div className="relative w-full aspect-video bg-stone-950 overflow-hidden">
+      {/* Image container: shows the FULL generated image without stretching or
+          cropping. Generated images are 1024×1024 (square) — we use a square
+          container with object-contain so the entire image is always visible
+          and never distorted. The dark bg fills any letterboxing. */}
+      <div className="relative w-full aspect-square bg-stone-950 overflow-hidden">
         {scene?.imageUrl ? (
           <img
             key={scene.imageUrl}
             src={scene.imageUrl}
             alt={scene.title || location}
             className={cn(
-              "absolute inset-0 h-full w-full object-cover transition-all duration-700",
+              "absolute inset-0 h-full w-full object-contain transition-all duration-700",
               isGenerating ? "opacity-40 blur-sm" : "opacity-100"
             )}
             style={{ filter: timeFilter }}

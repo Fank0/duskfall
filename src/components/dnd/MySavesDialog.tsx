@@ -259,7 +259,7 @@ export function MySavesDialog({
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="gap-1.5 text-red-300 hover:bg-red-950/40 hover:text-red-200"
+                        className="gap-1.5 text-red-300 hover:bg-stone-800/50 hover:text-red-200"
                         onClick={() => handleDelete(slot.slotNumber)}
                         disabled={busySlot === slot.slotNumber}
                       >

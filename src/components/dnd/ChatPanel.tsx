@@ -307,7 +307,7 @@ export const ChatPanel = memo(function ChatPanel({
               type="button"
               onClick={loadMore}
               disabled={loadingMore}
-              className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/30 px-3 py-1 text-[11px] text-amber-200 transition-colors hover:bg-amber-950/50 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/20 px-3 py-1 text-[11px] text-amber-200 transition-colors hover:bg-stone-800/50 disabled:opacity-50"
             >
               {loadingMore ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -520,7 +520,7 @@ function MessageBubble({
                 "flex h-5 w-5 items-center justify-center rounded-full border text-amber-300 transition-colors",
                 isTtsPlaying
                   ? "border-amber-500/70 bg-amber-500/20 hover:bg-amber-500/30"
-                  : "border-amber-800/40 bg-amber-950/30 hover:bg-amber-950/50",
+                  : "border-amber-800/40 bg-amber-950/20 hover:bg-stone-800/50",
                 "disabled:cursor-not-allowed disabled:opacity-30"
               )}
             >

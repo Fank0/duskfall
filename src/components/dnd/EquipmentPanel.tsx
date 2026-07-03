@@ -134,7 +134,7 @@ export function EquipmentPanel({
                 className={cn(
                   "flex min-h-[88px] flex-col items-start gap-1 rounded-md border p-2 text-left transition-all",
                   it
-                    ? "border-amber-700/50 bg-amber-950/20 hover:bg-amber-950/35"
+                    ? "border-amber-700/50 bg-amber-950/20 hover:bg-stone-800/50"
                     : "border-border/50 bg-stone-900/40 hover:border-amber-500/50 hover:bg-stone-900/70"
                 )}
               >

@@ -278,7 +278,7 @@ export const BottomPanel = memo(function BottomPanel({
                   item
                     ? "border-amber-700/50 bg-amber-950/20 text-amber-200"
                     : "border-border/30 bg-stone-900/40 text-muted-foreground/50",
-                  onUnequip && item && "cursor-pointer hover:border-red-500 hover:bg-red-950/30",
+                  onUnequip && item && "cursor-pointer hover:border-red-700/60 hover:bg-stone-800/50",
                   (!onUnequip || !item) && "cursor-default"
                 )}
               >
@@ -339,7 +339,7 @@ export const BottomPanel = memo(function BottomPanel({
                             item.itemType === "weapon" && "border-sky-700/40 bg-sky-950/20 text-sky-200",
                             item.itemType === "armor" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",
                             !["potion", "scroll", "weapon", "armor"].includes(item.itemType) && "border-border/40 bg-stone-900/40 text-stone-200",
-                            canQuickUse && !disabledChips.has(chipId) && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
+                            canQuickUse && !disabledChips.has(chipId) && "cursor-pointer hover:border-amber-600/60 hover:bg-stone-800/50",
                             (!canQuickUse || disabledChips.has(chipId)) && "cursor-default",
                             isPulsing && "ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.55)]",
                           )}
@@ -604,7 +604,7 @@ function AbilityChip({
               a.source === "spell" && "border-fuchsia-700/40 bg-fuchsia-950/20 text-fuchsia-200",
               !["race", "class", "talent", "scroll", "spell"].includes(a.source) && "border-border/40 bg-stone-900/40 text-stone-200",
               a.consumable && "ring-1 ring-amber-700/30",
-              canQuickUse && !isDisabled && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
+              canQuickUse && !isDisabled && "cursor-pointer hover:border-amber-600/60 hover:bg-stone-800/50",
               (!canQuickUse || isDisabled) && "cursor-default",
               isPulsing && "ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.55)]",
               // Favorited chips get a subtle amber accent border so they stand
@@ -656,7 +656,7 @@ function AbilityChip({
               className={cn(
                 "absolute -right-1.5 -top-1.5 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-colors",
                 isFavorited
-                  ? "border-amber-400 bg-amber-900/80 hover:bg-amber-800"
+                  ? "border-amber-400 bg-amber-900/40 hover:bg-amber-800/50"
                   : "border-stone-500/70 bg-stone-900/90 hover:bg-stone-800",
               )}
               title={isFavorited ? "Убрать из избранного" : "Добавить в избранное"}

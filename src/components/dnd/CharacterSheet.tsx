@@ -300,7 +300,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                   <button
                     type="button"
                     onClick={() => setEquipOpen(true)}
-                    className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-amber-950/50"
+                    className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-stone-800/60"
                   >
                     {tt("ui.open")}
                   </button>
@@ -348,7 +348,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                         className={cn(
                           "rounded border border-border/40 bg-stone-900/40 p-1.5",
                           canQuickUse &&
-                            "cursor-pointer transition-colors hover:border-amber-700/60 hover:bg-amber-950/30"
+                            "cursor-pointer transition-colors hover:border-amber-600/40 hover:bg-stone-800/50"
                         )}
                       >
                         <div className="flex items-center justify-between">
@@ -415,7 +415,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                           ? "border-amber-700/50 bg-amber-950/20"
                           : "border-border/40 bg-stone-900/40",
                         canQuickUse &&
-                          "cursor-pointer transition-colors hover:border-amber-700/60 hover:bg-amber-950/30"
+                          "cursor-pointer transition-colors hover:border-amber-600/40 hover:bg-stone-800/50"
                       )}
                     >
                       <div className="flex items-center justify-between gap-1">
