@@ -993,19 +993,17 @@ export default function Home() {
         )}
       </header>
 
-      {/* ===== Main ===== */}
+      {/* ===== Main =====
+        Layout per user's hand-drawn plan:
+          LEFT  (~20%): Character sheet (stats, abilities, equipment, inventory)
+          CENTER (~60%): Scene image + tactical grid
+          RIGHT (~20%): Chat panel (DM narrative + action input + quick actions)
+        No `order` classes — HTML order = visual order (left → right on desktop,
+        top → bottom on mobile).
+      */}
       <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row sm:p-4">
-        {/* Left: party + your sheet + dice — widened from lg:w-72 → lg:w-80 so
-            the inventory section in the CharacterSheet (especially with the
-            new equipment summary, AC breakdown, spell slots, conditions, and
-            clickable quick-use rows) has room to breathe and doesn't feel
-            squeezed against the tactical grid. */}
-        <aside className="order-2 space-y-3 lg:order-1 lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
-          <PartyPanel
-            players={snapshot.players}
-            youName={session.playerName}
-            currentTurnName={snapshot.currentTurnName}
-          />
+        {/* ===== LEFT: Character sheet + dice log ===== */}
+        <aside className="flex flex-col gap-3 lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
           {you && (
             <CharacterSheet
               player={you}
@@ -1033,8 +1031,14 @@ export default function Home() {
           <DiceLog rolls={snapshot.diceLog} />
         </aside>
 
-        {/* Center: scene + grid */}
-        <section className="order-1 flex min-h-0 flex-1 flex-col gap-3 lg:order-2 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
+        {/* ===== CENTER: Party strip + scene + tactical grid ===== */}
+        <section className="flex min-h-0 flex-1 flex-col gap-3 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
+          {/* Party panel — compact horizontal strip above the scene */}
+          <PartyPanel
+            players={snapshot.players}
+            youName={session.playerName}
+            currentTurnName={snapshot.currentTurnName}
+          />
           <SceneViewer
             scene={snapshot.scene}
             isGenerating={isGeneratingImage}
@@ -1058,8 +1062,8 @@ export default function Home() {
           />
         </section>
 
-        {/* Right: chat */}
-        <section className="order-3 h-[65vh] min-h-0 shrink-0 lg:h-full lg:w-[400px]">
+        {/* ===== RIGHT: Chat panel (DM narrative + actions) ===== */}
+        <section className="h-[65vh] min-h-0 shrink-0 lg:h-full lg:w-[400px]">
           <ChatPanel
             messages={snapshot.chat}
             isThinking={isThinking}

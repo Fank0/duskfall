@@ -45,11 +45,10 @@ export function SceneViewer({
 
   return (
     <Card className="parchment rune-border border-border/80 overflow-hidden gap-0">
-      {/* Image container: natural aspect ratio, NEVER stretched.
-          Wrapper uses aspect-video (16:9) so the container always has a
-          consistent shape; the image inside uses object-cover to fill it
-          without distortion (crops rather than stretches). */}
-      <div className="relative w-full aspect-video bg-stone-950">
+      {/* Image container: fixed 16:9 aspect ratio, image fills with object-cover
+          (crops rather than stretches). No vignette or heavy overlays that
+          could look like "distortion" on the edges. */}
+      <div className="relative w-full aspect-video bg-stone-950 overflow-hidden">
         {scene?.imageUrl ? (
           <img
             key={scene.imageUrl}
@@ -94,8 +93,7 @@ export function SceneViewer({
           <div className="pointer-events-none absolute inset-0 weather-snow" />
         )}
 
-        {/* Vignette overlay */}
-        <div className="pointer-events-none absolute inset-0 vignette" />
+        {/* No vignette overlay — it created visual "distortion" on edges */}
 
         {/* Time indicator (top-right) */}
         <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-amber-700/40 bg-stone-950/70 px-2.5 py-1 text-xs text-amber-200 backdrop-blur">
