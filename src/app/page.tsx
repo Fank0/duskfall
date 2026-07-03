@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon, MessageCircle, Settings as SettingsIcon } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -19,6 +19,7 @@ import { QuestJournal } from "@/components/dnd/QuestJournal";
 import { WorldMap } from "@/components/dnd/WorldMap";
 import { DialoguePanel } from "@/components/dnd/DialoguePanel";
 import { SettingsMenu } from "@/components/dnd/SettingsMenu";
+import { CombatLog } from "@/components/dnd/CombatLog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -93,6 +94,7 @@ export default function Home() {
   const [dialogueNpc, setDialogueNpc] = useState<NpcState | null>(null);
   const [isDialogueBusy, setIsDialogueBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [combatLogOpen, setCombatLogOpen] = useState(false);
 
   // Restore session on mount.
   useEffect(() => {
@@ -725,6 +727,16 @@ export default function Home() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setCombatLogOpen(true)}
+            className="gap-1.5 border-border/60"
+            title="Лог боя"
+          >
+            <LogIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Лог боя</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setSettingsOpen(true)}
             className="gap-1.5 border-border/60"
             title="Настройки интерфейса"
@@ -863,6 +875,14 @@ export default function Home() {
 
       {/* ===== Settings menu modal (item 18 / 21) ===== */}
       <SettingsMenu open={settingsOpen} onOpenChange={setSettingsOpen} />
+
+      {/* ===== Combat log modal (item 19) ===== */}
+      <CombatLog
+        open={combatLogOpen}
+        onOpenChange={setCombatLogOpen}
+        rolls={snapshot.diceLog}
+        chat={snapshot.chat}
+      />
     </div>
   );
 }
