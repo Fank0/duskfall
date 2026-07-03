@@ -36,6 +36,7 @@ import {
   applyCondition,
   tickConditions,
   spendSpellSlot,
+  computeAoECells,
 } from "./state";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
 import { extractJson } from "./json";
@@ -145,11 +146,32 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Подземелий дл�
 Состояния тоже влияют: poisoned/blinded/prone/frightened у атакующего → помеха; blinded/prone/stunned у цели → преимущество атакующему. Если есть и то, и другое — они взаимно сокращаются и бросок обычный.
 Бонус blessed (+1d4 к атакам и спасброскам) применяется автоматически — НЕ задавай advantage для blessed.
 
+ЗОНАЛЬНЫЕ ЗАКЛИНАНИЯ (AoE):
+Для заклинаний, поражающих область (Огненный шар, Молния, Конус холода, Грозовой разряд, Серный туман, Огненная стена и т.п.), НЕ задавай rolls (атак-броска нет — вместо него спасброски целей). Вместо этого заполни поля:
+- "aoeShape": "circle" | "cone" | "line" — форма области.
+  · circle — круг радиуса aoeSize клеток вокруг aoeOrigin (Огненный шар: circle, size 2).
+  · line — линия длиной aoeSize клеток от aoeOrigin в направлении aoeDirection (Молния: line, size 8, direction {x:0,y:-1} или {x:1,y:0} и т.п.).
+  · cone — конус глубиной aoeSize клеток от aoeOrigin вдоль aoeDirection (Конус холода: cone, size 4).
+- "aoeSize": целое число клеток (обычно 2-4 для круга/конуса, 6-8 для линии).
+- "aoeOrigin": { "x": <0..9>, "y": <0..9> } — точка-центр (для круга) или начало (для линии/конуса). Ближайшая к врагу клетка от позиции героя.
+- "aoeDirection": { "x": <-1|0|1>, "y": <-1|0|1> } — вектор направления линии/конуса. Для круга не нужен.
+- "saveAbility": "ЛОВ" (уклонение, огонь/молния), "ТЕЛ" (холод/яд/кислота), "МУД" (очарование), "СИЛ" (сила). По умолчанию "ТЕЛ".
+- "saveDC": класс сложности спасброска (8 + бонус мастерства + мод. характеристики заклинателя). Обычно 12-16 для ур.1-3.
+- "aoeElement": "fire" | "cold" | "lightning" | "acid" | "force" | "poison" | "thunder" — стихия (для цвета подсветки).
+В success.monsterDamage.notation укажи урон заклинания (например "8d6" для Огненного шара, "8d6" для Молнии, "8d8" для Конуса холода). Цели в области кидают спасбросок: при провале — полный урон, при успехе — половина. Герой-заклинатель НЕ получает урон от своей области.
+
 ВЫВОД: только валидный JSON без пояснений, по схеме:
 {
   "category": "combat|exploration|social|ability_check|invalid|other",
   "invalidReason": "короткое объяснение на русском почему действие невозможно (только если category=invalid, иначе пустая строка)",
   "advantage": "none|advantage|disadvantage",
+  "aoeShape": "circle|cone|line",
+  "aoeSize": 2,
+  "aoeOrigin": { "x": 5, "y": 3 },
+  "aoeDirection": { "x": 0, "y": -1 },
+  "saveAbility": "ЛОВ",
+  "saveDC": 14,
+  "aoeElement": "fire",
   "rolls": [ { "label": "...", "notation": "1d20", "modifier": 5, "target": 13, "target_type": "AC", "ability": "СИЛ" } ],
   "success": {
     "narrative": "что происходит при успехе (2-3 предложения, без цифр урона)",
@@ -401,6 +423,15 @@ interface ResolutionResult {
   imageNeeded: boolean;
   branchNarrative: string;
   appliedConditionCount: number;
+  aoe?: {
+    shape: "circle" | "cone" | "line";
+    size: number;
+    origin: { x: number; y: number };
+    cells: { x: number; y: number }[];
+    element: string;
+    saveDC?: number;
+    saveAbility?: string;
+  };
 }
 
 async function resolvePlayerAction(
@@ -535,7 +566,161 @@ async function resolvePlayerAction(
     }
   }
 
-  if (outcome === "success" && branch.monsterDamage) {
+  // ===== AoE resolution (circle / cone / line) =====
+  // When the DM planned an area-of-effect spell, compute affected cells and
+  // apply damage to every monster AND player (except the caster) inside them.
+  // Each target rolls a saving throw: success = half damage, fail = full.
+  let aoeResult: ResolutionResult["aoe"] = undefined;
+  if (
+    plan.aoeShape &&
+    branch.monsterDamage?.notation &&
+    plan.aoeOrigin &&
+    typeof plan.aoeSize === "number"
+  ) {
+    const shape = plan.aoeShape;
+    const aoeSize = Math.max(1, Math.min(8, plan.aoeSize));
+    const origin = plan.aoeOrigin;
+    const direction = plan.aoeDirection;
+    const cells = computeAoECells(shape, aoeSize, origin, direction);
+    const element = plan.aoeElement ?? "force";
+    const saveDC = plan.saveDC ?? 12;
+    const saveAbility = plan.saveAbility ?? "ТЕЛ";
+    aoeResult = { shape, size: aoeSize, origin, cells, element, saveDC, saveAbility };
+
+    // Gather all combatants in the affected cells (exclude the caster).
+    const cellSet = new Set(cells.map((c) => `${c.x},${c.y}`));
+    const allMonsters = await db.monster.findMany({ where: { roomId, isActive: true } });
+    const allPlayers = await db.player.findMany({ where: { roomId } });
+    const inAreaMonsters = allMonsters.filter((m) => cellSet.has(`${m.posX},${m.posY}`));
+    const inAreaPlayers = allPlayers.filter(
+      (p) => p.name !== actorName && p.hp > 0 && p.isAlive && cellSet.has(`${p.posX},${p.posY}`)
+    );
+
+    const damageNotation = branch.monsterDamage.notation;
+    // Roll the spell damage once (the same base roll applies to all targets;
+    // each target's save determines full vs half). Per D&D 5e, damage is
+    // rolled once for the whole spell.
+    const baseDmgRoll = rollDice(damageNotation);
+    const baseDamage = baseDmgRoll.total;
+
+    await logDiceRoll(roomId, round, actorName, {
+      label: `Урон заклинания (${element})`,
+      notation: damageNotation,
+      modifier: 0,
+      result: baseDmgRoll.raw,
+      total: baseDamage,
+      purpose: "player_damage",
+    });
+
+    // Helper: save bonus for a target based on the save ability.
+    const saveBonusFor = (
+      ability: string,
+      target: { str: number; dex: number; con: number; int: number; wis: number; cha: number }
+    ): number => {
+      switch (ability) {
+        case "СИЛ": return abilityModifier(target.str);
+        case "ЛОВ": return abilityModifier(target.dex);
+        case "ТЕЛ": return abilityModifier(target.con);
+        case "ИНТ": return abilityModifier(target.int);
+        case "МУД": return abilityModifier(target.wis);
+        case "ХАР": return abilityModifier(target.cha);
+        default: return 0;
+      }
+    };
+
+    const aoeLog: string[] = [];
+
+    // Monsters in area.
+    for (const m of inAreaMonsters) {
+      const saveBonus = 0; // monsters in this engine have no ability scores; flat +0.
+      const saveRoll = rollD20(saveBonus);
+      const saved = saveRoll.total >= saveDC;
+      const dmg = saved ? Math.floor(baseDamage / 2) : baseDamage;
+      const rr: ResolvedRoll = {
+        label: `Спасбросок ${m.name} (${saveAbility})`,
+        notation: "1d20",
+        modifier: saveBonus,
+        result: saveRoll.rolls[0],
+        total: saveRoll.total,
+        target: saveDC,
+        success: saved,
+        purpose: "monster_save",
+      };
+      playerRolls.push(rr);
+      await logDiceRoll(roomId, round, m.name, rr);
+      if (dmg > 0) {
+        const r = await damageMonster(roomId, m.id, dmg);
+        await logDiceRoll(roomId, round, actorName, {
+          label: `Урон по ${m.name}${saved ? " (половина, спас)" : ""}`,
+          notation: damageNotation,
+          modifier: 0,
+          result: dmg,
+          total: dmg,
+          purpose: "player_damage",
+        });
+        damageDealtToMonster += dmg;
+        if (r.died) {
+          if (!monsterThatDied) monsterThatDied = m.name;
+          const xp = xpForMonster(m.maxHp);
+          await awardXP(roomId, actorName, xp);
+          aoeLog.push(`${m.name} повержен! (+${xp} опыта)`);
+        } else {
+          aoeLog.push(`${m.name}: ${dmg} урона${saved ? " (спас, половина)" : ""}.`);
+        }
+      }
+    }
+
+    // Players in area (allies caught in the blast).
+    for (const p of inAreaPlayers) {
+      const saveBonus = saveBonusFor(saveAbility, p);
+      const saveRoll = rollD20(saveBonus);
+      const saved = saveRoll.total >= saveDC;
+      const dmg = saved ? Math.floor(baseDamage / 2) : baseDamage;
+      const rr: ResolvedRoll = {
+        label: `Спасбросок ${p.name} (${saveAbility})`,
+        notation: "1d20",
+        modifier: saveBonus,
+        result: saveRoll.rolls[0],
+        total: saveRoll.total,
+        target: saveDC,
+        success: saved,
+        purpose: "player_save",
+      };
+      playerRolls.push(rr);
+      await logDiceRoll(roomId, round, p.name, rr);
+      if (dmg > 0) {
+        const r = await damagePlayer(roomId, p.name, dmg);
+        await logDiceRoll(roomId, round, actorName, {
+          label: `Урон по ${p.name}${saved ? " (половина, спас)" : ""}`,
+          notation: damageNotation,
+          modifier: 0,
+          result: dmg,
+          total: dmg,
+          purpose: "player_damage",
+        });
+        damageDealtToPlayer += dmg;
+        if (!damagedPlayer) damagedPlayer = p.name;
+        if (r.died) {
+          aoeLog.push(`${p.name} пал в зоне заклинания!`);
+        } else {
+          aoeLog.push(`${p.name}: ${dmg} урона${saved ? " (спас, половина)" : ""}.`);
+        }
+      }
+    }
+
+    if (aoeLog.length > 0) {
+      await db.chatMessage.create({
+        data: {
+          roomId,
+          role: "system",
+          speaker: "",
+          round,
+          content: `Область заклинания (${shape}, ${element}): ${aoeLog.join(" ")}`,
+        },
+      });
+    }
+  } else if (outcome === "success" && branch.monsterDamage) {
+    // Single-target damage (non-AoE).
     const targetName = branch.monsterDamage.target;
     let m = await db.monster.findFirst({ where: { name: { contains: targetName }, roomId, isActive: true } });
     if (!m) m = await db.monster.findFirst({ where: { label: { contains: targetName }, roomId, isActive: true } });
@@ -662,6 +847,7 @@ async function resolvePlayerAction(
     imagePrompt: plan.imagePrompt, imageNeeded: plan.imageNeeded,
     branchNarrative: branch.narrative,
     appliedConditionCount,
+    aoe: aoeResult,
   };
 }
 
@@ -1097,5 +1283,6 @@ export async function resolvePlayerMechanics(
     nextTurn: nextTurnName,
     nextTurnType,
     round: finalRoom?.round ?? round,
+    aoe: res.aoe,
   };
 }

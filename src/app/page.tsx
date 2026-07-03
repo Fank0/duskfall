@@ -7,6 +7,7 @@ import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check } fro
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
+import type { AoEOverlay } from "@/components/dnd/CombatGrid";
 import { SceneViewer } from "@/components/dnd/SceneViewer";
 import { ChatPanel } from "@/components/dnd/ChatPanel";
 import { DiceLog } from "@/components/dnd/DiceLog";
@@ -52,6 +53,7 @@ export default function Home() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [lastAoe, setLastAoe] = useState<AoEOverlay | null>(null);
 
   // Restore session on mount.
   useEffect(() => {
@@ -171,6 +173,20 @@ export default function Home() {
                 if (event.combatEnded) toast.success("Бой окончен!", { description: "Все враги повержены." });
                 if (event.monsterThatDied) toast.success(`${event.monsterThatDied} повержен!`, { description: `Нанесено ${event.damageDealtToMonster} урона.` });
                 if (event.damagedPlayer) toast.warning(`${event.damagedPlayer} получает ${event.damageDealtToPlayer} урона!`);
+                // Show the AoE overlay for ~2.5s if this action had one.
+                if (event.aoe) {
+                  const aoe = event.aoe;
+                  setLastAoe({
+                    shape: aoe.shape,
+                    size: aoe.size,
+                    origin: aoe.origin,
+                    cells: aoe.cells,
+                    element: aoe.element,
+                    saveDC: aoe.saveDC,
+                    saveAbility: aoe.saveAbility,
+                  });
+                  setTimeout(() => setLastAoe(null), 2500);
+                }
               }
               flush();
             } else if (msg.type === "delta") {
@@ -425,6 +441,7 @@ export default function Home() {
             round={snapshot.round}
             currentTurnName={snapshot.currentTurnName}
             conditions={snapshot.conditions}
+            aoe={lastAoe}
           />
         </section>
 

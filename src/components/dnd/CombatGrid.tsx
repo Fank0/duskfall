@@ -8,6 +8,27 @@ import { CONDITIONS } from "@/lib/game/conditions";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE } from "@/lib/game/state";
 
+/** AoE overlay info passed from the page (transient — lasts ~2s). */
+export interface AoEOverlay {
+  shape: "circle" | "cone" | "line";
+  size: number;
+  origin: { x: number; y: number };
+  cells: { x: number; y: number }[];
+  element: string;
+  saveDC?: number;
+  saveAbility?: string;
+}
+
+const AOE_ELEMENT_COLORS: Record<string, { core: string; edge: string; label: string }> = {
+  fire: { core: "rgba(249,115,22,0.85)", edge: "rgba(234,88,12,0.0)", label: "Огонь" },
+  cold: { core: "rgba(59,130,246,0.85)", edge: "rgba(29,78,216,0.0)", label: "Холод" },
+  lightning: { core: "rgba(234,179,8,0.9)", edge: "rgba(202,138,4,0.0)", label: "Молния" },
+  acid: { core: "rgba(22,163,74,0.85)", edge: "rgba(20,83,45,0.0)", label: "Кислота" },
+  force: { core: "rgba(168,85,247,0.85)", edge: "rgba(126,34,206,0.0)", label: "Сила" },
+  poison: { core: "rgba(74,222,128,0.85)", edge: "rgba(22,163,74,0.0)", label: "Яд" },
+  thunder: { core: "rgba(6,182,212,0.85)", edge: "rgba(8,145,178,0.0)", label: "Гром" },
+};
+
 export function CombatGrid({
   players,
   monsters,
@@ -15,6 +36,8 @@ export function CombatGrid({
   round,
   currentTurnName,
   conditions,
+  aoe,
+  flankingLines,
 }: {
   players: PlayerState[];
   monsters: MonsterState[];
@@ -22,6 +45,8 @@ export function CombatGrid({
   round: number;
   currentTurnName: string | null;
   conditions: ConditionState[];
+  aoe?: AoEOverlay | null;
+  flankingLines?: { from: { x: number; y: number }; to: { x: number; y: number } }[];
 }) {
   const activeMonsters = monsters.filter((m) => m.isActive);
   const alivePlayers = players.filter((p) => p.isAlive || p.hp > 0);
@@ -54,6 +79,13 @@ export function CombatGrid({
     return map;
   }, [alivePlayers, activeMonsters]);
 
+  // AoE cell set for fast lookup.
+  const aoeCellSet = useMemo(() => {
+    if (!aoe) return null;
+    return new Set(aoe.cells.map((c) => `${c.x},${c.y}`));
+  }, [aoe]);
+  const aoeColor = aoe ? AOE_ELEMENT_COLORS[aoe.element] ?? AOE_ELEMENT_COLORS.force : null;
+
   return (
     <Card className="parchment rune-border border-border/80 gap-0">
       <CardHeader className="pb-2">
@@ -77,12 +109,42 @@ export function CombatGrid({
       <CardContent>
         <div className="mx-auto aspect-square w-full max-w-[340px]">
           <div
-            className="grid h-full w-full gap-px rounded-md border border-border/70 bg-stone-950/60 p-1"
+            className="relative grid h-full w-full gap-px rounded-md border border-border/70 bg-stone-950/60 p-1"
             style={{
               gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
               gridTemplateRows: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
             }}
           >
+            {/* Flanking SVG overlay (drawn BEHIND tokens but above cells). */}
+            {flankingLines && flankingLines.length > 0 && (
+              <svg
+                className="pointer-events-none absolute inset-1 z-20 h-[calc(100%-0.5rem)] w-[calc(100%-0.5rem)]"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                {flankingLines.map((ln, i) => {
+                  // Convert cell coords to % of grid (each cell = 10%).
+                  const x1 = (ln.from.x + 0.5) * 10;
+                  const y1 = (ln.from.y + 0.5) * 10;
+                  const x2 = (ln.to.x + 0.5) * 10;
+                  const y2 = (ln.to.y + 0.5) * 10;
+                  return (
+                    <line
+                      key={i}
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="rgba(34,197,94,0.55)"
+                      strokeWidth="0.6"
+                      strokeDasharray="1.5 1.5"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  );
+                })}
+              </svg>
+            )}
+
             {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, idx) => {
               const x = idx % GRID_SIZE;
               const y = Math.floor(idx / GRID_SIZE);
@@ -90,12 +152,24 @@ export function CombatGrid({
               const cellPlayers = cell?.players ?? [];
               const monster = cell?.monster;
               const tint = (x + y) % 2 === 0 ? "bg-stone-900/40" : "bg-stone-900/70";
+              const isAoeCell = aoeCellSet?.has(`${x},${y}`);
               return (
                 <div
                   key={idx}
                   className={cn("relative flex items-center justify-center rounded-[2px] border border-border/20", tint)}
                   title={`(${x}, ${y})`}
                 >
+                  {/* AoE overlay — radial gradient fade-out over 2s. */}
+                  {isAoeCell && aoeColor && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-30 rounded-[2px] animate-fade-out"
+                      style={{
+                        background: `radial-gradient(circle at center, ${aoeColor.core} 0%, ${aoeColor.edge} 80%)`,
+                        animation: "fadeOutAoe 2s ease-out forwards",
+                      }}
+                      title={aoe ? `${aoeColor.label} (спасбросок ${aoe.saveAbility ?? "ТЕЛ"} DC ${aoe.saveDC ?? 12})` : ""}
+                    />
+                  )}
                   {cellPlayers.length > 0 && (
                     <PlayerToken
                       players={cellPlayers}

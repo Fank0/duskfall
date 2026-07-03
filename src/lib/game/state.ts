@@ -876,3 +876,64 @@ export async function tickConditions(roomId: string): Promise<string[]> {
 export async function clearConditionsForTarget(roomId: string, targetName: string): Promise<void> {
   await db.condition.deleteMany({ where: { roomId, targetName } });
 }
+
+// ---------- AoE (area of effect) ----------
+/** Compute the grid cells affected by an area-of-effect spell.
+ *  - circle: all cells within Chebyshev distance `size` of `origin` (includes origin).
+ *  - line: cells from origin outward along `direction` for `size` cells (includes origin).
+ *  - cone: a 90° wedge from `origin` along `direction`, `size` cells deep.
+ *  Cells are clamped to the grid (0..GRID_SIZE-1). */
+export function computeAoECells(
+  shape: "circle" | "cone" | "line",
+  size: number,
+  origin: { x: number; y: number },
+  direction?: { x: number; y: number }
+): { x: number; y: number }[] {
+  const r = Math.max(1, Math.min(8, Math.floor(size) || 1));
+  const ox = Math.max(0, Math.min(GRID_SIZE - 1, Math.floor(origin.x)));
+  const oy = Math.max(0, Math.min(GRID_SIZE - 1, Math.floor(origin.y)));
+  const cells: { x: number; y: number }[] = [];
+  const seen = new Set<string>();
+  const push = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return;
+    const key = `${x},${y}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    cells.push({ x, y });
+  };
+
+  if (shape === "circle") {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) <= r) push(ox + dx, oy + dy);
+      }
+    }
+    return cells;
+  }
+
+  // Normalize direction (default to +x if missing/zero).
+  let dx = direction?.x ?? 1;
+  let dy = direction?.y ?? 0;
+  if (dx === 0 && dy === 0) { dx = 1; dy = 0; }
+  dx = Math.sign(dx);
+  dy = Math.sign(dy);
+
+  if (shape === "line") {
+    push(ox, oy);
+    for (let s = 1; s <= r; s++) push(ox + dx * s, oy + dy * s);
+    return cells;
+  }
+
+  // cone: 90° wedge. parallel = (cell-orig)·dir, perp = |(cell-orig)×dir|.
+  // Include cells where parallel in [0, r] and |perp| <= parallel.
+  for (let cx = 0; cx < GRID_SIZE; cx++) {
+    for (let cy = 0; cy < GRID_SIZE; cy++) {
+      const rx = cx - ox;
+      const ry = cy - oy;
+      const parallel = rx * dx + ry * dy;
+      const perp = Math.abs(ry * dx - rx * dy);
+      if (parallel >= 0 && parallel <= r && perp <= parallel) push(cx, cy);
+    }
+  }
+  return cells;
+}

@@ -63,6 +63,20 @@ export interface DMResolution {
   imageNeeded: boolean;
   /** DM-requested advantage on the attack roll (overridden by backend if conditions force a mode). */
   advantage?: "advantage" | "disadvantage" | "none";
+  /** Area-of-effect shape for spells like Fireball / Lightning / Cone of Cold. */
+  aoeShape?: "circle" | "cone" | "line";
+  /** AoE size in cells (radius for circle, length for line/cone). */
+  aoeSize?: number;
+  /** AoE origin point on the grid (the cell the effect is centered on / starts from). */
+  aoeOrigin?: { x: number; y: number };
+  /** Direction vector for line/cone AoE (dx,dy each in {-1,0,1}). */
+  aoeDirection?: { x: number; y: number };
+  /** Saving-throw ability for AoE targets (e.g. "ЛОВ", "ТЕЛ"). */
+  saveAbility?: string;
+  /** Saving-throw DC for AoE targets. */
+  saveDC?: number;
+  /** Elemental flavor of the AoE (drives the overlay color). */
+  aoeElement?: string; // "fire" | "cold" | "lightning" | "acid" | "force" | "poison" | "thunder"
 }
 
 export interface ResolvedRoll {
@@ -102,6 +116,16 @@ export interface ResolvedEvent {
   nextTurn: string | null;
   nextTurnType: "player" | "monster" | null;
   round: number;
+  /** AoE info for grid overlay (transient — shown for ~2s after the action). */
+  aoe?: {
+    shape: "circle" | "cone" | "line";
+    size: number;
+    origin: { x: number; y: number };
+    cells: { x: number; y: number }[];
+    element: string;
+    saveDC?: number;
+    saveAbility?: string;
+  };
 }
 
 export interface PlayerState {

@@ -201,3 +201,9 @@
 .animate-fade-up {
   animation: fadeInUp 0.4s ease-out;
 }
+
+@keyframes fadeOutAoe {
+  0% { opacity: 1; transform: scale(1); }
+  60% { opacity: 0.85; }
+  100% { opacity: 0; transform: scale(1.15); }
+}
