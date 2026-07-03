@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Swords, MapPin, Crosshair } from "lucide-react";
 import type { PlayerState, MonsterState, ConditionState } from "@/lib/game/types";
@@ -8,6 +8,7 @@ import { CONDITIONS } from "@/lib/game/conditions";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE } from "@/lib/game/state";
 import { useSettings } from "@/lib/game/settings";
+import { shallowEqual } from "@/lib/game/shallow";
 
 /** AoE overlay info passed from the page (transient — lasts ~2s). */
 export interface AoEOverlay {
@@ -55,17 +56,7 @@ const AOE_ELEMENT_COLORS: Record<string, { core: string; edge: string; label: st
   thunder: { core: "rgba(6,182,212,0.85)", edge: "rgba(8,145,178,0.0)", label: "Гром" },
 };
 
-export function CombatGrid({
-  players,
-  monsters,
-  combatActive,
-  round,
-  currentTurnName,
-  conditions,
-  aoe,
-  lastAnimEvent,
-  gridExtras,
-}: {
+export interface CombatGridProps {
   players: PlayerState[];
   monsters: MonsterState[];
   combatActive: boolean;
@@ -75,7 +66,25 @@ export function CombatGrid({
   aoe?: AoEOverlay | null;
   lastAnimEvent?: CombatAnimEvent | null;
   gridExtras?: GridExtras;
-}) {
+}
+
+/**
+ * CombatGrid — 10×10 tactical grid with token layer + animations. Wrapped in
+ * React.memo with a custom comparator that compares the relevant grid-rendering
+ * fields (positions, HP, AC, conditions) element-by-element so a fresh snapshot
+ * with identical grid state does NOT trigger a re-render.
+ */
+export const CombatGrid = memo(function CombatGrid({
+  players,
+  monsters,
+  combatActive,
+  round,
+  currentTurnName,
+  conditions,
+  aoe,
+  lastAnimEvent,
+  gridExtras,
+}: CombatGridProps) {
   const settings = useSettings();
   const tokenShape = settings.tokenShape;
   const showTokenNames = settings.showTokenNames;
@@ -514,6 +523,108 @@ export function CombatGrid({
       </CardContent>
     </Card>
   );
+}, combatGridComparator);
+
+/**
+ * Custom comparator for CombatGrid. Re-renders only when:
+ * - combat/round/turn state changed
+ * - players' grid-relevant fields changed (position, HP, color, alive, name)
+ * - monsters' grid-relevant fields changed (position, HP, color, isActive, name, label, damageNotation)
+ * - conditions list changed (length + id+condition+duration)
+ * - aoe / lastAnimEvent reference changed
+ * - gridExtras.lootCells / traps changed
+ */
+function combatGridComparator(prev: CombatGridProps, next: CombatGridProps): boolean {
+  if (
+    !Object.is(prev.combatActive, next.combatActive) ||
+    !Object.is(prev.round, next.round) ||
+    !Object.is(prev.currentTurnName, next.currentTurnName) ||
+    !Object.is(prev.aoe, next.aoe) ||
+    !Object.is(prev.lastAnimEvent, next.lastAnimEvent)
+  ) {
+    return false;
+  }
+  if (!playersGridEqual(prev.players, next.players)) return false;
+  if (!monstersGridEqual(prev.monsters, next.monsters)) return false;
+  if (!conditionsListEqual(prev.conditions, next.conditions)) return false;
+  if (!gridExtrasEqual(prev.gridExtras, next.gridExtras)) return false;
+  return true;
+}
+
+function playersGridEqual(a: PlayerState[], b: PlayerState[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.name !== y.name ||
+      x.color !== y.color ||
+      x.hp !== y.hp ||
+      x.maxHp !== y.maxHp ||
+      x.ac !== y.ac ||
+      x.isAlive !== y.isAlive ||
+      x.posX !== y.posX ||
+      x.posY !== y.posY ||
+      x.portraitUrl !== y.portraitUrl
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function monstersGridEqual(a: MonsterState[], b: MonsterState[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.name !== y.name ||
+      x.label !== y.label ||
+      x.color !== y.color ||
+      x.hp !== y.hp ||
+      x.maxHp !== y.maxHp ||
+      x.ac !== y.ac ||
+      x.posX !== y.posX ||
+      x.posY !== y.posY ||
+      x.isActive !== y.isActive ||
+      x.damageNotation !== y.damageNotation
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function conditionsListEqual(a: ConditionState[], b: ConditionState[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id ||
+      x.targetName !== y.targetName ||
+      x.condition !== y.condition ||
+      x.duration !== y.duration
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function gridExtrasEqual(
+  a: GridExtras | undefined,
+  b: GridExtras | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return shallowEqual(a.lootCells, b.lootCells) && shallowEqual(a.traps, b.traps);
 }
 
 /** Small vertical stack of condition emoji icons shown at the top-right of a token. */

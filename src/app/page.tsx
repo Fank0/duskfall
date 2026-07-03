@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon } from "lucide-react";
@@ -14,12 +15,7 @@ import { DiceLog } from "@/components/dnd/DiceLog";
 import { PartyPanel } from "@/components/dnd/PartyPanel";
 import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
 import { Lobby } from "@/components/dnd/Lobby";
-import { LevelUpModal } from "@/components/dnd/LevelUpModal";
-import { QuestJournal } from "@/components/dnd/QuestJournal";
-import { WorldMap } from "@/components/dnd/WorldMap";
-import { DialoguePanel } from "@/components/dnd/DialoguePanel";
-import { SettingsMenu } from "@/components/dnd/SettingsMenu";
-import { CombatLog } from "@/components/dnd/CombatLog";
+import { ErrorBoundary } from "@/components/dnd/ErrorBoundary";
 import { useSettings } from "@/lib/game/settings";
 import { cn } from "@/lib/utils";
 import {
@@ -30,6 +26,37 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
+
+// ===== Lazy-loaded heavy modals (item 24: dynamic import with ssr:false) =====
+// These components are large (full talent tree, settings dialog, dialogue
+// trade UI, world map SVG, quest journal, combat log parser). Loading them
+// only when first opened shaves initial JS bundle size and avoids paying the
+// parse cost on first paint. SkillTreeModal + CraftingPanel are lazy-loaded
+// by their parents (LevelUpModal / CharacterSheet respectively).
+const LevelUpModal = dynamic(
+  () => import("@/components/dnd/LevelUpModal").then((m) => m.LevelUpModal),
+  { ssr: false }
+);
+const SettingsMenu = dynamic(
+  () => import("@/components/dnd/SettingsMenu").then((m) => m.SettingsMenu),
+  { ssr: false }
+);
+const DialoguePanel = dynamic(
+  () => import("@/components/dnd/DialoguePanel").then((m) => m.DialoguePanel),
+  { ssr: false }
+);
+const WorldMap = dynamic(
+  () => import("@/components/dnd/WorldMap").then((m) => m.WorldMap),
+  { ssr: false }
+);
+const QuestJournal = dynamic(
+  () => import("@/components/dnd/QuestJournal").then((m) => m.QuestJournal),
+  { ssr: false }
+);
+const CombatLog = dynamic(
+  () => import("@/components/dnd/CombatLog").then((m) => m.CombatLog),
+  { ssr: false }
+);
 
 const LS_KEY = "dnd_vtt_session";
 
@@ -148,12 +175,39 @@ export default function Home() {
     if (session) fetchState(session.roomCode);
   }, [session, fetchState]);
 
-  // Polling fallback (every 4s) in case a socket ping is missed.
+  // ===== Adaptive polling (item 24) =====
+  // 5s during exploration, 1.5s during combat, paused while the DM narrative
+  // is streaming (isThinking). If the socket is connected AND we received a
+  // room:refresh ping within the last 5s, the next poll tick is skipped —
+  // socket-driven refresh is fresher than any poll could be.
+  const lastSocketPingRef = useRef<number>(0);
   useEffect(() => {
     if (!session) return;
-    const id = setInterval(() => fetchState(session.roomCode, true), 4000);
+    // Track the last time the socket pushed a room:refresh.
+    const unsub = onRoomRefresh(() => {
+      lastSocketPingRef.current = Date.now();
+    });
+    return unsub;
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    // Choose the poll interval based on combat vs. exploration, and pause
+    // entirely while a DM narrative is streaming.
+    const interval = isThinking ? null : snapshot?.combatActive ? 1500 : 5000;
+    if (interval === null) return;
+    const id = setInterval(() => {
+      // Skip this tick if the socket is connected and pinged us recently.
+      const socket = getSocket();
+      const recentPing = Date.now() - lastSocketPingRef.current;
+      if (socket?.connected && recentPing < 5000) {
+        // Fresh socket data — no need to poll.
+        return;
+      }
+      fetchState(session.roomCode, true);
+    }, interval);
     return () => clearInterval(id);
-  }, [session, fetchState]);
+  }, [session, fetchState, isThinking, snapshot?.combatActive]);
 
   const handleEntered = useCallback((roomCode: string, playerName: string) => {
     const s = { roomCode, playerName };
@@ -615,6 +669,7 @@ export default function Home() {
   const scaleClass = `ui-scale-${settings.uiScale}`;
 
   return (
+    <ErrorBoundary>
     <div
       className={cn("flex min-h-screen flex-col lg:h-screen lg:overflow-hidden", scaleClass)}
       data-theme={themeAttr}
@@ -840,6 +895,7 @@ export default function Home() {
             currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
             onSend={sendAction}
             onRest={handleRest}
+            roomCode={session.roomCode}
           />
         </section>
       </main>
@@ -893,13 +949,14 @@ export default function Home() {
       <SettingsMenu open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       {/* ===== Combat log modal (item 19) ===== */}
-      <CombatLog
-        open={combatLogOpen}
-        onOpenChange={setCombatLogOpen}
-        rolls={snapshot.diceLog}
-        chat={snapshot.chat}
-      />
-    </div>
+        <CombatLog
+          open={combatLogOpen}
+          onOpenChange={setCombatLogOpen}
+          rolls={snapshot.diceLog}
+          chat={snapshot.chat}
+        />
+      </div>
+    </ErrorBoundary>
   );
 }
 

@@ -1,13 +1,22 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dices, ChevronDown } from "lucide-react";
 import type { DiceRollState } from "@/lib/game/types";
 import { useSettings } from "@/lib/game/settings";
+import { makeShallowComparator } from "@/lib/game/shallow";
 import { cn } from "@/lib/utils";
 
-export function DiceLog({ rolls }: { rolls: DiceRollState[] }) {
+/**
+ * DiceLog renders the latest dice rolls. Wrapped in React.memo with a custom
+ * shallow comparator: the only meaningful prop is `rolls` (array of roll
+ * records), which is compared element-by-element. The settings store is read
+ * via a hook and triggers its own re-render via Zustand, so the comparator
+ * only needs to gate on prop identity.
+ */
+export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[] }) {
   const settings = useSettings();
   const collapsed = settings.collapsedDiceLog;
   return (
@@ -101,4 +110,4 @@ export function DiceLog({ rolls }: { rolls: DiceRollState[] }) {
       </Collapsible>
     </Card>
   );
-}
+}, makeShallowComparator<{ rolls: DiceRollState[] }>());

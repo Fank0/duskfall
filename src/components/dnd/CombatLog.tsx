@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -125,17 +125,26 @@ function parseSystemChat(c: ChatMessageState): CombatLogEntry | null {
   return null;
 }
 
-export function CombatLog({
-  open,
-  onOpenChange,
-  rolls,
-  chat,
-}: {
+export interface CombatLogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   rolls: DiceRollState[];
   chat: ChatMessageState[];
-}) {
+}
+
+/**
+ * CombatLog — modal dialog with the chronological combat history. Wrapped in
+ * React.memo with a custom comparator: the dialog only re-renders when `open`
+ * changes, when the rolls/chat lists change in length or first/last id (a
+ * cheap proxy for "the list actually changed"), or when the open-change
+ * callback identity changes.
+ */
+export const CombatLog = memo(function CombatLog({
+  open,
+  onOpenChange,
+  rolls,
+  chat,
+}: CombatLogProps) {
   const [filter, setFilter] = useState<FilterKey>("all");
 
   // Build a chronologically-sorted list of entries from dice rolls + system chat.
@@ -251,4 +260,34 @@ export function CombatLog({
       </DialogContent>
     </Dialog>
   );
+}, combatLogComparator);
+
+/**
+ * Custom comparator for CombatLog. Re-renders only when:
+ * - `open` flag changes
+ * - `onOpenChange` callback identity changes
+ * - `rolls` or `chat` lists change (length, first id, last id)
+ *
+ * The "first/last id + length" check is a cheap O(1) proxy for "the list
+ * actually changed" — adequate here because the dialog re-derives its full
+ * entry list with useMemo whenever its inputs change.
+ */
+function combatLogComparator(prev: CombatLogProps, next: CombatLogProps): boolean {
+  if (
+    !Object.is(prev.open, next.open) ||
+    !Object.is(prev.onOpenChange, next.onOpenChange)
+  ) {
+    return false;
+  }
+  if (!listFingerprintEqual(prev.rolls, next.rolls)) return false;
+  if (!listFingerprintEqual(prev.chat, next.chat)) return false;
+  return true;
+}
+
+/** Cheap "did this list actually change" check: same length + same first/last id. */
+function listFingerprintEqual<T extends { id: string }>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  if (a.length === 0) return true;
+  return a[0].id === b[0].id && a[a.length - 1].id === b[b.length - 1].id;
 }

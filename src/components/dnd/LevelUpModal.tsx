@@ -1,7 +1,15 @@
 "use client";
 
-import { SkillTreeModal } from "./SkillTreeModal";
+import dynamic from "next/dynamic";
 import type { PlayerState, StatKey } from "@/lib/game/types";
+
+// Lazy-load the heavy SkillTreeModal (item 24: dynamic import with ssr:false).
+// The talent-tree modal pulls in the full class talent catalogue (~120 talents)
+// and is only shown on level-up — deferring it keeps the initial bundle small.
+const SkillTreeModal = dynamic(
+  () => import("./SkillTreeModal").then((m) => m.SkillTreeModal),
+  { ssr: false }
+);
 
 /**
  * Level-up modal: delegates to the SkillTreeModal which handles both

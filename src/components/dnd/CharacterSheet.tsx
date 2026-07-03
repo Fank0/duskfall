@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
+import dynamic from "next/dynamic";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,9 +13,21 @@ import { computeAbilities } from "@/lib/game/abilities";
 import { CONDITIONS } from "@/lib/game/conditions";
 import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
-import { EquipmentPanel } from "./EquipmentPanel";
-import { CraftingPanel } from "./CraftingPanel";
+import { shallowEqual } from "@/lib/game/shallow";
 import { cn } from "@/lib/utils";
+
+// Lazy-load the heavy EquipmentPanel + CraftingPanel modals (item 24:
+// dynamic import with ssr:false). These are only shown when the player
+// clicks "Открыть" / "Крафт" — deferring them keeps the inventory sheet
+// render path fast on first paint.
+const EquipmentPanel = dynamic(
+  () => import("./EquipmentPanel").then((m) => m.EquipmentPanel),
+  { ssr: false }
+);
+const CraftingPanel = dynamic(
+  () => import("./CraftingPanel").then((m) => m.CraftingPanel),
+  { ssr: false }
+);
 
 const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
   { key: "str", short: "СИЛ" },
@@ -33,7 +46,7 @@ const TYPE_STYLES: Record<string, string> = {
   misc: "bg-stone-800/60 text-stone-300 border-stone-700/60",
 };
 
-export function CharacterSheet({
+export const CharacterSheet = memo(function CharacterSheet({
   player,
   inventory,
   isYou,
@@ -387,6 +400,108 @@ export function CharacterSheet({
       )}
     </Card>
   );
+}, characterSheetComparator);
+
+/**
+ * Custom shallow comparator for CharacterSheet. Compares primitive flags with
+ * Object.is, arrays element-by-element (cheap identity check — adequate for
+ * the inventory/conditions lists whose element identities only change when the
+ * underlying snapshot actually changes), and a per-field check on the `player`
+ * object so a brand-new player reference with the same data does NOT trigger
+ * an unnecessary re-render.
+ */
+function characterSheetComparator(
+  prev: CharacterSheetProps,
+  next: CharacterSheetProps
+): boolean {
+  // Primitive + function props.
+  if (
+    !Object.is(prev.isYou, next.isYou) ||
+    !Object.is(prev.isTurn, next.isTurn) ||
+    !Object.is(prev.compact, next.compact) ||
+    !Object.is(prev.hasAlchemy, next.hasAlchemy) ||
+    !Object.is(prev.hasForge, next.hasForge) ||
+    !Object.is(prev.hasEnchant, next.hasEnchant) ||
+    !Object.is(prev.onEquip, next.onEquip) ||
+    !Object.is(prev.onUnequip, next.onUnequip) ||
+    !Object.is(prev.onCraft, next.onCraft)
+  ) {
+    return false;
+  }
+  // Player: per-field check on the values that affect rendering.
+  if (!playerEqual(prev.player, next.player)) return false;
+  // Inventory + conditions: shallow element-wise (identity on items).
+  if (!shallowArrayIdentity(prev.inventory, next.inventory)) return false;
+  if (!shallowArrayIdentity(prev.conditions ?? [], next.conditions ?? [])) return false;
+  return true;
+}
+
+type CharacterSheetProps = {
+  player: PlayerState;
+  inventory: InventoryItemState[];
+  isYou?: boolean;
+  isTurn?: boolean;
+  compact?: boolean;
+  conditions?: ConditionState[];
+  onEquip?: (itemId: string, slot?: EquipmentSlot) => Promise<void>;
+  onUnequip?: (slot: EquipmentSlot | "accessory1" | "accessory2") => Promise<void>;
+  hasAlchemy?: boolean;
+  hasForge?: boolean;
+  hasEnchant?: boolean;
+  onCraft?: (recipeId: string) => Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }>;
+};
+
+/** Compare two PlayerState objects on the fields that affect rendering. */
+function playerEqual(a: PlayerState, b: PlayerState): boolean {
+  if (Object.is(a, b)) return true;
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.charClass === b.charClass &&
+    a.raceName === b.raceName &&
+    a.backgroundName === b.backgroundName &&
+    a.weaponName === b.weaponName &&
+    a.color === b.color &&
+    a.level === b.level &&
+    a.hp === b.hp &&
+    a.maxHp === b.maxHp &&
+    a.ac === b.ac &&
+    a.gold === b.gold &&
+    a.str === b.str &&
+    a.dex === b.dex &&
+    a.con === b.con &&
+    a.int === b.int &&
+    a.wis === b.wis &&
+    a.cha === b.cha &&
+    a.isAlive === b.isAlive &&
+    a.isHost === b.isHost &&
+    a.pendingLevelUp === b.pendingLevelUp &&
+    a.pendingASI === b.pendingASI &&
+    shallowStringArrayEqual(a.selectedTalents, b.selectedTalents) &&
+    shallowEqual(a.spellSlots, b.spellSlots) &&
+    shallowEqual(a.maxSpellSlots, b.maxSpellSlots) &&
+    shallowEqual(a.equipment, b.equipment)
+  );
+}
+
+/** Length + element-wise string equality (for selectedTalents). */
+function shallowStringArrayEqual(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/** Length + element-identity check for arrays (cheap pre-filter). */
+function shallowArrayIdentity<T>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (!Object.is(a[i], b[i])) return false;
+  }
+  return true;
 }
 
 function Vital({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {

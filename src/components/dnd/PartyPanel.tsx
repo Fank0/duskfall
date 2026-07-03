@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,17 +9,26 @@ import { Users, Crown, Heart, Skull, ChevronDown } from "lucide-react";
 import type { PlayerState } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { useSettings } from "@/lib/game/settings";
+import { makeShallowComparator } from "@/lib/game/shallow";
 import { cn } from "@/lib/utils";
 
-export function PartyPanel({
-  players,
-  youName,
-  currentTurnName,
-}: {
+interface PartyPanelProps {
   players: PlayerState[];
   youName: string;
   currentTurnName: string | null;
-}) {
+}
+
+/**
+ * PartyPanel — list of party members with HP bars. Wrapped in React.memo with
+ * a custom shallow comparator so it only re-renders when `players` (compared
+ * element-by-element), `youName`, or `currentTurnName` actually changes.
+ * Settings (collapse state) are read via Zustand and trigger their own update.
+ */
+export const PartyPanel = memo(function PartyPanel({
+  players,
+  youName,
+  currentTurnName,
+}: PartyPanelProps) {
   const settings = useSettings();
   const collapsed = settings.collapsedParty;
   return (
@@ -108,7 +118,7 @@ export function PartyPanel({
       </Collapsible>
     </Card>
   );
-}
+}, makeShallowComparator<PartyPanelProps>());
 
 function fmt(n: number): string {
   return n >= 0 ? `+${n}` : `${n}`;

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon,
+  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp,
 } from "lucide-react";
 import type { ChatMessageState } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
@@ -17,17 +17,12 @@ const QUICK_ACTIONS = [
   { label: "Говорить", icon: MessageSquareQuote, text: "Я обращаюсь словами." },
 ];
 
-export function ChatPanel({
-  messages,
-  isThinking,
-  isYourTurn,
-  isDead,
-  combatActive,
-  yourName,
-  currentTurnName,
-  onSend,
-  onRest,
-}: {
+/** How many messages to render initially (item 24: chat virtualization). */
+const VISIBLE_LIMIT = 50;
+/** How many older messages to fetch per "Показать ещё" click. */
+const LOAD_MORE_STEP = 50;
+
+interface ChatPanelProps {
   messages: ChatMessageState[];
   isThinking: boolean;
   isYourTurn: boolean;
@@ -37,14 +32,82 @@ export function ChatPanel({
   currentTurnName: string | null;
   onSend: (text: string) => void;
   onRest?: (restType: "short" | "long") => void;
-}) {
+  /** Room code — required for the "Показать ещё" paginated loader. */
+  roomCode?: string;
+}
+
+/**
+ * ChatPanel — virtualizes the chat list by capping the rendered messages at
+ * `VISIBLE_LIMIT` (50). A "Показать ещё" button above the list fetches older
+ * messages from /api/game/chat-history and prepends them to the visible window.
+ */
+export const ChatPanel = memo(function ChatPanel({
+  messages,
+  isThinking,
+  isYourTurn,
+  isDead,
+  combatActive,
+  yourName,
+  currentTurnName,
+  onSend,
+  onRest,
+  roomCode,
+}: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Older messages loaded via /api/game/chat-history (prepended to the view). */
+  const [older, setOlder] = useState<ChatMessageState[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState<boolean | null>(null);
+  /** Offset for the next /chat-history fetch (already-loaded older count). */
+  const offsetRef = useRef(0);
+  /** Whether the user explicitly asked for older messages (gates the button). */
+  const [showLoadMore, setShowLoadMore] = useState(false);
 
+  // Reset pagination state when the room changes.
+  useEffect(() => {
+    setOlder([]);
+    setHasMore(null);
+    setShowLoadMore(false);
+    offsetRef.current = 0;
+  }, [roomCode]);
+
+  // Show "Показать ещё" only when the visible snapshot has at least VISIBLE_LIMIT
+  // messages — a heuristic that there might be older ones worth fetching.
+  useEffect(() => {
+    setShowLoadMore(messages.length >= VISIBLE_LIMIT);
+  }, [messages.length]);
+
+  // Auto-scroll to bottom on new messages / streaming.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages, isThinking]);
+  }, [messages, isThinking, older.length]);
+
+  const loadMore = useCallback(async () => {
+    if (!roomCode || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const offset = offsetRef.current;
+      const res = await fetch(
+        `/api/game/chat-history?room=${encodeURIComponent(roomCode)}&offset=${offset}&limit=${LOAD_MORE_STEP}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (data?.ok && Array.isArray(data.messages)) {
+        // Prepend to the older list (messages are returned in asc order).
+        setOlder((prev) => [...data.messages, ...prev]);
+        offsetRef.current = offset + data.messages.length;
+        setHasMore(Boolean(data.hasMore));
+      } else {
+        setHasMore(false);
+      }
+    } catch {
+      setHasMore(false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [roomCode, loadingMore]);
 
   // Input is locked whenever it's not your turn (combat OR exploration),
   // unless you're the only player.
@@ -64,6 +127,13 @@ export function ChatPanel({
       submit();
     }
   }
+
+  // Render only the most-recent VISIBLE_LIMIT messages from the snapshot,
+  // plus any older messages we've explicitly fetched.
+  const visibleRecent = messages.length > VISIBLE_LIMIT
+    ? messages.slice(messages.length - VISIBLE_LIMIT)
+    : messages;
+  const all = older.length > 0 ? [...older, ...visibleRecent] : visibleRecent;
 
   return (
     <Card className="parchment rune-border border-border/80 flex h-full min-h-0 flex-col gap-0 overflow-hidden">
@@ -95,7 +165,25 @@ export function ChatPanel({
 
       {/* Messages */}
       <div ref={scrollRef} className="fantasy-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
-        {messages.map((m) => (
+        {/* "Показать ещё" — fetch older messages via /api/game/chat-history (item 24). */}
+        {showLoadMore && (hasMore === null || hasMore) && (
+          <div className="flex justify-center pb-1">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/30 px-3 py-1 text-[11px] text-amber-200 transition-colors hover:bg-amber-950/50 disabled:opacity-50"
+            >
+              {loadingMore ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ChevronUp className="h-3 w-3" />
+              )}
+              Показать ещё
+            </button>
+          </div>
+        )}
+        {all.map((m) => (
           <MessageBubble key={m.id} message={m} yourName={yourName} />
         ))}
 
@@ -189,7 +277,7 @@ export function ChatPanel({
       </div>
     </Card>
   );
-}
+});
 
 function MessageBubble({ message, yourName }: { message: ChatMessageState; yourName: string }) {
   if (message.role === "player") {
