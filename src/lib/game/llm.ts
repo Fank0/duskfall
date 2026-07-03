@@ -194,7 +194,8 @@ function getProviderChain(): ProviderConfig[] {
 async function callWithProviderChain(
   messages: ChatMessage[],
   stream: boolean,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  preferFast: boolean = false
 ): Promise<{ text: string | AsyncGenerator<string>; providerUsed: string; modelUsed: string }> {
   const chain = getProviderChain();
   if (chain.length === 0) {
@@ -203,10 +204,26 @@ async function callWithProviderChain(
     );
   }
 
+  // When `preferFast` is set, prepend a fast/cheap model to each provider's
+  // model list so we hit the lightweight option first.
+  const FAST_MODEL_BY_PROVIDER: Record<string, string> = {
+    glm: "glm-4-flash",
+    gemini: "gemini-1.5-flash-8b",
+    openrouter: "qwen/qwen-turbo",
+  };
+
   let lastErr: any = null;
   for (const cfg of chain) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const models = [cfg.model, ...cfg.fallbackModels];
+    let models = [cfg.model, ...cfg.fallbackModels];
+    if (preferFast) {
+      const fast = FAST_MODEL_BY_PROVIDER[cfg.name];
+      if (fast && !models.includes(fast)) models = [fast, ...models];
+    }
+    // Exponential backoff retries within this provider (only on HTTP 429).
+    // Delays: 1s, 2s, 4s. Up to 3 retries total.
+    let retriesInProvider = 0;
+    const MAX_RETRIES = 3;
     for (const model of models) {
       if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
       try {
@@ -233,6 +250,14 @@ async function callWithProviderChain(
         const msg = e?.message ?? "";
         console.error(`[LLM] ✗ ${cfg.name}/${model}: ${msg.slice(0, 100)}`);
         lastErr = e;
+        // Only retry-with-backoff on HTTP 429 (rate limit).
+        if (e?.httpStatus === 429 && retriesInProvider < MAX_RETRIES) {
+          const delayMs = Math.pow(2, retriesInProvider) * 1000; // 1s, 2s, 4s
+          retriesInProvider++;
+          console.warn(`[LLM] 429 on ${cfg.name}/${model}, backing off ${delayMs}ms (retry ${retriesInProvider}/${MAX_RETRIES})`);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
         continue;
       }
     }
@@ -274,9 +299,13 @@ async function getSDK() {
 // ---------------------------------------------------------------------------
 
 /** Non-streaming chat completion. Tries the full provider chain. */
-export async function chatComplete(messages: ChatMessage[], signal?: AbortSignal): Promise<string> {
+export async function chatComplete(
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  preferFast: boolean = false
+): Promise<string> {
   try {
-    const { text } = await callWithProviderChain(messages, false, signal);
+    const { text } = await callWithProviderChain(messages, false, signal, preferFast);
     return text as string;
   } catch (e: any) {
     if (e?.name === "AbortError") throw e;
@@ -293,9 +322,13 @@ export async function chatComplete(messages: ChatMessage[], signal?: AbortSignal
 }
 
 /** Streaming chat completion. Yields text chunks. Tries the full provider chain. */
-export async function* chatStream(messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<string> {
+export async function* chatStream(
+  messages: ChatMessage[],
+  signal?: AbortSignal,
+  preferFast: boolean = false
+): AsyncGenerator<string> {
   try {
-    const { text } = await callWithProviderChain(messages, true, signal);
+    const { text } = await callWithProviderChain(messages, true, signal, preferFast);
     yield* text as AsyncGenerator<string>;
     return;
   } catch (e: any) {
@@ -337,7 +370,9 @@ async function chatCompleteProviderSingle(
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`${provider} ${model} ${res.status}: ${errText.slice(0, 120)}`);
+    const err: any = new Error(`${provider} ${model} ${res.status}: ${errText.slice(0, 120)}`);
+    err.httpStatus = res.status;
+    throw err;
   }
   const data: any = await res.json();
   return data.choices?.[0]?.message?.content ?? "";
@@ -363,7 +398,9 @@ async function* chatStreamProviderSingle(
   });
   if (!res.ok || !res.body) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`${provider} ${model} stream ${res.status}: ${errText.slice(0, 120)}`);
+    const err: any = new Error(`${provider} ${model} stream ${res.status}: ${errText.slice(0, 120)}`);
+    err.httpStatus = res.status;
+    throw err;
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();

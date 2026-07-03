@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { applyLevelUpTalent, applyLevelUpASI, getSnapshot } from "@/lib/game/state";
+import { applyLevelUpTalent, applyLevelUpASI, getSnapshot, invalidateSnapshotCache } from "@/lib/game/state";
 import { getTalentsForClass, getASITalents } from "@/lib/game/talents";
 import { getClassIdByCharClass } from "@/lib/game/presets";
 import type { StatKey } from "@/lib/game/types";
@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
           content: `${playerName} улучшает характеристику: ${asiName}!`,
         },
       });
+      invalidateSnapshotCache(room.id);
       const snapshot = await getSnapshot(roomCode);
       return NextResponse.json({ ok: true, snapshot, asi: { stat } });
     }
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
         content: `${playerName} получает новый талант: «${talent.name}»!`,
       },
     });
+    invalidateSnapshotCache(room.id);
 
     const snapshot = await getSnapshot(roomCode);
     return NextResponse.json({

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSnapshot } from "@/lib/game/state";
+import { getSnapshot, invalidateSnapshotCache } from "@/lib/game/state";
 import {
   healPlayer,
   restoreAllSpellSlots,
@@ -93,6 +93,7 @@ export async function POST(req: NextRequest) {
         data: { roomId: room.id, role: "system", speaker: "", round, content: l },
       });
     }
+    invalidateSnapshotCache(room.id);
     const snapshot = await getSnapshot(roomCode);
     return NextResponse.json({ ok: true, snapshot });
   } catch (e: any) {

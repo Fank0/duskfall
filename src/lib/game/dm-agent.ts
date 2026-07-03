@@ -17,6 +17,7 @@ import { chatComplete, chatStream } from "./llm";
 import {
   getDMContext,
   getSnapshot,
+  invalidateSnapshotCache,
   logDiceRoll,
   damageMonster,
   damagePlayer,
@@ -296,20 +297,73 @@ NPC (неигровые персонажи):
 const SYSTEM_PROMPT_NARRATION = `Ты — Мастер Подземелий для D&D 5e. Напиши насыщенное, атмосферное повествование на РУССКОМ языке в стиле тёмного фэнтези (3-6 предложений) для разрешённого действия героя. Вплети реальные результаты бросков и урона. Опиши действия героя и реакцию противника. Не используй markdown. Не повторяйся. Будь кинематографичен.`;
 
 // ---------- LLM helpers ----------
+
+// Prompt cache for trivial (non-combat) actions. Keyed by roomCode + action
+// text. 30s TTL. Only stores plans with category="exploration" or "social".
+const PLAN_CACHE_TTL_MS = 30_000;
+const planCache = new Map<string, { plan: DMResolution; ts: number }>();
+
+function planCacheKey(roomCode: string, actionText: string): string {
+  return `${roomCode.toUpperCase()}|${actionText.trim().toLowerCase()}`;
+}
+
+function getCachedPlan(roomCode: string, actionText: string): DMResolution | null {
+  const key = planCacheKey(roomCode, actionText);
+  const entry = planCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > PLAN_CACHE_TTL_MS) {
+    planCache.delete(key);
+    return null;
+  }
+  return entry.plan;
+}
+
+function setCachedPlan(roomCode: string, actionText: string, plan: DMResolution): void {
+  // Only cache trivial (non-combat) plans — combat plans involve live state
+  // (HP, initiative, monster positions) that changes every round.
+  if (plan.category !== "exploration" && plan.category !== "social") return;
+  const key = planCacheKey(roomCode, actionText);
+  planCache.set(key, { plan, ts: Date.now() });
+}
+
+// Combat keywords that disqualify an action from the "fast model" heuristic.
+const COMBAT_KEYWORDS = ["атак", "бью", "стреляю", "кастую боевой"];
+
+/** True if the action text looks like a non-combat action (use fast model). */
+function isNonCombatAction(actionText: string): boolean {
+  const lower = actionText.toLowerCase();
+  return !COMBAT_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 async function planResolution(
   roomCode: string,
   actorName: string,
   playerAction: string
 ): Promise<DMResolution> {
+  // Prompt-cache hit for trivial actions (avoids an LLM round-trip entirely).
+  const cached = getCachedPlan(roomCode, playerAction);
+  if (cached) {
+    console.log("[DM] planResolution cache hit");
+    return cached;
+  }
   const context = await getDMContext(roomCode, actorName);
   const userMsg = `КОНТЕКСТ ИГРЫ:\n${context}\n\nДЕЙСТВУЮЩИЙ ГЕРОЙ: ${actorName}\nДЕЙСТВИЕ: ${playerAction}\n\nСпланируй механику разрешения. Верни только JSON.`;
+  // Route non-combat actions to a faster model.
+  const preferFast = isNonCombatAction(playerAction);
   try {
-    const raw = await chatComplete([
-      { role: "system", content: SYSTEM_PROMPT_PLANNING },
-      { role: "user", content: userMsg },
-    ]);
+    const raw = await chatComplete(
+      [
+        { role: "system", content: SYSTEM_PROMPT_PLANNING },
+        { role: "user", content: userMsg },
+      ],
+      undefined,
+      preferFast
+    );
     const parsed = extractJson<DMResolution>(raw);
-    if (parsed && parsed.success && parsed.failure) return parsed;
+    if (parsed && parsed.success && parsed.failure) {
+      setCachedPlan(roomCode, playerAction, parsed);
+      return parsed;
+    }
   } catch (e) {
     console.error("[DM] planResolution error:", e);
   }
@@ -1041,6 +1095,11 @@ async function resolvePlayerAction(
       }
     }
   }
+
+  // Defensive cache invalidation — covers direct db mutations done above
+  // (system chat messages, room station grants, monster visibility reveal)
+  // that bypass the state.ts mutation helpers.
+  invalidateSnapshotCache(roomId);
 
   return {
     playerRolls, outcome,

@@ -501,16 +501,13 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     });
   }
 
-  // Active conditions per target.
+  // Active conditions per target (trimmed: type + duration only, no source/icon).
   if (snap.conditions.length > 0) {
     lines.push("=== Активные состояния ===");
     for (const c of snap.conditions) {
       const def = getCondition(c.condition);
       const nameRu = def?.name ?? c.condition;
-      const icon = def?.icon ?? "❓";
-      lines.push(
-        `${c.targetName} (${c.targetType}): ${icon} ${nameRu} — ${c.duration} раундов. Источник: ${c.source || "—"}.`
-      );
+      lines.push(`${c.targetName} (${c.targetType}): ${nameRu} — ${c.duration} раундов.`);
     }
   }
 
@@ -565,9 +562,27 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     `=== Время суток и погода ===\nСейчас: ${timeOfDayLabelRu(snap.timeOfDay)} · ${weatherLabelRu(snap.weather)}`
   );
 
-  const recent = snap.chat.slice(-6);
+  // Recent chat: trim to the last 15 messages. If there are older messages,
+  // include a one-line condensed summary so the DM still has some continuity.
+  const RECENT_CHAT_LIMIT = 15;
+  const allChat = snap.chat;
+  const recent = allChat.slice(-RECENT_CHAT_LIMIT);
   if (recent.length > 0) {
     lines.push("=== Недавние события ===");
+    // If there are older messages we skipped, condense the first 3 of them into
+    // a single one-line "Ранее: ..." summary.
+    if (allChat.length > RECENT_CHAT_LIMIT) {
+      const older = allChat.slice(0, Math.min(3, allChat.length - RECENT_CHAT_LIMIT));
+      const condensed = older
+        .map((c) => {
+          const who = c.role === "player" ? `${c.speaker}` : c.role === "system" ? "Система" : "Мастер";
+          // Keep only the first ~80 chars per message so the summary stays short.
+          const snippet = c.content.replace(/\s+/g, " ").trim().slice(0, 80);
+          return `${who}: ${snippet}`;
+        })
+        .join(" / ");
+      lines.push(`Ранее: ${condensed}`);
+    }
     for (const c of recent) {
       const who = c.role === "player" ? `Игрок ${c.speaker}` : c.role === "system" ? "Система" : "Мастер";
       lines.push(`${who}: ${c.content.slice(0, 300)}`);

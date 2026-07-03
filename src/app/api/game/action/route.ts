@@ -4,7 +4,7 @@ import {
   resolvePlayerMechanics,
   streamNarrativeAction,
 } from "@/lib/game/dm-agent";
-import { getSnapshot } from "@/lib/game/state";
+import { getSnapshot, invalidateSnapshotCache } from "@/lib/game/state";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
               content: full || mech.branchNarrative,
             },
           });
+          invalidateSnapshotCache(room.id);
         }
         send({ type: "done" });
       } catch (e: any) {
