@@ -37,7 +37,6 @@ export function CombatGrid({
   currentTurnName,
   conditions,
   aoe,
-  flankingLines,
 }: {
   players: PlayerState[];
   monsters: MonsterState[];
@@ -46,7 +45,6 @@ export function CombatGrid({
   currentTurnName: string | null;
   conditions: ConditionState[];
   aoe?: AoEOverlay | null;
-  flankingLines?: { from: { x: number; y: number }; to: { x: number; y: number } }[];
 }) {
   const activeMonsters = monsters.filter((m) => m.isActive);
   const alivePlayers = players.filter((p) => p.isAlive || p.hp > 0);
@@ -85,6 +83,36 @@ export function CombatGrid({
     return new Set(aoe.cells.map((c) => `${c.x},${c.y}`));
   }, [aoe]);
   const aoeColor = aoe ? AOE_ELEMENT_COLORS[aoe.element] ?? AOE_ELEMENT_COLORS.force : null;
+
+  // Flanking lines: when it's a player's turn in combat, draw dashed green
+  // lines from the acting player to allies who together flank an adjacent
+  // enemy. Helps the player see flanking opportunities.
+  const flankingLines = useMemo(() => {
+    if (!combatActive || !currentTurnName) return [];
+    const acting = alivePlayers.find((p) => p.name === currentTurnName);
+    if (!acting) return [];
+    const allies = alivePlayers.filter((p) => p.name !== currentTurnName);
+    const lines: { from: { x: number; y: number }; to: { x: number; y: number } }[] = [];
+    for (const enemy of activeMonsters) {
+      const dx = acting.posX - enemy.posX;
+      const dy = acting.posY - enemy.posY;
+      // Acting player must be adjacent to the enemy (cardinal, for same-row/col flank).
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) continue;
+      for (const ally of allies) {
+        const alx = ally.posX - enemy.posX;
+        const aly = ally.posY - enemy.posY;
+        if (Math.max(Math.abs(alx), Math.abs(aly)) !== 1) continue;
+        // Same row (dy==0, aly==0): opposite x, equidistant.
+        const sameRow = dy === 0 && aly === 0 && Math.sign(alx) === -Math.sign(dx) && Math.abs(alx) === Math.abs(dx);
+        // Same column (dx==0, alx==0): opposite y, equidistant.
+        const sameCol = dx === 0 && alx === 0 && Math.sign(aly) === -Math.sign(dy) && Math.abs(aly) === Math.abs(dy);
+        if (sameRow || sameCol) {
+          lines.push({ from: { x: acting.posX, y: acting.posY }, to: { x: ally.posX, y: ally.posY } });
+        }
+      }
+    }
+    return lines;
+  }, [combatActive, currentTurnName, alivePlayers, activeMonsters]);
 
   return (
     <Card className="parchment rune-border border-border/80 gap-0">
