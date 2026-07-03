@@ -29,6 +29,26 @@ import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/type
 
 const LS_KEY = "dnd_vtt_session";
 
+/** Human-readable Russian label for an encounter type. */
+function encounterLabelRu(t: string): string {
+  switch (t) {
+    case "combat":
+      return "Бой";
+    case "merchant":
+      return "Торговец";
+    case "puzzle":
+      return "Загадка";
+    case "npc":
+      return "Встреча с NPC";
+    case "trap":
+      return "Ловушка";
+    case "treasure":
+      return "Сокровище";
+    default:
+      return "Событие";
+  }
+}
+
 interface Session {
   roomCode: string;
   playerName: string;
@@ -356,6 +376,11 @@ export default function Home() {
           setSnapshot(data.snapshot);
           pingRoom(session.roomCode);
           toast.success(`Вы вошли в: ${data.room?.label ?? ""}`);
+          if (data.encounter && data.encounter !== "none") {
+            toast(`Случайное событие: ${encounterLabelRu(data.encounter)}`, {
+              description: "См. журнал чата для подробностей.",
+            });
+          }
           // Trigger a background image generation for the new room type.
           if (data.room?.roomType) {
             fetch("/api/game/image", {

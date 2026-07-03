@@ -11,6 +11,7 @@ import {
   isReachableFromCurrent,
   getCurrentMapPos,
 } from "@/lib/game/world-map";
+import { rollEncounter, logEncounter } from "@/lib/game/encounters";
 
 export const dynamic = "force-dynamic";
 
@@ -121,9 +122,21 @@ export async function POST(req: NextRequest) {
     const prompt = TYPE_PROMPT[target.roomType] ?? TYPE_PROMPT.combat;
     await setActiveScene(room.id, "/scenes/forest-ruins.png", prompt, target.label);
 
-    // Note: random encounters (Пункт 11) hook in here once encounters.ts is
-    // implemented. For now we only spawn a combat encounter for combat/boss
-    // rooms if no monsters are active — but that's left to Пункт 11.
+    // ===== Random encounter (Пункт 11) =====
+    // Compute the party's average level (alive players) for encounter scaling.
+    const players = await db.player.findMany({ where: { roomId: room.id, isAlive: true } });
+    const alivePlayers = players.filter((p) => p.hp > 0);
+    const avgLevel =
+      alivePlayers.length > 0
+        ? Math.round(alivePlayers.reduce((s, p) => s + p.level, 0) / alivePlayers.length)
+        : 1;
+    // Force a combat encounter for combat/boss rooms; otherwise roll 40%.
+    const forceType =
+      target.roomType === "boss" || target.roomType === "combat"
+        ? ("combat" as const)
+        : undefined;
+    const encounter = await rollEncounter(room.id, avgLevel, room.round, { forceType });
+    await logEncounter(room.id, room.round, encounter);
 
     const snapshot = await getSnapshot(roomCode);
     return NextResponse.json({
@@ -132,6 +145,7 @@ export async function POST(req: NextRequest) {
       room: { x: target.x, y: target.y, label: target.label, roomType: target.roomType },
       // Return the discovered-only map view as well (for client convenience).
       discovered: snapshot?.mapRooms ?? [],
+      encounter: encounter.type,
     });
   } catch (e: any) {
     console.error("[api/game/move-room] error:", e);
