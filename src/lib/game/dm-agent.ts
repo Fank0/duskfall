@@ -30,7 +30,6 @@ import {
   rollInitiative,
   countAlive,
   nearestActiveMonster,
-  GRID_SIZE,
   awardXP,
   xpForMonster,
   advanceExplorationTurn,
@@ -68,7 +67,6 @@ import type {
   ResolvedEvent,
   InventoryChange,
   PlayerState,
-  MonsterState,
   PlannedCondition,
 } from "./types";
 import { llmLangName, type Lang, defaultLang } from "./i18n";
@@ -448,7 +446,7 @@ export async function planAndNarrate(
   return { plan, narrative: plan.success.narrative };
 }
 
-function fallbackResolution(playerAction: string): DMResolution {
+function fallbackResolution(_playerAction: string): DMResolution {
   return {
     category: "ability_check",
     rolls: [
@@ -469,51 +467,6 @@ function fallbackResolution(playerAction: string): DMResolution {
     imagePrompt: "Dark fantasy scene, misty forest, torchlight, ominous atmosphere, painterly concept art",
     imageNeeded: false,
   };
-}
-
-async function narrateAction(
-  roomCode: string,
-  actorName: string,
-  playerAction: string,
-  data: {
-    playerRolls: ResolvedRoll[];
-    outcome: "success" | "failure";
-    branchNarrative: string;
-    damageToMonster: number;
-    monsterThatDied: string | null;
-    inventoryChanges: InventoryChange[];
-    goldChange: number;
-    location: string;
-  },
-  lang: Lang = defaultLang()
-): Promise<string> {
-  const lines: string[] = [];
-  lines.push(`Локация: ${data.location}`);
-  lines.push(`Герой: ${actorName}`);
-  lines.push(`Действие: ${playerAction}`);
-  lines.push(`Исход: ${data.outcome === "success" ? "УСПЕХ" : "ПРОВАЛ"}`);
-  for (const r of data.playerRolls) {
-    lines.push(
-      `- ${r.label}: ${r.notation}${r.modifier >= 0 ? "+" : ""}${r.modifier} = ${r.total} (выпало ${r.result})${r.target ? `, цель ${r.target}` : ""} → ${r.success ? "успех" : "провал"}`
-    );
-  }
-  if (data.damageToMonster > 0) lines.push(`Урон противнику: ${data.damageToMonster}`);
-  if (data.monsterThatDied) lines.push(`Повержен: ${data.monsterThatDied}`);
-  if (data.inventoryChanges.length > 0)
-    lines.push("Изменения инвентаря: " + data.inventoryChanges.map((c) => `${c.action === "add" ? "+" : "-"}${c.item}`).join(", "));
-  if (data.goldChange) lines.push(`Золото: ${data.goldChange > 0 ? "+" : ""}${data.goldChange}`);
-  lines.push(`Заготовка нарратива: ${data.branchNarrative}`);
-
-  try {
-    const text = await chatComplete([
-      { role: "system", content: buildNarrationPrompt(lang) },
-      { role: "user", content: `Напиши повествование:\n${lines.join("\n")}` },
-    ]);
-    if (text && text.trim().length > 20) return text.trim();
-  } catch (e) {
-    console.error("[DM] narrateAction error:", e);
-  }
-  return data.branchNarrative;
 }
 
 /** Stream the action narrative token-by-token. Yields text chunks as they arrive. */

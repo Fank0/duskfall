@@ -19,7 +19,7 @@ import { Lobby } from "@/components/dnd/Lobby";
 import { ErrorBoundary } from "@/components/dnd/ErrorBoundary";
 import { useSettings } from "@/lib/game/settings";
 import {
-  initAudio, resumeAudio, startMusic, stopMusic, setMusicVolume, setSfxVolume, setMusicEnabled,
+  resumeAudio, startMusic, stopMusic, setMusicVolume, setSfxVolume, setMusicEnabled,
   sfxDiceRoll, sfxHit, sfxCrit, sfxMiss, sfxHeal, sfxLevelUp, sfxConditionApply,
   sfxMonsterDeath, sfxClick, sfxError, sfxCombatStart, sfxTurnChange,
   startWeatherAmbient, stopWeatherAmbient, moodForState,
@@ -1083,7 +1083,6 @@ export default function Home() {
             player={you}
             inventory={yourInventory}
             onQuickAction={sendAction}
-            onEquip={(itemId, slot) => equipItem(itemId, slot as any)}
             onUnequip={(slot) => unequipItem(slot as any)}
             hasAnyStation={snapshot.hasAlchemy || snapshot.hasForge || snapshot.hasEnchant}
             onCraft={() => {/* crafting opens via CharacterSheet — keep stub */}}

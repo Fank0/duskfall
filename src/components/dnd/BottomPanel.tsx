@@ -31,7 +31,6 @@ export const BottomPanel = memo(function BottomPanel({
   player,
   inventory,
   onQuickAction,
-  onEquip,
   onUnequip,
   hasAnyStation = false,
   onCraft,
@@ -39,7 +38,6 @@ export const BottomPanel = memo(function BottomPanel({
   player: PlayerState;
   inventory: InventoryItemState[];
   onQuickAction?: (text: string) => void;
-  onEquip?: (itemId: string, slot?: string) => void | Promise<void>;
   onUnequip?: (slot: string) => void | Promise<void>;
   hasAnyStation?: boolean;
   onCraft?: () => void;

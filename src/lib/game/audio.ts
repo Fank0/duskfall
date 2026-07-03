@@ -11,7 +11,6 @@ let musicGain: GainNode | null = null;
 let sfxGain: GainNode | null = null;
 let currentMood: Mood | null = null;
 let musicNodes: OscillatorNode[] = [];
-let musicFilters: BiquadFilterNode[] = [];
 let musicInterval: ReturnType<typeof setInterval> | null = null;
 let weatherNodes: { osc: OscillatorNode; gain: GainNode; filter: BiquadFilterNode } | null = null;
 
@@ -107,7 +106,6 @@ function stopMusicNodes() {
     try { osc.stop(); } catch {}
   }
   musicNodes = [];
-  musicFilters = [];
   if (musicInterval) {
     clearInterval(musicInterval);
     musicInterval = null;
@@ -331,10 +329,6 @@ export function stopWeatherAmbient() {
 }
 
 // ---------- Init ----------
-
-export function initAudio() {
-  ensureCtx();
-}
 
 export function resumeAudio() {
   ensureCtx();

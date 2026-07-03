@@ -6,7 +6,6 @@ import { logger } from "@/lib/game/logger";
 export const dynamic = "force-dynamic";
 
 const TOTAL_SLOTS = 3;
-const NAME_MAX = 80;
 
 // POST /api/game/saves/delete
 // Body: { slotNumber }

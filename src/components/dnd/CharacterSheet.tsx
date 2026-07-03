@@ -40,14 +40,6 @@ const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
   { key: "cha", short: "character.cha" },
 ];
 
-const TYPE_STYLES: Record<string, string> = {
-  weapon: "bg-red-950/60 text-red-300 border-red-800/60",
-  armor: "bg-sky-950/60 text-sky-300 border-sky-800/60",
-  potion: "bg-emerald-950/60 text-emerald-300 border-emerald-800/60",
-  key: "bg-amber-950/60 text-amber-300 border-amber-800/60",
-  misc: "bg-stone-800/60 text-stone-300 border-stone-700/60",
-};
-
 export const CharacterSheet = memo(function CharacterSheet({
   player,
   inventory,

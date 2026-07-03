@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { FlaskConical, Hammer, Sparkles, Loader2, Check, X } from "lucide-react";
 import type { PlayerState, InventoryItemState } from "@/lib/game/types";
 import {
