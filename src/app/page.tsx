@@ -995,18 +995,22 @@ export default function Home() {
       </header>
 
       {/* ===== Main =====
-        Layout (balanced, no scroll needed for core panels):
-          TOP-LEFT   (~22%): CharacterSheet (compact) + DiceLog
+        Layout:
+          TOP-LEFT   (~22%): PartyPanel + CharacterSheet (compact) + DiceLog
           TOP-CENTER (~50%): ChatPanel (full height)
-          TOP-RIGHT  (~28%): SceneViewer (16:9) + CombatGrid (square) + PartyPanel (compact)
+          TOP-RIGHT  (~28%): SceneViewer (16:9) + CombatGrid (square)
           BOTTOM (full width): BottomPanel — equipment + inventory + abilities + spell slots
-        All columns fit without scrolling when content is not overflowing.
       */}
       <main className="flex min-h-0 flex-1 flex-col gap-2 p-2 sm:p-3">
         {/* ===== TOP: 3 columns ===== */}
         <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
-          {/* ===== LEFT: Character sheet (compact) + Dice log ===== */}
+          {/* ===== LEFT: Party + Character sheet (compact) + Dice log ===== */}
           <aside className="flex flex-col gap-2 lg:w-[22%] lg:shrink-0 lg:overflow-hidden">
+            <PartyPanel
+              players={snapshot.players}
+              youName={session.playerName}
+              currentTurnName={snapshot.currentTurnName}
+            />
             {you && (
               <CharacterSheet
                 player={you}
@@ -1046,7 +1050,7 @@ export default function Home() {
             />
           </section>
 
-          {/* ===== RIGHT: Scene + Grid + Party ===== */}
+          {/* ===== RIGHT: Scene + Grid ===== */}
           <aside className="flex flex-col gap-2 lg:w-[28%] lg:shrink-0 lg:overflow-hidden">
             <SceneViewer
               scene={snapshot.scene}
@@ -1068,11 +1072,6 @@ export default function Home() {
                 lootCells: snapshot.lootCells,
                 traps: snapshot.traps,
               }}
-            />
-            <PartyPanel
-              players={snapshot.players}
-              youName={session.playerName}
-              currentTurnName={snapshot.currentTurnName}
             />
           </aside>
         </div>
