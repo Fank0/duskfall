@@ -180,3 +180,27 @@ Stage Summary:
 - User's .env has 3 keys active: GLM + Gemini + OpenRouter. Ollama skipped (no OLLAMA_BASE_URL set).
 - llm.ts auto-detects OpenRouter keys (sk-or-v1- prefix) in QWEN_API_KEY or LLM_API_KEY for backwards compatibility.
 - CRITICAL NOTE: The 7 subagent tasks from earlier this session (combat-v2, world-v2, progression-v2, visual-v2, opt-backend, opt-frontend, dungeon-gen, final-audit) were lost due to a working tree reset. The project is at the old HEAD commit state. Those features need to be re-implemented in a future session.
+
+---
+Task ID: combat-v2-restart
+Agent: combat-v2-agent
+Task: Implement combat system 2.0
+
+Work Log:
+- Read worklog.md (last 3 sections), EXECUTION-PLAN.md, and all required source files (prisma/schema.prisma, dm-agent.ts, state.ts, types.ts, dice.ts, talents.ts, abilities.ts, presets.ts, seed.ts, CombatGrid.tsx, CharacterSheet.tsx, DiceLog.tsx, ChatPanel.tsx, action/route.ts, page.tsx).
+- Found items 1 (Conditions) and 2 (Advantage/Disadvantage) already committed by prior work (b946ca0, 57a6b1c); items 3-5 were partially in progress in the working tree. Completed items 3-5 and committed each.
+- Item 3 (Spell slots + rest): Fixed 2 TS errors (PlayerState stubs in dm-agent.ts were missing spellSlots/maxSpellSlots/hitDice — added parseSlotsSafe helper and the 3 fields to both stubs). Added spell-slot UI to CharacterSheet (row of filled/empty purple circles per spell level, casters only). Added "Короткий отдых" and "Долгий отдых" buttons to ChatPanel (disabled in combat). Wired onRest handler in page.tsx → POST /api/game/rest. The rest route (already scaffolded) rolls hit dice on short rest (heal half, warlock slots restored), full HP + all slots + clear short-duration conditions on long rest. Ran db:push (schema already in sync). Committed 55c7290.
+- Item 4 (AoE): Added aoeShape/aoeSize/aoeOrigin/aoeDirection/saveAbility/saveDC/aoeElement to DMResolution type; added aoe field to ResolvedEvent. Added computeAoECells(shape, size, origin, direction?) to state.ts — circle = Chebyshev radius, line = cells along direction, cone = 90° wedge (parallel≥0, |perp|≤parallel, ≤size). Integrated AoE resolution into resolvePlayerAction: when aoeShape set, computes cells, finds all monsters + players (except caster) in those cells, rolls spell damage once, each target rolls a saving throw (d20 + ability mod vs saveDC; monsters use flat +0), full/half damage applied, each roll logged, system chat summary. Single-target damage path moved to else-if branch. Documented AoE fields in SYSTEM_PROMPT_PLANNING with examples (Fireball circle, Lightning line, Cone of Cold). Added AoE overlay to CombatGrid (radial-gradient div per affected cell, element-colored: fire=orange, cold=blue, lightning=yellow, acid=green, force=purple, poison=green, thunder=cyan) with fadeOutAoe 2s animation in globals.css. page.tsx tracks lastAoe state, sets it on mechanics event, clears after 2.5s. Committed b31bf31.
+- Item 5 (Flanking & high ground): Added hasFlanking(attacker, target, allies) — attacker adjacent to target (Chebyshev dist 1), ally adjacent to target on opposite side (same row: dy=aly=0, opposite x, equidistant; same column: dx=alx=0, opposite y, equidistant). Added hasHighGround(attacker, target) — attacker.posY >= target.posY + 3 (ranged only). Added computePositionalAdvantage combining both (melee=adjacent→flank check; ranged=non-adjacent→high ground check). Integrated into resolvePlayerAction attack-roll advantage computation as positionalAdv (cancels disadvantage → none, otherwise → advantage), alongside plan.advantage, attacker conditions, and target conditions. Documented flanking & high ground in SYSTEM_PROMPT_PLANNING (told LLM not to set advantage for these — backend handles automatically). Added flanking visualization to CombatGrid: during combat, for the acting player, computes dashed green SVG lines (strokeDasharray "1.5 1.5", rgba(34,197,94,0.55)) from the acting token to each ally that forms a flank on an adjacent enemy. Committed d337176.
+
+Stage Summary:
+- 5 combat features implemented across 5 commits:
+  1. Conditions system (10 conditions, UI icons, tick/expiry, prompt integration) — b946ca0
+  2. Advantage/Disadvantage (2d20 keep high/low, condition-driven, dice-log markers) — 57a6b1c
+  3. Spell slots + rest (caster slots model, CharacterSheet circle UI, short/long rest API, slot-spending detection) — 55c7290
+  4. AoE spells (circle/cone/line, save-throws for half damage, elemental grid overlay with 2s fade) — b31bf31
+  5. Flanking & high ground (positional advantage auto-applied, dashed green SVG flank lines on grid) — d337176
+- bunx tsc --noEmit: 0 errors (clean).
+- bun run lint: 0 errors, 0 warnings (clean).
+- 5 commits made (one per item).
+- Files touched: prisma/schema.prisma (already had Condition + spellSlots + advantageMode), src/lib/game/{conditions,dice,types,state,dm-agent,presets,seed,abilities}.ts, src/app/api/game/rest/route.ts, src/components/dnd/{CombatGrid,CharacterSheet,ChatPanel,DiceLog}.tsx, src/app/page.tsx, src/app/globals.css.
