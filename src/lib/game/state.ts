@@ -8,7 +8,7 @@ import { inferEquipProps } from "./item-props";
 import { findBestiaryEntryByName, formatCR } from "./bestiary";
 import { getClassIdByCharClass, isCasterClass } from "./presets";
 import { getSpellById, resolveKnownSpells } from "./spellbook";
-import { generateLoot, type ItemEntry, type ItemRarity } from "./item-database";
+import { generateLoot, findItemByName, rarityLabelRu, type ItemEntry, type ItemRarity } from "./item-database";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -480,11 +480,26 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
 
   const items = snap.inventory;
   if (items.length > 0) {
+    // ===== Item database rarity + bonus badges (item-db task, item 4) =====
+    // For each inventory item, look up the catalog entry by name so the DM
+    // agent sees rarity + AC/stat bonuses + damage notation + enchantment.
+    // This lets the DM narrate «эта редкая сталь +1», reference curses, etc.
     const byPlayer = new Map<string, string[]>();
     for (const it of items) {
       if (!byPlayer.has(it.playerName)) byPlayer.set(it.playerName, []);
-      const scrollTag = it.itemType === "scroll" ? " [расходуемое заклинание-свиток]" : "";
-      byPlayer.get(it.playerName)!.push(`${it.itemName} x${it.quantity}${scrollTag}`);
+      const entry = findItemByName(it.itemName);
+      const rarityTag = entry ? ` [${rarityLabelRu(entry.rarity)}]` : "";
+      const scrollTag = it.itemType === "scroll" ? " [свиток]" : "";
+      const enchantTag = entry?.enchantment ? ` <${entry.enchantment}>` : "";
+      const acTag = it.acBonus > 0 ? ` (+${it.acBonus} AC)` : "";
+      const statTag = Object.keys(it.statBonus).length > 0
+        ? ` (${Object.entries(it.statBonus).map(([k, v]) => `+${v} ${k.toUpperCase()}`).join(", ")})`
+        : "";
+      const dmgTag = it.damageNotation ? ` ${it.damageNotation}` : "";
+      const curseTag = entry?.curse ? " [ПРОКЛЯТ]" : "";
+      byPlayer.get(it.playerName)!.push(
+        `${it.itemName} x${it.quantity}${rarityTag}${enchantTag}${scrollTag}${acTag}${statTag}${dmgTag}${curseTag}`
+      );
     }
     for (const [name, list] of byPlayer) {
       lines.push(`Инвентарь ${name}: ${list.join(", ")}`);

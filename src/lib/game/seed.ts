@@ -11,6 +11,8 @@ import { randomStartLocation } from "./locations";
 import { generateDungeonMap } from "./world-map";
 import { inferEquipProps } from "./item-props";
 import { randomBiomeId } from "./dungeon-biomes";
+import { ITEM_DATABASE, type ItemEntry } from "./item-database";
+import { addDatabaseItemToInventory } from "./state";
 
 /** Serialize a Partial<Stats> into a JSON string for storage. */
 function serializeEquipStats(stats: Partial<Record<"str" | "dex" | "con" | "int" | "wis" | "cha", number>>): string {
@@ -175,23 +177,51 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
     },
   });
   // Starting inventory: class items + background item.
+  // For each startItem, look up the item database (exact RU/EN name match).
+  // If found, use the database entry via addDatabaseItemToInventory — this
+  // ensures starting items have the proper AC bonuses, stat bonuses, and
+  // damage notation from the catalog (rather than the looser inferEquipProps
+  // heuristic). If not found, fall back to inferEquipProps + db create.
   for (const item of p.startItems) {
-    const props = inferEquipProps(item.name, item.type, item.description);
+    const entry = findDatabaseItemByExactName(item.name);
+    if (entry) {
+      await addDatabaseItemToInventory(roomId, input.name, entry);
+    } else {
+      const props = inferEquipProps(item.name, item.type, item.description);
+      await db.inventoryItem.create({
+        data: {
+          roomId, playerName: input.name, itemName: item.name, itemType: item.type, quantity: 1, description: item.description,
+          equipSlot: props.equipSlot, acBonus: props.acBonus, statBonus: serializeEquipStats(props.statBonus), damageNotation: props.damageNotation,
+        },
+      });
+    }
+  }
+  // Background item: same lookup-with-fallback pattern.
+  const bgEntry = findDatabaseItemByExactName(input.background.item.name);
+  if (bgEntry) {
+    await addDatabaseItemToInventory(roomId, input.name, bgEntry);
+  } else {
+    const bgProps = inferEquipProps(input.background.item.name, input.background.item.type, input.background.item.description);
     await db.inventoryItem.create({
       data: {
-        roomId, playerName: input.name, itemName: item.name, itemType: item.type, quantity: 1, description: item.description,
-        equipSlot: props.equipSlot, acBonus: props.acBonus, statBonus: serializeEquipStats(props.statBonus), damageNotation: props.damageNotation,
+        roomId, playerName: input.name, itemName: input.background.item.name, itemType: input.background.item.type, quantity: 1, description: input.background.item.description,
+        equipSlot: bgProps.equipSlot, acBonus: bgProps.acBonus, statBonus: serializeEquipStats(bgProps.statBonus), damageNotation: bgProps.damageNotation,
       },
     });
   }
-  const bgProps = inferEquipProps(input.background.item.name, input.background.item.type, input.background.item.description);
-  await db.inventoryItem.create({
-    data: {
-      roomId, playerName: input.name, itemName: input.background.item.name, itemType: input.background.item.type, quantity: 1, description: input.background.item.description,
-      equipSlot: bgProps.equipSlot, acBonus: bgProps.acBonus, statBonus: serializeEquipStats(bgProps.statBonus), damageNotation: bgProps.damageNotation,
-    },
-  });
   return player;
+}
+
+/** Exact case-insensitive match against ITEM_DATABASE (Russian OR English name).
+ *  Returns undefined if no match. Stricter than findItemByName (no substring)
+ *  so a startItem named «Посох странника» does NOT collide with the catalog's
+ *  «Посох» — only exact-name items opt into the database path. */
+function findDatabaseItemByExactName(name: string): ItemEntry | undefined {
+  const q = (name || "").trim().toLowerCase();
+  if (!q) return undefined;
+  return ITEM_DATABASE.find(
+    (i) => i.name.toLowerCase() === q || i.nameEn.toLowerCase() === q
+  );
 }
 
 async function generateUniqueCode(): Promise<string> {
