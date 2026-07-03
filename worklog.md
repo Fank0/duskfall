@@ -380,3 +380,41 @@ Stage Summary:
 - Updated files: prisma/schema.prisma, src/lib/game/{types,state,world-map,seed}.ts, src/components/dnd/WorldMap.tsx, src/app/api/game/move-room/route.ts, src/app/page.tsx.
 - No new dependencies added. All user-facing text in Russian. Did NOT edit llm.ts, dm-agent.ts, auth routes, AuthScreen/Lobby, CombatGrid.tsx. page.tsx touched only minimally (added isNewDungeonBusy state + startNewDungeon callback + 5 new props passed to WorldMap).
 - Dungeon generator flow: create room → random biome + BSP 8-room depth-1 map (entrance auto-discovered, party starts there) → move to neighbouring room → populateRoomContent spawns biome-themed content (combat/loot/npc/trap/boss) on first visit → Perception check reveals adjacent secret rooms + detects trap-room traps → step on trap cell triggers /api/game/check-trap (DEX save for half damage) → boss fight → boss death awards 3× XP + ground loot + dungeonCleared=true → host clicks "Новое подземелье" → wipe + regenerate with new biome + incremented depth.
+
+---
+Task ID: final-audit-restart
+Agent: final-audit-agent
+Task: Global bug audit and fix after 7 feature agents
+
+Work Log:
+- Read worklog.md (all 12 prior sections) and EXECUTION-PLAN.md in full.
+- Audited 30+ files for integration bugs: types.ts, state.ts, dm-agent.ts, page.tsx, CharacterSheet.tsx, CombatGrid.tsx, ChatPanel.tsx, WorldMap.tsx, all API routes (move-room, rest, craft, equip, dialogue, new-dungeon, check-trap, action, state, reset, room/create, room/join, chat-history, health, admin/rooms, admin/cleanup, image), world-map.ts, dungeon-biomes.ts, dungeon-populate.ts, crafting.ts, encounters.ts, validate.ts, sanitize.ts, settings.ts, next.config.ts, ci.yml, plus all UI components (LevelUpModal, SkillTreeModal, EquipmentPanel, CraftingPanel, DialoguePanel, QuestJournal, CombatLog, SettingsMenu, PartyPanel, DiceLog, SceneViewer, InitiativeTracker, CharacterCreator, Lobby, ErrorBoundary).
+- Verified lint (0 errors) and tsc (0 errors) were clean BEFORE fixes — meaning all bugs were runtime/logic issues, not type errors.
+- Verified getSnapshot includes ALL new fields (conditions, quests, npcs, mapRooms, traps, lootCells, timeOfDay, weather, hasAlchemy/Forge/Enchant, dungeonBiome/Depth/Cleared, spellSlots, maxSpellSlots, hitDice, equipment, pendingASI, currentMapPos). ✓
+- Verified getDMContext includes all context (party, inventory, equipped items, active/hidden monsters, initiative, conditions, quests, map rooms, NPCs, stations, time/weather, recent chat with condensed summary). ✓
+- Verified ALL mutations in state.ts call invalidateSnapshotCache. ✓
+- Verified dm-agent.ts plan schema matches types.ts (advantage, aoeShape/Size/Origin/Direction, saveAbility/DC, aoeElement, conditions, quest, npc, stations all handled). ✓
+- Verified page.tsx passes all new data to components (dungeonBiome/Depth/Cleared/onNewDungeon to WorldMap; conditions/aoe/lastAnimEvent/gridExtras to CombatGrid; hasAlchemy/Forge/Enchant/onCraft/onEquip/onUnequip to CharacterSheet; onRest/roomCode to ChatPanel). ✓
+- Verified SSE parser in page.tsx handles mechanics/delta/error/done events. ✓
+- Verified lazy-loaded components use dynamic({ssr:false}) — no Suspense needed for ssr:false in Next 16. ✓
+
+Audit findings (7 bugs):
+1. MAJOR — page.tsx crit detection: checked `r.notation === "d20"` but actual dice notation is "1d20" (from rollDice in dice.ts). Crit animation (КРИТ! text, screen shake, crit burst) NEVER fired. Fixed: accept both "1d20" and "d20".
+2. MAJOR — page.tsx monster-name extraction: regex `/:\s*([^+]+)/` split on '+' which broke on labels like "Урон по: Гоблин-разведчик (+3 талант)" — captured "Гоблин-разведчик (" instead of the name. Attack-lunge animation didn't target the right token. Fixed: use `/:\s*([^(]+)/` to split on '('.
+3. MAJOR — craft/route.ts removeItemQuantity: when a crafted item consumed an equipped ingredient, the equipment slot was cleared but recomputePlayerAC was NOT called — leaving stale AC bonuses from the removed item. Fixed: call recomputePlayerAC after unequip.
+4. MAJOR — reset/route.ts: didn't pass bonusStats to seedRoomContent, so player's point-buy distribution (bonusStr/Dex/Con/Int/Wis/Cha) was lost on reset. Fixed: read bonus stats from oldPlayer and pass them.
+5. MINOR — DialoguePanel.tsx auto-intro: useEffect had empty deps `[]`, so the NPC intro only fired on initial mount (when open=false, npc=null → early return). Relied entirely on parent's key-based remount. When user closed and re-opened dialogue with the SAME NPC, key didn't change → no remount → no auto-intro. Fixed: deps `[npc?.id, open]`.
+6. MINOR — DialoguePanel.tsx: "Поговорить о деле" button called `handleAction("about")` (duplicate of "Расскажи о себе"). Removed the redundant button; grid is now 3 columns (about / business / leave).
+7. MINOR — CharacterCreator.tsx: name input capped at 24 chars but server validation (validatePlayerName) caps at 20 → server rejected names 21-24 with "Имя героя не длиннее 20 символов." Fixed: cap at 20.
+8. MINOR — dm-agent.ts: dead code `const isCrit = ... ? false : false; void isCrit;` in single-target damage path. Removed.
+
+Stage Summary:
+- bugs found: 0 critical, 4 major, 4 minor
+- bugs fixed: all 8
+- lint: 0 errors, 0 warnings (clean)
+- tsc: 0 errors (clean)
+- db:push: schema already in sync (no schema changes needed)
+- runtime tests: GET / → 200; GET /api/health → 200 with metrics (ok, status:ok, db:ok); GET /api/game/state?room=XXXXXX → 404 "Комната не найдена."; POST /api/game/room/create (empty) → 400 "Введите имя героя."
+- commit: fd216c9
+- No auth route exists in the project (POST /api/auth/register test skipped — task said "if auth exists").
+- Known remaining non-issues: encounters.ts is dead code (superseded by dungeon-populate.ts) — left in place as it causes no bugs; useSettings() hook returns whole state causing minor re-renders on unrelated setting changes — performance optimization, not a bug.
