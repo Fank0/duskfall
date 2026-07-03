@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Swords, MapPin, Crosshair } from "lucide-react";
 import type { PlayerState, MonsterState, ConditionState } from "@/lib/game/types";
@@ -17,6 +17,17 @@ export interface AoEOverlay {
   element: string;
   saveDC?: number;
   saveAbility?: string;
+}
+
+/** Combat animation event (transient — drives hit-flash, lunge, shake, crit burst). */
+export interface CombatAnimEvent {
+  /** Monotonic id — increments per event so the receiver can detect a new one. */
+  id: number;
+  actorName: string | null;
+  targetName: string | null;
+  damage: number;
+  isCrit: boolean;
+  isHeal: boolean;
 }
 
 const AOE_ELEMENT_COLORS: Record<string, { core: string; edge: string; label: string }> = {
@@ -37,6 +48,7 @@ export function CombatGrid({
   currentTurnName,
   conditions,
   aoe,
+  lastAnimEvent,
 }: {
   players: PlayerState[];
   monsters: MonsterState[];
@@ -45,6 +57,7 @@ export function CombatGrid({
   currentTurnName: string | null;
   conditions: ConditionState[];
   aoe?: AoEOverlay | null;
+  lastAnimEvent?: CombatAnimEvent | null;
 }) {
   const activeMonsters = monsters.filter((m) => m.isActive);
   const alivePlayers = players.filter((p) => p.isAlive || p.hp > 0);
@@ -60,33 +73,170 @@ export function CombatGrid({
     return map;
   }, [conditions]);
 
-  const cells = useMemo(() => {
-    const map = new Map<string, { players: PlayerState[]; monster?: MonsterState }>();
+  // ===== Token placement: flat list of token "entries" (player stack or single monster).
+  type TokenEntry =
+    | {
+        kind: "player";
+        key: string;
+        players: PlayerState[];
+        name: string;
+        x: number;
+        y: number;
+        color: string;
+        isTurn: boolean;
+        conditions: ConditionState[];
+      }
+    | {
+        kind: "monster";
+        key: string;
+        monster: MonsterState;
+        name: string;
+        x: number;
+        y: number;
+        color: string;
+        isTurn: boolean;
+        conditions: ConditionState[];
+      };
+
+  const tokenEntries: TokenEntry[] = useMemo(() => {
+    const cellMap = new Map<string, PlayerState[]>();
     for (const p of alivePlayers) {
-      const key = `${p.posX},${p.posY}`;
-      const ex = map.get(key) ?? { players: [] };
-      ex.players.push(p);
-      map.set(key, ex);
+      const k = `${p.posX},${p.posY}`;
+      const arr = cellMap.get(k) ?? [];
+      arr.push(p);
+      cellMap.set(k, arr);
+    }
+    const entries: TokenEntry[] = [];
+    for (const [k, ps] of cellMap) {
+      const [x, y] = k.split(",").map(Number);
+      const p = ps[0];
+      entries.push({
+        kind: "player",
+        key: `p-${p.name}`,
+        players: ps,
+        name: p.name,
+        x,
+        y,
+        color: p.color,
+        isTurn: currentTurnName === p.name,
+        conditions: condsByTarget.get(p.name) ?? [],
+      });
     }
     for (const m of activeMonsters) {
-      const key = `${m.posX},${m.posY}`;
-      const ex = map.get(key) ?? { players: [] };
-      ex.monster = m;
-      map.set(key, ex);
+      entries.push({
+        kind: "monster",
+        key: `m-${m.id}`,
+        monster: m,
+        name: m.name,
+        x: m.posX,
+        y: m.posY,
+        color: m.color,
+        isTurn: currentTurnName === m.name,
+        conditions: condsByTarget.get(m.name) ?? [],
+      });
     }
-    return map;
-  }, [alivePlayers, activeMonsters]);
+    return entries;
+  }, [alivePlayers, activeMonsters, condsByTarget, currentTurnName]);
 
-  // AoE cell set for fast lookup.
+  // ===== Animation state =====
+  // Animations are driven by refs + Web Animations API to avoid setState-in-effect.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const tokenRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Track previous positions (item 17 requirement — used to detect token movement).
+  const prevPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Detect movement: when positions change, apply a brief glow animation to
+  // moved tokens via the Web Animations API (no React state involved).
+  useEffect(() => {
+    const moved: { name: string; el: HTMLDivElement }[] = [];
+    for (const entry of tokenEntries) {
+      const prev = prevPositions.current.get(entry.name);
+      if (prev && (prev.x !== entry.x || prev.y !== entry.y)) {
+        const el = tokenRefs.current.get(entry.name);
+        if (el) moved.push({ name: entry.name, el });
+      }
+    }
+    // Update previous positions for next comparison.
+    for (const entry of tokenEntries) {
+      prevPositions.current.set(entry.name, { x: entry.x, y: entry.y });
+    }
+    for (const { el } of moved) {
+      el.animate(
+        [
+          { filter: "drop-shadow(0 0 6px rgba(251,191,36,0.65))" },
+          { filter: "drop-shadow(0 0 6px rgba(251,191,36,0.65))", offset: 0.7 },
+          { filter: "drop-shadow(0 0 0 rgba(251,191,36,0))" },
+        ],
+        { duration: 420, easing: "ease-out" }
+      );
+    }
+  }, [tokenEntries]);
+
+  // React to combat anim events. All effects are applied imperatively via
+  // WAAPI or by remounting overlay elements (keyed by event id) — no setState.
+  const animId = lastAnimEvent?.id ?? 0;
+  useEffect(() => {
+    if (!lastAnimEvent) return;
+    const ev = lastAnimEvent;
+
+    // Screen shake on crit or large damage (>=10).
+    if ((ev.isCrit || ev.damage >= 10) && gridRef.current) {
+      gridRef.current.animate(
+        [
+          { transform: "translate(0,0)" },
+          { transform: "translate(-4px,2px)" },
+          { transform: "translate(4px,-2px)" },
+          { transform: "translate(-3px,3px)" },
+          { transform: "translate(0,0)" },
+        ],
+        { duration: 300, easing: "ease-in-out" }
+      );
+    }
+
+    // Attack lunge — lean the attacker toward the target.
+    if (ev.actorName && ev.targetName) {
+      const attacker = tokenEntries.find((t) => t.name === ev.actorName);
+      const target = tokenEntries.find((t) => t.name === ev.targetName);
+      if (attacker && target) {
+        const dx = target.x - attacker.x;
+        const dy = target.y - attacker.y;
+        const mag = Math.hypot(dx, dy) || 1;
+        const lungeDx = (dx / mag) * 0.4;
+        const lungeDy = (dy / mag) * 0.4;
+        const el = tokenRefs.current.get(ev.actorName);
+        if (el) {
+          el.animate(
+            [
+              { transform: "translate(0,0)" },
+              { transform: `translate(${lungeDx * 100}%, ${lungeDy * 100}%)`, offset: 0.4 },
+              { transform: "translate(0,0)" },
+            ],
+            { duration: 300, easing: "ease-out" }
+          );
+        }
+      }
+    }
+  }, [lastAnimEvent, tokenEntries]);
+
+  // Whether this token is the current anim target (drives overlay rendering).
+  const activeAnim: { name: string; kind: "hit" | "heal"; id: number } | null =
+    lastAnimEvent && (lastAnimEvent.damage > 0 || lastAnimEvent.isHeal) && lastAnimEvent.targetName
+      ? { name: lastAnimEvent.targetName, kind: lastAnimEvent.isHeal ? "heal" : "hit", id: animId }
+      : null;
+  const activeCrit: { name: string; id: number } | null =
+    lastAnimEvent && lastAnimEvent.isCrit && lastAnimEvent.targetName
+      ? { name: lastAnimEvent.targetName, id: animId }
+      : null;
+
+  // ===== AoE cell set + color =====
   const aoeCellSet = useMemo(() => {
     if (!aoe) return null;
     return new Set(aoe.cells.map((c) => `${c.x},${c.y}`));
   }, [aoe]);
   const aoeColor = aoe ? AOE_ELEMENT_COLORS[aoe.element] ?? AOE_ELEMENT_COLORS.force : null;
 
-  // Flanking lines: when it's a player's turn in combat, draw dashed green
-  // lines from the acting player to allies who together flank an adjacent
-  // enemy. Helps the player see flanking opportunities.
+  // ===== Flanking lines (unchanged from combat-v2) =====
   const flankingLines = useMemo(() => {
     if (!combatActive || !currentTurnName) return [];
     const acting = alivePlayers.find((p) => p.name === currentTurnName);
@@ -96,15 +246,12 @@ export function CombatGrid({
     for (const enemy of activeMonsters) {
       const dx = acting.posX - enemy.posX;
       const dy = acting.posY - enemy.posY;
-      // Acting player must be adjacent to the enemy (cardinal, for same-row/col flank).
       if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) continue;
       for (const ally of allies) {
         const alx = ally.posX - enemy.posX;
         const aly = ally.posY - enemy.posY;
         if (Math.max(Math.abs(alx), Math.abs(aly)) !== 1) continue;
-        // Same row (dy==0, aly==0): opposite x, equidistant.
         const sameRow = dy === 0 && aly === 0 && Math.sign(alx) === -Math.sign(dx) && Math.abs(alx) === Math.abs(dx);
-        // Same column (dx==0, alx==0): opposite y, equidistant.
         const sameCol = dx === 0 && alx === 0 && Math.sign(aly) === -Math.sign(dy) && Math.abs(aly) === Math.abs(dy);
         if (sameRow || sameCol) {
           lines.push({ from: { x: acting.posX, y: acting.posY }, to: { x: ally.posX, y: ally.posY } });
@@ -113,6 +260,8 @@ export function CombatGrid({
     }
     return lines;
   }, [combatActive, currentTurnName, alivePlayers, activeMonsters]);
+
+  const cellPct = 100 / GRID_SIZE;
 
   return (
     <Card className="parchment rune-border border-border/80 gap-0">
@@ -137,7 +286,8 @@ export function CombatGrid({
       <CardContent>
         <div className="mx-auto aspect-square w-full max-w-[340px]">
           <div
-            className="relative grid h-full w-full gap-px rounded-md border border-border/70 bg-stone-950/60 p-1"
+            ref={gridRef}
+            className="relative grid h-full w-full rounded-md border border-border/70 bg-stone-950/60 p-1"
             style={{
               gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
               gridTemplateRows: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
@@ -151,7 +301,6 @@ export function CombatGrid({
                 preserveAspectRatio="none"
               >
                 {flankingLines.map((ln, i) => {
-                  // Convert cell coords to % of grid (each cell = 10%).
                   const x1 = (ln.from.x + 0.5) * 10;
                   const y1 = (ln.from.y + 0.5) * 10;
                   const x2 = (ln.to.x + 0.5) * 10;
@@ -173,24 +322,22 @@ export function CombatGrid({
               </svg>
             )}
 
+            {/* Cell backdrop */}
             {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, idx) => {
               const x = idx % GRID_SIZE;
               const y = Math.floor(idx / GRID_SIZE);
-              const cell = cells.get(`${x},${y}`);
-              const cellPlayers = cell?.players ?? [];
-              const monster = cell?.monster;
               const tint = (x + y) % 2 === 0 ? "bg-stone-900/40" : "bg-stone-900/70";
               const isAoeCell = aoeCellSet?.has(`${x},${y}`);
               return (
                 <div
                   key={idx}
-                  className={cn("relative flex items-center justify-center rounded-[2px] border border-border/20", tint)}
+                  className={cn("relative rounded-[2px] border border-border/20", tint)}
                   title={`(${x}, ${y})`}
                 >
                   {/* AoE overlay — radial gradient fade-out over 2s. */}
                   {isAoeCell && aoeColor && (
                     <div
-                      className="pointer-events-none absolute inset-0 z-30 rounded-[2px] animate-fade-out"
+                      className="pointer-events-none absolute inset-0 z-30 rounded-[2px]"
                       style={{
                         background: `radial-gradient(circle at center, ${aoeColor.core} 0%, ${aoeColor.edge} 80%)`,
                         animation: "fadeOutAoe 2s ease-out forwards",
@@ -198,23 +345,58 @@ export function CombatGrid({
                       title={aoe ? `${aoeColor.label} (спасбросок ${aoe.saveAbility ?? "ТЕЛ"} DC ${aoe.saveDC ?? 12})` : ""}
                     />
                   )}
-                  {cellPlayers.length > 0 && (
-                    <PlayerToken
-                      players={cellPlayers}
-                      currentTurnName={currentTurnName}
-                      conditions={condsByTarget.get(cellPlayers[0].name) ?? []}
-                    />
-                  )}
-                  {monster && (
-                    <MonsterToken
-                      monster={monster}
-                      isTurn={currentTurnName === monster.name}
-                      conditions={condsByTarget.get(monster.name) ?? []}
-                    />
-                  )}
                 </div>
               );
             })}
+
+            {/* ===== Token layer — absolutely positioned, transitions on left/top. ===== */}
+            <div className="pointer-events-none absolute inset-1 z-20">
+              {tokenEntries.map((entry) => {
+                const left = `${entry.x * cellPct}%`;
+                const top = `${entry.y * cellPct}%`;
+                const width = `${cellPct}%`;
+                const height = `${cellPct}%`;
+                return (
+                  <div
+                    key={entry.key}
+                    className="absolute"
+                    style={{
+                      left,
+                      top,
+                      width,
+                      height,
+                      transition: "left 0.4s ease, top 0.4s ease",
+                    }}
+                  >
+                    <div
+                      ref={(el) => {
+                        if (el) tokenRefs.current.set(entry.name, el);
+                        else tokenRefs.current.delete(entry.name);
+                      }}
+                      className="h-full w-full"
+                    >
+                      {entry.kind === "player" ? (
+                        <PlayerToken
+                          players={entry.players}
+                          currentTurnName={currentTurnName}
+                          conditions={entry.conditions}
+                          anim={activeAnim && activeAnim.name === entry.name ? activeAnim : null}
+                          critFx={activeCrit && activeCrit.name === entry.name ? activeCrit : null}
+                        />
+                      ) : (
+                        <MonsterToken
+                          monster={entry.monster}
+                          isTurn={entry.isTurn}
+                          conditions={entry.conditions}
+                          anim={activeAnim && activeAnim.name === entry.name ? activeAnim : null}
+                          critFx={activeCrit && activeCrit.name === entry.name ? activeCrit : null}
+                        />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -255,7 +437,7 @@ function ConditionIcons({ conditions }: { conditions: ConditionState[] }) {
           <span
             key={c.id}
             title={`${name} (${c.duration} раундов)`}
-            className="flex h-3 w-3 items-center justify-center rounded-full border border-black/50 text-[8px] leading-none shadow-sm"
+            className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-black/50 text-[9px] leading-none shadow-sm"
             style={{ background: `${color}cc` }}
           >
             {icon}
@@ -273,12 +455,15 @@ function PlayerToken({
   players,
   currentTurnName,
   conditions,
+  anim,
+  critFx,
 }: {
   players: PlayerState[];
   currentTurnName: string | null;
   conditions: ConditionState[];
+  anim: { kind: "hit" | "heal"; id: number } | null;
+  critFx: { id: number } | null;
 }) {
-  // Show the first player in the cell as the token (others stack).
   const p = players[0];
   const isTurn = currentTurnName === p.name;
   const hpPct = p.maxHp > 0 ? (p.hp / p.maxHp) * 100 : 0;
@@ -303,9 +488,24 @@ function PlayerToken({
           </span>
         )}
         <ConditionIcons conditions={conditions} />
-      </div>
-      <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
-        <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+        <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
+          <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+        </div>
+
+        {/* Hit/heal flash overlay (item 17) */}
+        {anim && (
+          <div
+            key={anim.id}
+            className={cn("pointer-events-none absolute inset-0 z-30", anim.kind === "hit" ? "token-hit-flash" : "token-heal-flash")}
+          />
+        )}
+        {/* Crit burst overlay (item 17) */}
+        {critFx && (
+          <>
+            <div key={`burst-${critFx.id}`} className="pointer-events-none absolute inset-0 z-30 crit-burst-overlay" />
+            <span key={`text-${critFx.id}`} className="crit-float-text">КРИТ!</span>
+          </>
+        )}
       </div>
       <span className="text-[7px] leading-none text-muted-foreground">{p.hp}/{p.maxHp}</span>
     </div>
@@ -316,10 +516,14 @@ function MonsterToken({
   monster,
   isTurn,
   conditions,
+  anim,
+  critFx,
 }: {
   monster: MonsterState;
   isTurn: boolean;
   conditions: ConditionState[];
+  anim: { kind: "hit" | "heal"; id: number } | null;
+  critFx: { id: number } | null;
 }) {
   const hpPct = monster.maxHp > 0 ? (monster.hp / monster.maxHp) * 100 : 0;
   const hpColor = hpPct > 60 ? "bg-emerald-500" : hpPct > 30 ? "bg-amber-500" : "bg-red-600";
@@ -338,9 +542,24 @@ function MonsterToken({
       >
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{monster.label}</span>
         <ConditionIcons conditions={conditions} />
-      </div>
-      <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
-        <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+        <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
+          <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+        </div>
+
+        {/* Hit/heal flash overlay (item 17) */}
+        {anim && (
+          <div
+            key={anim.id}
+            className={cn("pointer-events-none absolute inset-0 z-30", anim.kind === "hit" ? "token-hit-flash" : "token-heal-flash")}
+          />
+        )}
+        {/* Crit burst overlay (item 17) */}
+        {critFx && (
+          <>
+            <div key={`burst-${critFx.id}`} className="pointer-events-none absolute inset-0 z-30 crit-burst-overlay" />
+            <span key={`text-${critFx.id}`} className="crit-float-text">КРИТ!</span>
+          </>
+        )}
       </div>
       <span className="text-[7px] leading-none text-muted-foreground">{monster.hp}/{monster.maxHp}</span>
     </div>

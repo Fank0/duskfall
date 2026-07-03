@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
-import type { AoEOverlay } from "@/components/dnd/CombatGrid";
+import type { AoEOverlay, CombatAnimEvent } from "@/components/dnd/CombatGrid";
 import { SceneViewer } from "@/components/dnd/SceneViewer";
 import { ChatPanel } from "@/components/dnd/ChatPanel";
 import { DiceLog } from "@/components/dnd/DiceLog";
@@ -83,6 +83,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [lastAoe, setLastAoe] = useState<AoEOverlay | null>(null);
+  const [lastAnimEvent, setLastAnimEvent] = useState<CombatAnimEvent | null>(null);
+  const animEventCounter = useRef(0);
   const [questOpen, setQuestOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [isMovingRoom, setIsMovingRoom] = useState(false);
@@ -221,6 +223,42 @@ export default function Home() {
                     saveAbility: aoe.saveAbility,
                   });
                   setTimeout(() => setLastAoe(null), 2500);
+                }
+                // ===== Combat animation event (item 17) =====
+                // Derive target / damage / crit / heal from the resolved event.
+                {
+                  const ev = event;
+                  const isHeal = ev.healingToPlayer > 0;
+                  const damage = Math.max(ev.damageDealtToMonster, ev.damageDealtToPlayer);
+                  let targetName: string | null = null;
+                  if (ev.monsterThatDied) targetName = ev.monsterThatDied;
+                  else if (ev.damageDealtToMonster > 0) targetName = ev.damagedPlayer ? null : null;
+                  else if (ev.damagedPlayer) targetName = ev.damagedPlayer;
+                  else if (ev.healedPlayer) targetName = ev.healedPlayer;
+                  // If we dealt monster damage but didn't kill, target is "the monster the actor attacked".
+                  // We don't know the exact monster name from the event, so use the dice-log label.
+                  if (!targetName && ev.damageDealtToMonster > 0) {
+                    // Find the latest player_damage roll label that mentions a monster name.
+                    const dmgRoll = msg.snapshot?.diceLog?.find(
+                      (r: any) => r.purpose === "player_damage" && r.label?.includes(":")
+                    );
+                    if (dmgRoll) {
+                      const m = /:\s*([^+]+)/.exec(dmgRoll.label);
+                      if (m) targetName = m[1].trim();
+                    }
+                  }
+                  // Crit detection: any attack roll (d20 notation) with a natural 20.
+                  const allRolls = [...(ev.playerRolls ?? []), ...(ev.monsterRolls ?? [])];
+                  const isCrit = allRolls.some((r: any) => r.notation === "d20" && r.result === 20);
+                  animEventCounter.current += 1;
+                  setLastAnimEvent({
+                    id: animEventCounter.current,
+                    actorName: ev.actorName ?? null,
+                    targetName,
+                    damage,
+                    isCrit,
+                    isHeal,
+                  });
                 }
               }
               flush();
@@ -746,6 +784,7 @@ export default function Home() {
             currentTurnName={snapshot.currentTurnName}
             conditions={snapshot.conditions}
             aoe={lastAoe}
+            lastAnimEvent={lastAnimEvent}
           />
         </section>
 

@@ -1,0 +1,834 @@
+     1→"use client";
+     2→
+     3→import { useCallback, useEffect, useState } from "react";
+     4→import { Button } from "@/components/ui/button";
+     5→import { Skeleton } from "@/components/ui/skeleton";
+     6→import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon, MessageCircle } from "lucide-react";
+     7→import { toast } from "sonner";
+     8→import { CharacterSheet } from "@/components/dnd/CharacterSheet";
+     9→import { CombatGrid } from "@/components/dnd/CombatGrid";
+    10→import type { AoEOverlay } from "@/components/dnd/CombatGrid";
+    11→import { SceneViewer } from "@/components/dnd/SceneViewer";
+    12→import { ChatPanel } from "@/components/dnd/ChatPanel";
+    13→import { DiceLog } from "@/components/dnd/DiceLog";
+    14→import { PartyPanel } from "@/components/dnd/PartyPanel";
+    15→import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
+    16→import { Lobby } from "@/components/dnd/Lobby";
+    17→import { LevelUpModal } from "@/components/dnd/LevelUpModal";
+    18→import { QuestJournal } from "@/components/dnd/QuestJournal";
+    19→import { WorldMap } from "@/components/dnd/WorldMap";
+    20→import { DialoguePanel } from "@/components/dnd/DialoguePanel";
+    21→import {
+    22→  DropdownMenu,
+    23→  DropdownMenuContent,
+    24→  DropdownMenuItem,
+    25→  DropdownMenuTrigger,
+    26→} from "@/components/ui/dropdown-menu";
+    27→import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
+    28→import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
+    29→
+    30→const LS_KEY = "dnd_vtt_session";
+    31→
+    32→/** Human-readable Russian label for an encounter type. */
+    33→function encounterLabelRu(t: string): string {
+    34→  switch (t) {
+    35→    case "combat":
+    36→      return "Бой";
+    37→    case "merchant":
+    38→      return "Торговец";
+    39→    case "puzzle":
+    40→      return "Загадка";
+    41→    case "npc":
+    42→      return "Встреча с NPC";
+    43→    case "trap":
+    44→      return "Ловушка";
+    45→    case "treasure":
+    46→      return "Сокровище";
+    47→    default:
+    48→      return "Событие";
+    49→  }
+    50→}
+    51→
+    52→interface Session {
+    53→  roomCode: string;
+    54→  playerName: string;
+    55→}
+    56→
+    57→function loadSession(): Session | null {
+    58→  try {
+    59→    const raw = localStorage.getItem(LS_KEY);
+    60→    if (!raw) return null;
+    61→    const parsed = JSON.parse(raw);
+    62→    if (parsed?.roomCode && parsed?.playerName) return parsed;
+    63→  } catch {
+    64→    /* ignore */
+    65→  }
+    66→  return null;
+    67→}
+    68→
+    69→function saveSession(s: Session | null) {
+    70→  try {
+    71→    if (s) localStorage.setItem(LS_KEY, JSON.stringify(s));
+    72→    else localStorage.removeItem(LS_KEY);
+    73→  } catch {
+    74→    /* ignore */
+    75→  }
+    76→}
+    77→
+    78→export default function Home() {
+    79→  const [session, setSession] = useState<Session | null>(null);
+    80→  const [snapshot, setSnapshot] = useState<GameStateSnapshot | null>(null);
+    81→  const [isThinking, setIsThinking] = useState(false);
+    82→  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+    83→  const [isLoading, setIsLoading] = useState(true);
+    84→  const [copied, setCopied] = useState(false);
+    85→  const [lastAoe, setLastAoe] = useState<AoEOverlay | null>(null);
+    86→  const [questOpen, setQuestOpen] = useState(false);
+    87→  const [mapOpen, setMapOpen] = useState(false);
+    88→  const [isMovingRoom, setIsMovingRoom] = useState(false);
+    89→  const [dialogueOpen, setDialogueOpen] = useState(false);
+    90→  const [dialogueNpc, setDialogueNpc] = useState<NpcState | null>(null);
+    91→  const [isDialogueBusy, setIsDialogueBusy] = useState(false);
+    92→
+    93→  // Restore session on mount.
+    94→  useEffect(() => {
+    95→    const s = loadSession();
+    96→    if (s) setSession(s);
+    97→    else setIsLoading(false);
+    98→  }, []);
+    99→
+   100→  // Join socket room whenever session changes.
+   101→  useEffect(() => {
+   102→    if (!session) return;
+   103→    joinRoomSocket(session.roomCode, session.playerName);
+   104→  }, [session]);
+   105→
+   106→  // Listen for refresh pings from other players.
+   107→  useEffect(() => {
+   108→    if (!session) return;
+   109→    const unsub = onRoomRefresh(() => {
+   110→      // Re-fetch state when pinged.
+   111→      fetchState(session.roomCode, true);
+   112→    });
+   113→    return unsub;
+   114→  }, [session]);
+   115→
+   116→  const fetchState = useCallback(async (roomCode: string, silent = false) => {
+   117→    try {
+   118→      const res = await fetch(`/api/game/state?room=${encodeURIComponent(roomCode)}`, { cache: "no-store" });
+   119→      const data = await res.json();
+   120→      if (data.ok) {
+   121→        setSnapshot(data.snapshot);
+   122→      } else if (!silent) {
+   123→        // Room may have been reset/deleted — bounce to lobby.
+   124→        if (data.error?.includes("не найдена")) {
+   125→          saveSession(null);
+   126→          setSession(null);
+   127→        }
+   128→      }
+   129→    } catch {
+   130→      /* network blip */
+   131→    } finally {
+   132→      setIsLoading(false);
+   133→    }
+   134→  }, []);
+   135→
+   136→  useEffect(() => {
+   137→    if (session) fetchState(session.roomCode);
+   138→  }, [session, fetchState]);
+   139→
+   140→  // Polling fallback (every 4s) in case a socket ping is missed.
+   141→  useEffect(() => {
+   142→    if (!session) return;
+   143→    const id = setInterval(() => fetchState(session.roomCode, true), 4000);
+   144→    return () => clearInterval(id);
+   145→  }, [session, fetchState]);
+   146→
+   147→  const handleEntered = useCallback((roomCode: string, playerName: string) => {
+   148→    const s = { roomCode, playerName };
+   149→    saveSession(s);
+   150→    setSession(s);
+   151→    setIsLoading(true);
+   152→  }, []);
+   153→
+   154→  const leaveRoom = useCallback(() => {
+   155→    saveSession(null);
+   156→    setSession(null);
+   157→    setSnapshot(null);
+   158→  }, []);
+   159→
+   160→  const sendAction = useCallback(
+   161→    async (text: string) => {
+   162→      if (!session || !text.trim() || isThinking) return;
+   163→      setIsThinking(true);
+   164→      // "Streaming narrative" placeholder bubble id, shown while tokens arrive.
+   165→      try {
+   166→        const res = await fetch("/api/game/action", {
+   167→          method: "POST",
+   168→          headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+   169→          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, action: text }),
+   170→        });
+   171→        if (!res.ok || !res.body) {
+   172→          toast.error("Мастер не ответил.");
+   173→          return;
+   174→        }
+   175→        const reader = res.body.getReader();
+   176→        const decoder = new TextDecoder();
+   177→        let buffer = "";
+   178→        let narrativeText = "";
+   179→        let event: ResolvedEvent | null = null;
+   180→        let imgPrompt: string | null = null;
+   181→        let imgNeeded = false;
+   182→
+   183→        const flush = async () => {
+   184→          // Once mechanics arrive, update state immediately so the player
+   185→          // sees dice/HP changes before the narrative finishes streaming.
+   186→          pingRoom(session.roomCode);
+   187→        };
+   188→
+   189→        while (true) {
+   190→          const { done, value } = await reader.read();
+   191→          if (done) break;
+   192→          buffer += decoder.decode(value, { stream: true });
+   193→          const parts = buffer.split("\n\n");
+   194→          buffer = parts.pop() ?? "";
+   195→          for (const part of parts) {
+   196→            const line = part.trim();
+   197→            if (!line.startsWith("data:")) continue;
+   198→            const payload = line.slice(5).trim();
+   199→            let msg: any;
+   200→            try { msg = JSON.parse(payload); } catch { continue; }
+   201→            if (msg.type === "mechanics") {
+   202→              event = msg.event;
+   203→              setSnapshot(msg.snapshot);
+   204→              if (event) {
+   205→                imgPrompt = event.imagePrompt;
+   206→                imgNeeded = event.imageNeeded;
+   207→                if (event.combatStarted) toast("Бой начался! Брошена инициатива.", { description: "Ход определяется порядком инициативы." });
+   208→                if (event.combatEnded) toast.success("Бой окончен!", { description: "Все враги повержены." });
+   209→                if (event.monsterThatDied) toast.success(`${event.monsterThatDied} повержен!`, { description: `Нанесено ${event.damageDealtToMonster} урона.` });
+   210→                if (event.damagedPlayer) toast.warning(`${event.damagedPlayer} получает ${event.damageDealtToPlayer} урона!`);
+   211→                // Show the AoE overlay for ~2.5s if this action had one.
+   212→                if (event.aoe) {
+   213→                  const aoe = event.aoe;
+   214→                  setLastAoe({
+   215→                    shape: aoe.shape,
+   216→                    size: aoe.size,
+   217→                    origin: aoe.origin,
+   218→                    cells: aoe.cells,
+   219→                    element: aoe.element,
+   220→                    saveDC: aoe.saveDC,
+   221→                    saveAbility: aoe.saveAbility,
+   222→                  });
+   223→                  setTimeout(() => setLastAoe(null), 2500);
+   224→                }
+   225→              }
+   226→              flush();
+   227→            } else if (msg.type === "delta") {
+   228→              narrativeText += msg.text;
+   229→              // Live-update the last DM message in the chat so the text streams in.
+   230→              setSnapshot((prev) => {
+   231→                if (!prev) return prev;
+   232→                const chat = [...prev.chat];
+   233→                const last = chat[chat.length - 1];
+   234→                if (last && last.role === "dm" && last.speaker === "") {
+   235→                  chat[chat.length - 1] = { ...last, content: narrativeText };
+   236→                } else {
+   237→                  chat.push({
+   238→                    id: "streaming",
+   239→                    role: "dm",
+   240→                    speaker: "",
+   241→                    content: narrativeText,
+   242→                    imageUrl: null,
+   243→                    round: prev.round,
+   244→                    createdAt: new Date().toISOString(),
+   245→                  });
+   246→                }
+   247→                return { ...prev, chat };
+   248→              });
+   249→            } else if (msg.type === "error") {
+   250→              toast.error(msg.error ?? "Ошибка Мастера.");
+   251→            } else if (msg.type === "done") {
+   252→              // Refresh to pick up the persisted DM message + any final state.
+   253→              await fetchState(session.roomCode, true);
+   254→              pingRoom(session.roomCode);
+   255→            }
+   256→          }
+   257→        }
+   258→
+   259→        // Background image generation — does NOT block the UI.
+   260→        if (imgNeeded && imgPrompt) {
+   261→          setIsGeneratingImage(true);
+   262→          fetch("/api/game/image", {
+   263→            method: "POST",
+   264→            headers: { "Content-Type": "application/json" },
+   265→            body: JSON.stringify({ roomCode: session.roomCode, prompt: imgPrompt, title: "Сцена" }),
+   266→          })
+   267→            .then((r) => r.json())
+   268→            .then((d) => { if (d.ok) return fetchState(session.roomCode, true); })
+   269→            .catch(() => {})
+   270→            .finally(() => {
+   271→              setIsGeneratingImage(false);
+   272→              pingRoom(session.roomCode);
+   273→            });
+   274→        }
+   275→      } catch {
+   276→        toast.error("Ошибка связи с Мастером.");
+   277→      } finally {
+   278→        setIsThinking(false);
+   279→      }
+   280→    },
+   281→    [session, isThinking, fetchState]
+   282→  );
+   283→
+   284→  const resetGame = useCallback(async () => {
+   285→    if (!session) return;
+   286→    setIsThinking(true);
+   287→    try {
+   288→      const res = await fetch("/api/game/reset", {
+   289→        method: "POST",
+   290→        headers: { "Content-Type": "application/json" },
+   291→        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName }),
+   292→      });
+   293→      const data = await res.json();
+   294→      if (data.ok) {
+   295→        setSnapshot(data.snapshot);
+   296→        pingRoom(session.roomCode);
+   297→        toast("Игра перезапущена.", { description: "Туманный лес ждёт…" });
+   298→      } else {
+   299→        toast.error(data.error ?? "Не удалось перезапустить.");
+   300→      }
+   301→    } catch {
+   302→      toast.error("Ошибка перезапуска.");
+   303→    } finally {
+   304→      setIsThinking(false);
+   305→    }
+   306→  }, [session]);
+   307→
+   308→  const copyRoomCode = useCallback(() => {
+   309→    if (!session) return;
+   310→    navigator.clipboard?.writeText(session.roomCode).then(() => {
+   311→      setCopied(true);
+   312→      toast.success(`Код комнаты скопирован: ${session.roomCode}`);
+   313→      setTimeout(() => setCopied(false), 2000);
+   314→    });
+   315→  }, [session]);
+   316→
+   317→  const pickTalent = useCallback(
+   318→    async (talentId: string) => {
+   319→      if (!session) return;
+   320→      const res = await fetch("/api/game/levelup", {
+   321→        method: "POST",
+   322→        headers: { "Content-Type": "application/json" },
+   323→        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, talentId }),
+   324→      });
+   325→      const data = await res.json();
+   326→      if (data.ok) {
+   327→        setSnapshot(data.snapshot);
+   328→        pingRoom(session.roomCode);
+   329→        toast.success(`Новый талант: ${data.talent?.name ?? ""}!`);
+   330→      } else {
+   331→        toast.error(data.error ?? "Не удалось выбрать талант.");
+   332→      }
+   333→    },
+   334→    [session]
+   335→  );
+   336→
+   337→  const pickASI = useCallback(
+   338→    async (stat: "str" | "dex" | "con" | "int" | "wis" | "cha") => {
+   339→      if (!session) return;
+   340→      const res = await fetch("/api/game/levelup", {
+   341→        method: "POST",
+   342→        headers: { "Content-Type": "application/json" },
+   343→        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, type: "asi", stat }),
+   344→      });
+   345→      const data = await res.json();
+   346→      if (data.ok) {
+   347→        setSnapshot(data.snapshot);
+   348→        pingRoom(session.roomCode);
+   349→        toast.success(`Характеристика повышена: +2 к ${stat.toUpperCase()}!`);
+   350→      } else {
+   351→        toast.error(data.error ?? "Не удалось применить ASI.");
+   352→      }
+   353→    },
+   354→    [session]
+   355→  );
+   356→
+   357→  const equipItem = useCallback(
+   358→    async (itemId: string, slot?: "weapon" | "shield" | "head" | "chest" | "legs" | "hands" | "accessory") => {
+   359→      if (!session) return;
+   360→      const res = await fetch("/api/game/equip", {
+   361→        method: "POST",
+   362→        headers: { "Content-Type": "application/json" },
+   363→        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, itemId, slot }),
+   364→      });
+   365→      const data = await res.json();
+   366→      if (data.ok) {
+   367→        setSnapshot(data.snapshot);
+   368→        pingRoom(session.roomCode);
+   369→        toast.success("Предмет экипирован.");
+   370→      } else {
+   371→        toast.error(data.error ?? "Не удалось экипировать предмет.");
+   372→      }
+   373→    },
+   374→    [session]
+   375→  );
+   376→
+   377→  const unequipItem = useCallback(
+   378→    async (slot: "weapon" | "shield" | "head" | "chest" | "legs" | "hands" | "accessory" | "accessory1" | "accessory2") => {
+   379→      if (!session) return;
+   380→      const res = await fetch("/api/game/equip", {
+   381→        method: "POST",
+   382→        headers: { "Content-Type": "application/json" },
+   383→        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, unequipSlot: slot }),
+   384→      });
+   385→      const data = await res.json();
+   386→      if (data.ok) {
+   387→        setSnapshot(data.snapshot);
+   388→        pingRoom(session.roomCode);
+   389→        toast.success("Предмет снят.");
+   390→      } else {
+   391→        toast.error(data.error ?? "Не удалось снять предмет.");
+   392→      }
+   393→    },
+   394→    [session]
+   395→  );
+   396→
+   397→  const craftItem = useCallback(
+   398→    async (recipeId: string): Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }> => {
+   399→      if (!session) return { success: false, error: "Нет сессии." };
+   400→      try {
+   401→        const res = await fetch("/api/game/craft", {
+   402→          method: "POST",
+   403→          headers: { "Content-Type": "application/json" },
+   404→          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, recipeId }),
+   405→        });
+   406→        const data = await res.json();
+   407→        if (data.ok) {
+   408→          setSnapshot(data.snapshot);
+   409→          pingRoom(session.roomCode);
+   410→          const c = data.craft;
+   411→          if (c?.success) {
+   412→            toast.success(`Создано: ${c.result ?? "предмет"}! (бросок ${c.roll} vs DC ${c.dc})`);
+   413→          } else {
+   414→            toast.error(`Крафт провалился (бросок ${c?.roll} vs DC ${c?.dc}).`);
+   415→          }
+   416→          return { success: Boolean(c?.success), result: c?.result, roll: c?.roll, dc: c?.dc };
+   417→        }
+   418→        toast.error(data.error ?? "Не удалось скрафтить.");
+   419→        return { success: false, error: data.error };
+   420→      } catch {
+   421→        toast.error("Ошибка крафта.");
+   422→        return { success: false, error: "Ошибка крафта." };
+   423→      }
+   424→    },
+   425→    [session]
+   426→  );
+   427→
+   428→  const handleRest = useCallback(
+   429→    async (restType: "short" | "long") => {
+   430→      if (!session) return;
+   431→      setIsThinking(true);
+   432→      try {
+   433→        const res = await fetch("/api/game/rest", {
+   434→          method: "POST",
+   435→          headers: { "Content-Type": "application/json" },
+   436→          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, restType }),
+   437→        });
+   438→        const data = await res.json();
+   439→        if (data.ok) {
+   440→          setSnapshot(data.snapshot);
+   441→          pingRoom(session.roomCode);
+   442→          toast.success(restType === "long" ? "Долгий отдых завершён." : "Короткий отдых завершён.");
+   443→        } else {
+   444→          toast.error(data.error ?? "Не удалось отдохнуть.");
+   445→        }
+   446→      } catch {
+   447→        toast.error("Ошибка отдыха.");
+   448→      } finally {
+   449→        setIsThinking(false);
+   450→      }
+   451→    },
+   452→    [session]
+   453→  );
+   454→
+   455→  const moveRoom = useCallback(
+   456→    async (x: number, y: number) => {
+   457→      if (!session || isMovingRoom) return;
+   458→      setIsMovingRoom(true);
+   459→      try {
+   460→        const res = await fetch("/api/game/move-room", {
+   461→          method: "POST",
+   462→          headers: { "Content-Type": "application/json" },
+   463→          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, x, y }),
+   464→        });
+   465→        const data = await res.json();
+   466→        if (data.ok) {
+   467→          setSnapshot(data.snapshot);
+   468→          pingRoom(session.roomCode);
+   469→          toast.success(`Вы вошли в: ${data.room?.label ?? ""}`);
+   470→          if (data.encounter && data.encounter !== "none") {
+   471→            toast(`Случайное событие: ${encounterLabelRu(data.encounter)}`, {
+   472→              description: "См. журнал чата для подробностей.",
+   473→            });
+   474→          }
+   475→          // Trigger a background image generation for the new room type.
+   476→          if (data.room?.roomType) {
+   477→            fetch("/api/game/image", {
+   478→              method: "POST",
+   479→              headers: { "Content-Type": "application/json" },
+   480→              body: JSON.stringify({
+   481→                roomCode: session.roomCode,
+   482→                prompt: `Dark fantasy ${data.room.roomType} room, dungeon, painterly concept art`,
+   483→                title: data.room.label ?? "Сцена",
+   484→              }),
+   485→            })
+   486→              .then((r) => r.json())
+   487→              .then((d) => { if (d.ok) return fetchState(session.roomCode, true); })
+   488→              .catch(() => {})
+   489→              .finally(() => pingRoom(session.roomCode));
+   490→          }
+   491→        } else {
+   492→          toast.error(data.error ?? "Не удалось войти в комнату.");
+   493→        }
+   494→      } catch {
+   495→        toast.error("Ошибка перемещения.");
+   496→      } finally {
+   497→        setIsMovingRoom(false);
+   498→      }
+   499→    },
+   500→    [session, isMovingRoom, fetchState]
+   501→  );
+   502→
+   503→  const handleDialogueAction = useCallback(
+   504→    async (
+   505→      action: "intro" | "about" | "business" | "leave" | "buy" | "sell",
+   506→      item?: string
+   507→    ): Promise<{ narrative?: string; stock?: any[]; tradeOutcome?: any } | null> => {
+   508→      if (!session || !dialogueNpc) return null;
+   509→      setIsDialogueBusy(true);
+   510→      try {
+   511→        const res = await fetch("/api/game/dialogue", {
+   512→          method: "POST",
+   513→          headers: { "Content-Type": "application/json" },
+   514→          body: JSON.stringify({
+   515→            roomCode: session.roomCode,
+   516→            playerName: session.playerName,
+   517→            npcName: dialogueNpc.name,
+   518→            action,
+   519→            item,
+   520→          }),
+   521→        });
+   522→        const data = await res.json();
+   523→        if (data.ok) {
+   524→          setSnapshot(data.snapshot);
+   525→          pingRoom(session.roomCode);
+   526→          return {
+   527→            narrative: data.narrative,
+   528→            stock: data.stock,
+   529→            tradeOutcome: data.tradeOutcome,
+   530→          };
+   531→        } else {
+   532→          toast.error(data.error ?? "Диалог не удался.");
+   533→          return null;
+   534→        }
+   535→      } catch {
+   536→        toast.error("Ошибка диалога.");
+   537→        return null;
+   538→      } finally {
+   539→        setIsDialogueBusy(false);
+   540→      }
+   541→    },
+   542→    [session, dialogueNpc]
+   543→  );
+   544→
+   545→  const openDialogueWith = useCallback((npc: NpcState) => {
+   546→    setDialogueNpc(npc);
+   547→    setDialogueOpen(true);
+   548→  }, []);
+   549→
+   550→  // ===== Lobby =====
+   551→  if (!session) {
+   552→    return <Lobby onEntered={handleEntered} />;
+   553→  }
+   554→
+   555→  if (isLoading || !snapshot) {
+   556→    return <LoadingScreen />;
+   557→  }
+   558→
+   559→  const you = snapshot.players.find((p) => p.name === session.playerName);
+   560→  const isDead = !you || !you.isAlive || you.hp <= 0;
+   561→  const isYourTurn = snapshot.combatActive
+   562→    ? snapshot.currentTurnName === session.playerName
+   563→    : snapshot.currentExplorerName === session.playerName;
+   564→  const yourInventory = snapshot.inventory.filter((i) => i.playerName === session.playerName);
+   565→
+   566→  return (
+   567→    <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
+   568→      {/* ===== Header ===== */}
+   569→      <header className="shrink-0 border-b border-border/60 bg-stone-950/60 backdrop-blur">
+   570→        <div className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
+   571→          <div className="flex h-9 w-9 items-center justify-center rounded-md border border-primary/60 bg-stone-900 animate-flicker">
+   572→            <Skull className="h-5 w-5 text-primary" />
+   573→          </div>
+   574→          <div className="min-w-0 flex-1">
+   575→            <h1 className="font-serif text-base font-bold leading-tight gold-text text-glow sm:text-lg">
+   576→              DUSKFALL
+   577→            </h1>
+   578→            <p className="truncate text-[10px] text-muted-foreground sm:text-xs">
+   579→              ИИ Мастер Подземелий · D&D 5e
+   580→            </p>
+   581→          </div>
+   582→
+   583→          {/* Room code badge */}
+   584→          <button
+   585→            onClick={copyRoomCode}
+   586→            className="flex items-center gap-1.5 rounded-md border border-amber-700/40 bg-amber-950/30 px-2.5 py-1 text-xs transition-colors hover:bg-amber-950/50"
+   587→            title="Кликните, чтобы скопировать код комнаты"
+   588→          >
+   589→            <Users className="h-3.5 w-3.5 text-amber-300" />
+   590→            <span className="font-mono font-bold tracking-wider text-amber-200">{snapshot.roomCode}</span>
+   591→            {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3 text-muted-foreground" />}
+   592→          </button>
+   593→
+   594→          <div className="hidden items-center gap-2 sm:flex">
+   595→            {snapshot.combatActive ? (
+   596→              <span className="flex items-center gap-1.5 rounded-full border border-red-800/60 bg-red-950/50 px-3 py-1 text-xs text-red-300 animate-pulse-glow">
+   597→                <Swords className="h-3.5 w-3.5" /> Раунд {snapshot.round}
+   598→              </span>
+   599→            ) : (
+   600→              <span className="flex items-center gap-1.5 rounded-full border border-emerald-800/60 bg-emerald-950/40 px-3 py-1 text-xs text-emerald-300">
+   601→                <ScrollText className="h-3.5 w-3.5" /> Мир
+   602→              </span>
+   603→            )}
+   604→            {/* Time-of-day indicator (item 9) */}
+   605→            <span
+   606→              className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/30 px-2.5 py-1 text-xs text-amber-200"
+   607→              title={`Время суток: ${
+   608→                snapshot.timeOfDay === "dawn" ? "Рассвет" :
+   609→                snapshot.timeOfDay === "day" ? "День" :
+   610→                snapshot.timeOfDay === "dusk" ? "Сумерки" : "Ночь"
+   611→              }`}
+   612→            >
+   613→              <span className="text-sm">
+   614→                {snapshot.timeOfDay === "dawn" ? "🌅" :
+   615→                 snapshot.timeOfDay === "day" ? "☀️" :
+   616→                 snapshot.timeOfDay === "dusk" ? "🌇" : "🌙"}
+   617→              </span>
+   618→              <span className="font-medium">
+   619→                {snapshot.timeOfDay === "dawn" ? "Рассвет" :
+   620→                 snapshot.timeOfDay === "day" ? "День" :
+   621→                 snapshot.timeOfDay === "dusk" ? "Сумерки" : "Ночь"}
+   622→              </span>
+   623→            </span>
+   624→          </div>
+   625→
+   626→          <Button variant="outline" size="sm" onClick={resetGame} disabled={isThinking} className="gap-1.5 border-border/60">
+   627→            {isThinking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+   628→            <span className="hidden sm:inline">Заново</span>
+   629→          </Button>
+   630→          <Button
+   631→            variant="outline"
+   632→            size="sm"
+   633→            onClick={() => setQuestOpen(true)}
+   634→            className="gap-1.5 border-amber-800/50 bg-amber-950/20 text-amber-200 hover:bg-amber-950/40"
+   635→            title="Журнал квестов"
+   636→          >
+   637→            <BookOpen className="h-3.5 w-3.5" />
+   638→            <span className="hidden sm:inline">Журнал</span>
+   639→            {snapshot.quests.filter((q) => q.status === "active").length > 0 && (
+   640→              <span className="ml-0.5 rounded-full bg-amber-700 px-1.5 text-[9px] font-bold leading-4 text-amber-50">
+   641→                {snapshot.quests.filter((q) => q.status === "active").length}
+   642→              </span>
+   643→            )}
+   644→          </Button>
+   645→          <Button
+   646→            variant="outline"
+   647→            size="sm"
+   648→            onClick={() => setMapOpen(true)}
+   649→            disabled={snapshot.combatActive}
+   650→            className="gap-1.5 border-sky-800/50 bg-sky-950/20 text-sky-200 hover:bg-sky-950/40 disabled:opacity-40"
+   651→            title="Карта мира"
+   652→          >
+   653→            <MapIcon className="h-3.5 w-3.5" />
+   654→            <span className="hidden sm:inline">Карта</span>
+   655→          </Button>
+   656→          {/* Dialogue trigger: dropdown of NPCs in the room (hidden when none). */}
+   657→          {snapshot.npcs.length > 0 && (
+   658→            <DropdownMenu>
+   659→              <DropdownMenuTrigger asChild>
+   660→                <Button
+   661→                  variant="outline"
+   662→                  size="sm"
+   663→                  disabled={snapshot.combatActive}
+   664→                  className="gap-1.5 border-emerald-800/50 bg-emerald-950/20 text-emerald-200 hover:bg-emerald-950/40 disabled:opacity-40"
+   665→                  title="Поговорить с NPC"
+   666→                >
+   667→                  <MessageCircle className="h-3.5 w-3.5" />
+   668→                  <span className="hidden sm:inline">Поговорить</span>
+   669→                </Button>
+   670→              </DropdownMenuTrigger>
+   671→              <DropdownMenuContent align="end" className="w-56">
+   672→                {snapshot.npcs.map((n) => (
+   673→                  <DropdownMenuItem
+   674→                    key={n.id}
+   675→                    onClick={() => openDialogueWith(n)}
+   676→                    className="flex items-center justify-between gap-2 text-xs"
+   677→                  >
+   678→                    <span className="truncate">{n.name}</span>
+   679→                    <span className="text-[9px] uppercase text-muted-foreground">{n.role}</span>
+   680→                  </DropdownMenuItem>
+   681→                ))}
+   682→              </DropdownMenuContent>
+   683→            </DropdownMenu>
+   684→          )}
+   685→          <Button variant="ghost" size="sm" onClick={leaveRoom} className="text-muted-foreground">
+   686→            Выйти
+   687→          </Button>
+   688→        </div>
+   689→
+   690→        {/* Initiative tracker */}
+   691→        {snapshot.combatActive && (
+   692→          <div className="px-3 pb-2 sm:px-4">
+   693→            <InitiativeTracker
+   694→              initiatives={snapshot.initiatives}
+   695→              turnIndex={snapshot.turnIndex}
+   696→              players={snapshot.players}
+   697→              monsters={snapshot.monsters}
+   698→              combatActive={snapshot.combatActive}
+   699→              round={snapshot.round}
+   700→            />
+   701→          </div>
+   702→        )}
+   703→      </header>
+   704→
+   705→      {/* ===== Main ===== */}
+   706→      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row sm:p-4">
+   707→        {/* Left: party + your sheet + dice */}
+   708→        <aside className="order-2 space-y-3 lg:order-1 lg:w-72 lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
+   709→          <PartyPanel
+   710→            players={snapshot.players}
+   711→            youName={session.playerName}
+   712→            currentTurnName={snapshot.currentTurnName}
+   713→          />
+   714→          {you && (
+   715→            <CharacterSheet
+   716→              player={you}
+   717→              inventory={yourInventory}
+   718→              isYou
+   719→              isTurn={isYourTurn && snapshot.combatActive}
+   720→              conditions={snapshot.conditions.filter((c) => c.targetName === you.name)}
+   721→              onEquip={equipItem}
+   722→              onUnequip={unequipItem}
+   723→              hasAlchemy={snapshot.hasAlchemy}
+   724→              hasForge={snapshot.hasForge}
+   725→              hasEnchant={snapshot.hasEnchant}
+   726→              onCraft={craftItem}
+   727→            />
+   728→          )}
+   729→          <DiceLog rolls={snapshot.diceLog} />
+   730→        </aside>
+   731→
+   732→        {/* Center: scene + grid */}
+   733→        <section className="order-1 flex min-h-0 flex-1 flex-col gap-3 lg:order-2 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
+   734→          <SceneViewer
+   735→            scene={snapshot.scene}
+   736→            isGenerating={isGeneratingImage}
+   737→            location={snapshot.location}
+   738→            timeOfDay={snapshot.timeOfDay}
+   739→            weather={snapshot.weather}
+   740→          />
+   741→          <CombatGrid
+   742→            players={snapshot.players}
+   743→            monsters={snapshot.monsters}
+   744→            combatActive={snapshot.combatActive}
+   745→            round={snapshot.round}
+   746→            currentTurnName={snapshot.currentTurnName}
+   747→            conditions={snapshot.conditions}
+   748→            aoe={lastAoe}
+   749→          />
+   750→        </section>
+   751→
+   752→        {/* Right: chat */}
+   753→        <section className="order-3 h-[65vh] min-h-0 shrink-0 lg:h-full lg:w-[400px]">
+   754→          <ChatPanel
+   755→            messages={snapshot.chat}
+   756→            isThinking={isThinking}
+   757→            isYourTurn={isYourTurn}
+   758→            isDead={isDead}
+   759→            combatActive={snapshot.combatActive}
+   760→            yourName={session.playerName}
+   761→            currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
+   762→            onSend={sendAction}
+   763→            onRest={handleRest}
+   764→          />
+   765→        </section>
+   766→      </main>
+   767→
+   768→      {/* ===== Footer ===== */}
+   769→      <footer className="mt-auto shrink-0 border-t border-border/60 bg-stone-950/60 px-4 py-2 text-center text-[10px] text-muted-foreground backdrop-blur">
+   770→        <span className="gold-text font-serif">DUSKFALL</span> · Комната{" "}
+   771→        <span className="font-mono text-amber-200">{snapshot.roomCode}</span> ·{" "}
+   772→        {snapshot.players.length} гер. · Все исходы решаются бросками костей
+   773→      </footer>
+   774→
+   775→      {/* ===== Level-up modal ===== */}
+   776→      <LevelUpModal
+   777→        player={you ?? null}
+   778→        open={Boolean(you?.pendingLevelUp || you?.pendingASI)}
+   779→        onClose={() => {}}
+   780→        onPick={pickTalent}
+   781→        onPickASI={pickASI}
+   782→      />
+   783→
+   784→      {/* ===== Quest journal modal ===== */}
+   785→      <QuestJournal
+   786→        open={questOpen}
+   787→        onOpenChange={setQuestOpen}
+   788→        quests={snapshot.quests}
+   789→      />
+   790→
+   791→      {/* ===== World map modal ===== */}
+   792→      <WorldMap
+   793→        open={mapOpen}
+   794→        onOpenChange={setMapOpen}
+   795→        rooms={snapshot.mapRooms}
+   796→        currentPos={snapshot.currentMapPos}
+   797→        onMove={moveRoom}
+   798→        isMoving={isMovingRoom}
+   799→      />
+   800→
+   801→      {/* ===== Dialogue modal ===== */}
+   802→      <DialoguePanel
+   803→        key={dialogueNpc?.id ?? "none"}
+   804→        open={dialogueOpen}
+   805→        onOpenChange={setDialogueOpen}
+   806→        npc={dialogueNpc}
+   807→        playerGold={you?.gold ?? 0}
+   808→        playerInventory={snapshot.inventory.filter((i) => i.playerName === session.playerName)}
+   809→        onAction={handleDialogueAction}
+   810→        isBusy={isDialogueBusy}
+   811→      />
+   812→    </div>
+   813→  );
+   814→}
+   815→
+   816→function LoadingScreen() {
+   817→  return (
+   818→    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
+   819→      <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-primary/60 bg-stone-900 animate-flicker">
+   820→        <Skull className="h-8 w-8 text-primary" />
+   821→      </div>
+   822→      <h1 className="font-serif text-2xl font-bold gold-text text-glow">DUSKFALL</h1>
+   823→      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   824→        <Loader2 className="h-4 w-4 animate-spin text-amber-300" />
+   825→        <span className="font-serif italic">Туман сгущается…</span>
+   826→      </div>
+   827→      <div className="mt-4 w-full max-w-md space-y-2">
+   828→        <Skeleton className="h-24 w-full rounded-lg" />
+   829→        <Skeleton className="h-8 w-1/2 rounded-lg" />
+   830→      </div>
+   831→    </div>
+   832→  );
+   833→}
+   834→

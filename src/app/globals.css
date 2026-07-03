@@ -208,6 +208,84 @@
   100% { opacity: 0; transform: scale(1.15); }
 }
 
+/* ===== Combat animations (item 17) ===== */
+/* Hit flash — red overlay that pulses 0→0.6→0 over 0.4s */
+@keyframes tokenHitFlash {
+  0% { opacity: 0; }
+  30% { opacity: 0.65; }
+  100% { opacity: 0; }
+}
+.token-hit-flash {
+  background: radial-gradient(circle at center, rgba(239,68,68,0.95) 0%, rgba(220,38,38,0.7) 60%, transparent 100%);
+  border-radius: 9999px;
+  animation: tokenHitFlash 0.4s ease-out forwards;
+}
+
+/* Heal flash — green overlay (same shape, different color) */
+@keyframes tokenHealFlash {
+  0% { opacity: 0; }
+  30% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+.token-heal-flash {
+  background: radial-gradient(circle at center, rgba(16,185,129,0.95) 0%, rgba(5,150,105,0.7) 60%, transparent 100%);
+  border-radius: 9999px;
+  animation: tokenHealFlash 0.4s ease-out forwards;
+}
+
+/* Crit burst — larger yellow radial burst behind "КРИТ!" text */
+@keyframes critBurst {
+  0% { opacity: 0; transform: scale(0.6); }
+  30% { opacity: 1; transform: scale(1.4); }
+  70% { opacity: 0.85; transform: scale(1.6); }
+  100% { opacity: 0; transform: scale(2); }
+}
+.crit-burst-overlay {
+  background: radial-gradient(circle at center, rgba(253,224,71,0.95) 0%, rgba(245,158,11,0.7) 50%, transparent 80%);
+  border-radius: 9999px;
+  animation: critBurst 0.6s ease-out forwards;
+}
+
+/* Crit float text — "КРИТ!" rises and fades */
+@keyframes critFloat {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.6); }
+  20% { opacity: 1; transform: translate(-50%, -10%) scale(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+}
+.crit-float-text {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  font-family: ui-serif, Georgia, serif;
+  font-weight: 800;
+  font-size: 11px;
+  color: #fde047;
+  text-shadow: 0 0 8px rgba(245,158,11,0.9), 0 1px 2px rgba(0,0,0,0.95);
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  animation: critFloat 0.6s ease-out forwards;
+  white-space: nowrap;
+}
+
+/* Screen shake — applied to grid container via CSS class.
+   Used as a fallback; primary trigger is Web Animations API. */
+@keyframes screenShake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, 3px); }
+  80% { transform: translate(2px, -3px); }
+}
+.screen-shake {
+  animation: screenShake 0.3s ease-in-out;
+}
+
+/* Token "moving" highlight — a soft glow while a token transitions position */
+.token-moving {
+  filter: drop-shadow(0 0 6px rgba(251,191,36,0.65));
+  z-index: 30;
+}
+
 /* ===== Weather overlays (item 10) ===== */
 /* Rain: diagonal animated stripes */
 .weather-rain {
