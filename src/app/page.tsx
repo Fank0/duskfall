@@ -995,8 +995,12 @@ export default function Home() {
 
       {/* ===== Main ===== */}
       <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row sm:p-4">
-        {/* Left: party + your sheet + dice */}
-        <aside className="order-2 space-y-3 lg:order-1 lg:w-72 lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
+        {/* Left: party + your sheet + dice — widened from lg:w-72 → lg:w-80 so
+            the inventory section in the CharacterSheet (especially with the
+            new equipment summary, AC breakdown, spell slots, conditions, and
+            clickable quick-use rows) has room to breathe and doesn't feel
+            squeezed against the tactical grid. */}
+        <aside className="order-2 space-y-3 lg:order-1 lg:w-80 lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
           <PartyPanel
             players={snapshot.players}
             youName={session.playerName}
