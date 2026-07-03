@@ -45,15 +45,18 @@ export function SceneViewer({
 
   return (
     <Card className="parchment rune-border border-border/80 overflow-hidden gap-0">
-      {/* Image container: natural aspect ratio, never stretched. */}
-      <div className="relative w-full bg-stone-950">
+      {/* Image container: natural aspect ratio, NEVER stretched.
+          Wrapper uses aspect-video (16:9) so the container always has a
+          consistent shape; the image inside uses object-cover to fill it
+          without distortion (crops rather than stretches). */}
+      <div className="relative w-full aspect-video bg-stone-950">
         {scene?.imageUrl ? (
           <img
             key={scene.imageUrl}
             src={scene.imageUrl}
             alt={scene.title || location}
             className={cn(
-              "block max-h-[42vh] w-full object-contain transition-all duration-700",
+              "absolute inset-0 h-full w-full object-cover transition-all duration-700",
               isGenerating ? "opacity-40 blur-sm" : "opacity-100"
             )}
             style={{ filter: timeFilter }}
@@ -62,7 +65,7 @@ export function SceneViewer({
             }}
           />
         ) : (
-          <div className="flex h-32 w-full flex-col items-center justify-center text-muted-foreground">
+          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground">
             <ImageIcon className="mb-2 h-10 w-10" />
             <span className="text-sm">Сцена не задана</span>
           </div>
@@ -121,6 +124,9 @@ export function SceneViewer({
       <CardContent className="py-2">
         <p className="line-clamp-1 text-[11px] italic text-muted-foreground">
           {scene?.prompt ?? "—"}
+        </p>
+        <p className="mt-0.5 text-[9px] text-muted-foreground/60">
+          Изображение создано нейросетью
         </p>
       </CardContent>
     </Card>
