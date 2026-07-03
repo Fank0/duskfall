@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, BookMarked, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon, Sparkles as SpellbookIcon } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, BookMarked, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon, Sparkles as SpellbookIcon, Package as PackageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -70,6 +70,10 @@ const BestiaryPanel = dynamic(
 );
 const SpellbookPanel = dynamic(
   () => import("@/components/dnd/SpellbookPanel").then((m) => m.SpellbookPanel),
+  { ssr: false }
+);
+const ItemDatabasePanel = dynamic(
+  () => import("@/components/dnd/ItemDatabasePanel").then((m) => m.ItemDatabasePanel),
   { ssr: false }
 );
 
@@ -142,6 +146,7 @@ export default function Home() {
   const [combatLogOpen, setCombatLogOpen] = useState(false);
   const [bestiaryOpen, setBestiaryOpen] = useState(false);
   const [spellbookOpen, setSpellbookOpen] = useState(false);
+  const [itemDbOpen, setItemDbOpen] = useState(false);
 
   // UI customization settings (item 21) — read at the top so the hook order is stable.
   const settings = useSettings();
@@ -901,6 +906,16 @@ export default function Home() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setItemDbOpen(true)}
+            className="gap-1.5 border-amber-700/50 bg-amber-950/20 text-amber-200 hover:bg-amber-950/40"
+            title="Предметы"
+          >
+            <PackageIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Предметы</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setMapOpen(true)}
             disabled={snapshot.combatActive}
             className="gap-1.5 border-sky-800/50 bg-sky-950/20 text-sky-200 hover:bg-sky-950/40 disabled:opacity-40"
@@ -1119,6 +1134,8 @@ export default function Home() {
       <BestiaryPanel open={bestiaryOpen} onOpenChange={setBestiaryOpen} />
       {/* ===== Spellbook modal (item 2 of spellbook task) ===== */}
       <SpellbookPanel open={spellbookOpen} onOpenChange={setSpellbookOpen} />
+      {/* ===== Item database modal (item 2 of item-db task) ===== */}
+      <ItemDatabasePanel open={itemDbOpen} onOpenChange={setItemDbOpen} />
       </div>
     </ErrorBoundary>
   );
