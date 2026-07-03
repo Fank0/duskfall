@@ -1046,7 +1046,7 @@ export default function Home() {
             />
           </section>
 
-          {/* ===== RIGHT: Scene → Character sheet (stats only) ===== */}
+          {/* ===== RIGHT: Scene → Character sheet (compact: name/HP/AC/conditions) ===== */}
           <aside className="flex flex-col gap-3 lg:w-[25%] lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
             <SceneViewer
               scene={snapshot.scene}
@@ -1060,6 +1060,7 @@ export default function Home() {
                 player={you}
                 inventory={yourInventory}
                 isYou
+                compact
                 isTurn={isYourTurn && snapshot.combatActive}
                 conditions={snapshot.conditions.filter((c) => c.targetName === you.name)}
                 onEquip={equipItem}
@@ -1074,12 +1075,16 @@ export default function Home() {
           </aside>
         </div>
 
-        {/* ===== BOTTOM: Full-width inventory + abilities + spells ===== */}
+        {/* ===== BOTTOM: Full-width equipment + inventory + abilities + spells ===== */}
         {you && (
           <BottomPanel
             player={you}
             inventory={yourInventory}
             onQuickAction={sendAction}
+            onEquip={(itemId, slot) => equipItem(itemId, slot as any)}
+            onUnequip={(slot) => unequipItem(slot as any)}
+            hasAnyStation={snapshot.hasAlchemy || snapshot.hasForge || snapshot.hasEnchant}
+            onCraft={() => {/* crafting opens via CharacterSheet — keep stub */}}
           />
         )}
       </main>

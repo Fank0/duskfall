@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
+  Shirt, Hammer,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -16,26 +17,32 @@ import type { PlayerState, InventoryItemState } from "@/lib/game/types";
 /**
  * BottomPanel — full-width horizontal bar at the bottom of the game screen.
  *
- * Per the user's hand-drawn plan:
- *   "вся оставшаяся нижняя часть экрана, вдоль до правого угла это инвентарь
- *    игрока и его скилы, спелы"
+ * Per the user's plan:
+ *   "снаряжение и экиперовка должна быть рядом со способностями"
+ *   "сделай полосу инвентаря шире"
  *
- * Shows three horizontal sections:
- *   1. Инвентарь — clickable item chips (quick-use)
- *   2. Способности — clickable ability chips (race/class/talent/scroll/spell)
- *   3. Спелл-слоты — remaining spell slots per level (for casters)
- *
- * All items/abilities are clickable when `onQuickAction` is provided — clicking
- * sends a contextual action to the DM (same as clicking in CharacterSheet).
+ * Sections (left → right):
+ *   1. Снаряжение — equipped items (8 slots), clickable to unequip
+ *   2. Инвентарь — clickable item chips (quick-use)
+ *   3. Способности — clickable ability chips (race/class/talent/scroll/spell)
+ *   4. Спелл-слоты — remaining spell slots per level (for casters)
  */
 export const BottomPanel = memo(function BottomPanel({
   player,
   inventory,
   onQuickAction,
+  onEquip,
+  onUnequip,
+  hasAnyStation = false,
+  onCraft,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
   onQuickAction?: (text: string) => void;
+  onEquip?: (itemId: string, slot?: string) => void | Promise<void>;
+  onUnequip?: (slot: string) => void | Promise<void>;
+  hasAnyStation?: boolean;
+  onCraft?: () => void;
 }) {
   const settings = useSettings();
   const lang = settings.lang;
@@ -43,7 +50,25 @@ export const BottomPanel = memo(function BottomPanel({
   const abilities = computeAbilities(player, inventory);
   const canQuickUse = Boolean(onQuickAction);
 
-  // Spell slots: player.spellSlots is already a parsed object (Record<string, number>)
+  // Equipment — find equipped items by id from inventory
+  const eq = player.equipment || {};
+  const equippedSlots: { slot: string; label: string; item?: InventoryItemState }[] = [
+    { slot: "eqWeapon", label: "Оруж" },
+    { slot: "eqShield", label: "Щит" },
+    { slot: "eqHead", label: "Голова" },
+    { slot: "eqChest", label: "Торс" },
+    { slot: "eqLegs", label: "Ноги" },
+    { slot: "eqHands", label: "Руки" },
+    { slot: "eqAccessory1", label: "Акс1" },
+    { slot: "eqAccessory2", label: "Акс2" },
+  ].map(({ slot, label }) => {
+    const id = (eq as any)[slot] as string | null | undefined;
+    const item = id ? inventory.find((i) => i.id === id) : undefined;
+    return { slot, label, item };
+  });
+  const equippedCount = equippedSlots.filter((s) => s.item).length;
+
+  // Spell slots
   const slots: { level: number; current: number; max: number }[] = [];
   try {
     const parsed = player.spellSlots || {};
@@ -74,8 +99,54 @@ export const BottomPanel = memo(function BottomPanel({
   return (
     <Card className="parchment rune-border border-border/80 p-3">
       <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-3">
-        {/* ===== Inventory (items) ===== */}
-        <div className="flex flex-col gap-1 lg:w-1/3">
+        {/* ===== Equipment (снаряжение) ===== */}
+        <div className="flex flex-col gap-1 lg:w-[18%]">
+          <div className="flex items-center gap-1.5">
+            <Shirt className="h-3.5 w-3.5 text-amber-300" />
+            <span className="text-[11px] font-semibold gold-text">Снаряжение</span>
+            <Badge variant="secondary" className="ml-auto text-[8px]">{equippedCount}/8</Badge>
+          </div>
+          <div className="grid grid-cols-4 gap-1 lg:grid-cols-2">
+            {equippedSlots.map(({ slot, label, item }) => (
+              <button
+                key={slot}
+                type="button"
+                disabled={!onUnequip || !item}
+                onClick={() => item && onUnequip?.(slot)}
+                title={item ? `${item.itemName} — клик, чтобы снять` : label}
+                className={cn(
+                  "flex flex-col items-center justify-center rounded border px-1 py-0.5 text-[8px] transition-colors",
+                  item
+                    ? "border-amber-700/50 bg-amber-950/20 text-amber-200"
+                    : "border-border/30 bg-stone-900/40 text-muted-foreground/50",
+                  onUnequip && item && "cursor-pointer hover:border-red-500 hover:bg-red-950/30",
+                  (!onUnequip || !item) && "cursor-default"
+                )}
+              >
+                <span className="text-[7px] opacity-70">{label}</span>
+                <span className="truncate max-w-[50px] text-[9px] font-medium">
+                  {item ? item.itemName : "—"}
+                </span>
+              </button>
+            ))}
+          </div>
+          {hasAnyStation && onCraft && (
+            <button
+              type="button"
+              onClick={onCraft}
+              className="mt-1 rounded border border-purple-700/40 bg-purple-950/30 px-2 py-0.5 text-[9px] text-purple-200 transition-colors hover:bg-purple-950/50"
+              title="Крафт"
+            >
+              <Hammer className="inline h-2.5 w-2.5" /> Крафт
+            </button>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className="hidden lg:block w-px bg-border/40" />
+
+        {/* ===== Inventory (предметы) ===== */}
+        <div className="flex flex-col gap-1 lg:w-[27%]">
           <div className="flex items-center gap-1.5">
             <Package className="h-3.5 w-3.5 text-amber-300" />
             <span className="text-[11px] font-semibold gold-text">{tt("character.inventory")}</span>
@@ -84,7 +155,7 @@ export const BottomPanel = memo(function BottomPanel({
             )}
             <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
           </div>
-          <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-16">
+          <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
             <div className="flex flex-wrap gap-1">
               {inventory.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">Инвентарь пуст</span>
@@ -122,7 +193,7 @@ export const BottomPanel = memo(function BottomPanel({
         {/* Divider */}
         <div className="hidden lg:block w-px bg-border/40" />
 
-        {/* ===== Abilities (race/class/talent/scroll/spell) ===== */}
+        {/* ===== Abilities (способности) ===== */}
         <div className="flex flex-col gap-1 lg:flex-1">
           <div className="flex items-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5 text-purple-300" />
@@ -132,7 +203,7 @@ export const BottomPanel = memo(function BottomPanel({
             )}
             <Badge variant="secondary" className="ml-auto text-[8px]">{abilities.length}</Badge>
           </div>
-          <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-16">
+          <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
             <div className="flex flex-wrap gap-1">
               {abilities.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">Нет способностей</span>

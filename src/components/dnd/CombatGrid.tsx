@@ -355,10 +355,10 @@ export const CombatGrid = memo(function CombatGrid({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {/* Tactical grid: made more prominent (max-w bumped from 340px → 520px
-            on large screens) so it doesn't feel squeezed between the inventory
-            and the chat. Smaller viewports fall back to 380 / 440px. */}
-        <div className="mx-auto aspect-square w-full max-w-[380px] sm:max-w-[440px] lg:max-w-[520px]">
+        {/* Tactical grid: square shape, fits within the left column without
+            stretching. Uses min(width, available-height) via aspect-square +
+            max constraints so cells stay square even in narrow columns. */}
+        <div className="mx-auto aspect-square w-full max-w-[300px] sm:max-w-[340px] lg:max-w-[360px]">
           <div
             ref={gridRef}
             className="relative grid h-full w-full rounded-md border border-border/70 bg-stone-950/60 p-1"
