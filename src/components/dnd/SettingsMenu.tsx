@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Circle, Square, Type, Palette, ZoomIn, Volume2, Music, Speaker, Globe } from "lucide-react";
+import { Settings, Circle, Square, Type, Palette, ZoomIn, Volume2, Music, Speaker, Globe, Mic2 } from "lucide-react";
 import { useSettings, type Theme, type UiScale } from "@/lib/game/settings";
 import { LANGS, type Lang, t } from "@/lib/game/i18n";
 import { Slider } from "@/components/ui/slider";
@@ -25,6 +25,13 @@ const SCALES: { key: UiScale; label: string }[] = [
   { key: 100, label: "100%" },
   { key: 125, label: "125%" },
   { key: 150, label: "150%" },
+];
+
+/** TTS voice options for the DM narration (task tts-voice-dm). */
+const TTS_VOICES: { key: "male" | "female" | "narrator"; label: string }[] = [
+  { key: "male", label: "Мужской" },
+  { key: "female", label: "Женский" },
+  { key: "narrator", label: "Рассказчик" },
 ];
 
 /**
@@ -228,6 +235,66 @@ export function SettingsMenu({
                   step={5}
                   onValueChange={(v) => settings.setSfxVolume(v[0] / 100)}
                 />
+              </div>
+            </div>
+          </section>
+
+          {/* ===== DM voice narration (task tts-voice-dm) ===== */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
+              <Mic2 className="h-3.5 w-3.5" /> Голос Мастера
+            </h3>
+            <label className="mb-3 flex cursor-pointer items-center justify-between rounded-md border border-border/50 bg-stone-900/40 px-3 py-2">
+              <div className="flex flex-col">
+                <span className="flex items-center gap-1.5 text-sm">
+                  <Volume2 className="h-3.5 w-3.5" /> Озвучивать нарратив Мастера
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Синтез речи для реплик Мастера (TTS)
+                </span>
+              </div>
+              <Switch
+                checked={settings.ttsEnabled}
+                onCheckedChange={(v) => settings.setTtsEnabled(Boolean(v))}
+              />
+            </label>
+            <div className="space-y-3 rounded-md border border-border/50 bg-stone-900/40 px-3 py-2.5">
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Speaker className="h-3 w-3" /> Громкость голоса
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{Math.round(settings.ttsVolume * 100)}%</span>
+                </div>
+                <Slider
+                  value={[settings.ttsVolume * 100]}
+                  min={0}
+                  max={100}
+                  step={5}
+                  onValueChange={(v) => settings.setTtsVolume(v[0] / 100)}
+                  disabled={!settings.ttsEnabled}
+                />
+              </div>
+              <div>
+                <div className="mb-1.5 text-xs text-muted-foreground">Голос Мастера</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {TTS_VOICES.map((v) => (
+                    <button
+                      key={v.key}
+                      type="button"
+                      disabled={!settings.ttsEnabled}
+                      onClick={() => settings.setTtsVoice(v.key)}
+                      className={cn(
+                        "rounded-md border px-2 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                        settings.ttsVoice === v.key
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border/50 bg-stone-900/40 text-muted-foreground hover:bg-stone-900/70"
+                      )}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </section>
