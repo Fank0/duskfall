@@ -45,6 +45,13 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    // ===== Bounds check (audit-v2): combat grid is 10×10. =====
+    if (x < 0 || x > 9 || y < 0 || y > 9) {
+      return NextResponse.json(
+        { ok: false, error: "Координаты вне сетки (0–9)." },
+        { status: 400 }
+      );
+    }
 
     const roomCode = roomCodeRaw.toUpperCase().trim();
     const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, 20);

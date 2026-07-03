@@ -305,6 +305,9 @@ export async function generateRoomCode(): Promise<string> {
 // In-memory snapshot cache (2s TTL) to avoid hammering the DB on every poll.
 // Keyed by roomId (mutations take roomId, so invalidation is cheap).
 const SNAPSHOT_CACHE_TTL_MS = 2000;
+// Hard cap on cache size to bound memory (audit-v2). When exceeded, the oldest
+// expired entries are pruned lazily on the next getSnapshot call.
+const SNAPSHOT_CACHE_MAX_ENTRIES = 200;
 const snapshotCache = new Map<string, { snapshot: GameStateSnapshot; expiry: number }>();
 
 /** Invalidate the cached snapshot for a room. Call after every mutation that
@@ -314,15 +317,54 @@ export function invalidateSnapshotCache(roomId: string): void {
   if (roomId) snapshotCache.delete(roomId);
 }
 
+/** Prune expired entries from the snapshot cache. Called lazily on cache misses
+ *  and periodically (every ~30s) to bound memory usage. (audit-v2) */
+function pruneSnapshotCache(): void {
+  const now = Date.now();
+  // Always drop expired entries.
+  for (const [k, v] of snapshotCache) {
+    if (v.expiry <= now) snapshotCache.delete(k);
+  }
+  // If still over the cap, drop the oldest (LRU-ish — Map preserves insertion order).
+  if (snapshotCache.size > SNAPSHOT_CACHE_MAX_ENTRIES) {
+    const excess = snapshotCache.size - SNAPSHOT_CACHE_MAX_ENTRIES;
+    let i = 0;
+    for (const k of snapshotCache.keys()) {
+      if (i++ >= excess) break;
+      snapshotCache.delete(k);
+    }
+  }
+}
+
+// Background prune every 30s — guarantees abandoned-room entries don't linger.
+let pruneTimerStarted = false;
+function ensurePruneTimer(): void {
+  if (pruneTimerStarted) return;
+  pruneTimerStarted = true;
+  try {
+    setInterval(() => {
+      try { pruneSnapshotCache(); } catch { /* never let cleanup crash the process */ }
+    }, 30_000).unref?.();
+  } catch {
+    /* setInterval may be unavailable in some runtimes — lazy prune still works */
+  }
+}
+
 export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot | null> {
   const room = await getRoomByCode(roomCode);
   if (!room) return null;
+
+  ensurePruneTimer();
 
   // Cache hit (still valid)?
   const now = Date.now();
   const cached = snapshotCache.get(room.id);
   if (cached && cached.expiry > now) {
     return cached.snapshot;
+  }
+  // Cache miss — opportunistic prune if the cache is getting large.
+  if (snapshotCache.size > SNAPSHOT_CACHE_MAX_ENTRIES) {
+    pruneSnapshotCache();
   }
 
   // Take only the last 100 chat messages (descending then reverse to keep asc order).

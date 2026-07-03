@@ -76,6 +76,13 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    // ===== Bounds check (audit-v2): grid is 10×10, world map is also bounded. =====
+    if (x < 0 || x > 9 || y < 0 || y > 9) {
+      return NextResponse.json(
+        { ok: false, error: "Координаты вне карты (0–9)." },
+        { status: 400 }
+      );
+    }
     const room = await db.room.findUnique({ where: { code: roomCode } });
     if (!room) {
       return NextResponse.json({ ok: false, error: "Комната не найдена." }, { status: 404 });
