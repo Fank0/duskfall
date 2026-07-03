@@ -335,12 +335,14 @@ export const BottomPanel = memo(function BottomPanel({
               {abilities.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">Нет способностей</span>
               ) : (
-                abilities.map((a) => {
+                abilities.map((a, idx) => {
                   const chipId = `abil:${a.id}`;
                   const isDisabled = !canQuickUse || disabledChips.has(chipId);
                   const isPulsing = pulsing.has(chipId);
                   const isSent = sentChips.has(chipId);
                   const tooltip = buildAbilityTooltip(a);
+                  // Item 4 — hotkey number for the first 8 abilities.
+                  const hotkey = idx < 8 ? idx + 1 : null;
                   return (
                     <Tooltip key={a.id}>
                       <TooltipTrigger asChild>
@@ -382,6 +384,15 @@ export const BottomPanel = memo(function BottomPanel({
                               расходуемый
                             </span>
                           )}
+                          {/* Item 4 — hotkey number badge (1..8) in the corner. */}
+                          {hotkey !== null && (
+                            <span
+                              className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-sm border border-stone-500/60 bg-stone-800/80 text-[7px] font-bold leading-none text-stone-200"
+                              title={`Горячая клавиша: ${hotkey}`}
+                            >
+                              {hotkey}
+                            </span>
+                          )}
                           {isSent && (
                             <span className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-emerald-500 bg-emerald-950 px-1.5 py-px text-[8px] font-medium text-emerald-300 shadow">
                               отправлено ✓
@@ -395,6 +406,9 @@ export const BottomPanel = memo(function BottomPanel({
                             {a.name}
                             {a.source === "spell" && a.slotLevel && a.slotLevel > 0 && (
                               <span className="ml-1 text-fuchsia-300">· круг {a.slotLevel}</span>
+                            )}
+                            {hotkey !== null && (
+                              <span className="ml-1 text-stone-300">· [{hotkey}]</span>
                             )}
                           </div>
                           <div className="text-[9px] text-muted-foreground">{tooltip}</div>

@@ -34,8 +34,8 @@ import {
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
 import { t } from "@/lib/game/i18n";
-import { findNearestMonsterName, buildAbilityQuickText, type QuickActionContext } from "@/lib/game/quick-use";
-import type { Ability } from "@/lib/game/abilities";
+import { findNearestMonsterName, buildAbilityQuickText, classifyAbilityTargeting, type QuickActionContext } from "@/lib/game/quick-use";
+import { computeAbilities, type Ability } from "@/lib/game/abilities";
 
 // ===== Lazy-loaded heavy modals (item 24: dynamic import with ssr:false) =====
 // These components are large (full talent tree, settings dialog, dialogue
@@ -857,6 +857,97 @@ export default function Home() {
       cancelTargeting();
     }
   }, [snapshot, targetingMode, cancelTargeting]);
+
+  // Track whether any modal is open — hotkeys are suppressed while a modal
+  // captures input (the modal's own Escape handler still works).
+  const anyModalOpen = questOpen || mapOpen || dialogueOpen || settingsOpen
+    || combatLogOpen || bestiaryOpen || spellbookOpen || itemDbOpen;
+
+  // ===== Item 4: Hotkeys for quick-use =====
+  // Trigger the Nth ability in the BottomPanel (1..8) using the same targeting
+  // dispatch logic the panel itself uses (damage/AoE → targeting mode, self →
+  // immediate send). Page.tsx owns the dispatch because it has the snapshot
+  // (for combatActive + nearestMonsterName) and the sendAction pipeline.
+  // NOTE: this hook must live BEFORE the early-return for `!session` /
+  // `!snapshot` — React requires consistent hook order across renders. We
+  // recompute `you` and `yourInventory` from `snapshot` inside the callback
+  // (null-safe — no-op when snapshot is null).
+  const triggerAbilityByIndex = useCallback((index: number) => {
+    if (!snapshot || !session) return;
+    const me = snapshot.players.find((p) => p.name === session.playerName);
+    if (!me) return;
+    const myInv = snapshot.inventory.filter((i) => i.playerName === session.playerName);
+    const abilities = computeAbilities(me, myInv);
+    if (index < 0 || index >= Math.min(8, abilities.length)) return;
+    const a = abilities[index];
+    const combatActive = snapshot.combatActive;
+    const nearest = findNearestMonsterName(snapshot.monsters, me.posX, me.posY);
+    if (combatActive) {
+      const kind = classifyAbilityTargeting(a);
+      if (kind === "monster") {
+        requestAbilityTargeting(a, "ability");
+        return;
+      }
+      if (kind === "aoe") {
+        requestAbilityTargeting(a, "aoe");
+        return;
+      }
+    }
+    const ctx: QuickActionContext = {
+      combatActive,
+      nearestMonsterName: nearest,
+    };
+    sendAction(buildAbilityQuickText(a, ctx));
+  }, [snapshot, session, requestAbilityTargeting, sendAction]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Skip if focus is inside an input / textarea / contenteditable.
+      const target = e.target as HTMLElement | null;
+      if (target && (
+        target.tagName === "INPUT"
+        || target.tagName === "TEXTAREA"
+        || target.tagName === "SELECT"
+        || target.isContentEditable
+      )) {
+        return;
+      }
+      // Skip if any modal is open — modal Escape/Enter handling is its own.
+      if (anyModalOpen) return;
+      // Skip while DM is thinking (a narrative is streaming).
+      if (isThinking) return;
+      // Skip while in targeting mode — Escape is handled by the targeting
+      // effect; number keys would conflict with picking a target.
+      if (targetingMode !== "none") return;
+
+      // Keys 1..8 — trigger the corresponding ability in the BottomPanel.
+      if (e.key >= "1" && e.key <= "8") {
+        e.preventDefault();
+        triggerAbilityByIndex(Number(e.key) - 1);
+        return;
+      }
+      // Q / q (and Russian Й / й layout equivalent) — quick attack.
+      if (e.key === "q" || e.key === "Q" || e.key === "й" || e.key === "Й") {
+        e.preventDefault();
+        sendAction("Я атакую ближайшего врага!");
+        return;
+      }
+      // E / e (and Russian У / у) — quick explore.
+      if (e.key === "e" || e.key === "E" || e.key === "у" || e.key === "У") {
+        e.preventDefault();
+        sendAction("Я осматриваю местность.");
+        return;
+      }
+      // R / r (and Russian К / к) — short rest.
+      if (e.key === "r" || e.key === "R" || e.key === "к" || e.key === "К") {
+        e.preventDefault();
+        handleRest("short");
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [anyModalOpen, isThinking, targetingMode, triggerAbilityByIndex, sendAction, handleRest]);
 
   // ===== Lobby =====
   if (!session) {
