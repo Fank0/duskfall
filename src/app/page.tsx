@@ -208,6 +208,20 @@ export default function Home() {
     setMusicEnabled(settings.musicEnabled);
   }, [settings.musicVolume, settings.sfxVolume, settings.musicEnabled]);
 
+  // ===== Turn-change SFX: fire a soft chime whenever the active combatant
+  // changes (combat or exploration), so the player notices it's their turn. =====
+  const prevTurnRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!snapshot) return;
+    const turnName = snapshot.combatActive
+      ? snapshot.currentTurnName
+      : snapshot.currentExplorerName;
+    if (turnName && prevTurnRef.current !== null && prevTurnRef.current !== turnName) {
+      try { sfxTurnChange(); } catch {}
+    }
+    prevTurnRef.current = turnName;
+  }, [snapshot?.combatActive, snapshot?.currentTurnName, snapshot?.currentExplorerName]);
+
   useEffect(() => {
     if (!snapshot || !settings.musicEnabled) {
       stopMusic();
@@ -224,14 +238,31 @@ export default function Home() {
     return () => { stopWeatherAmbient(); };
   }, [snapshot?.combatActive, snapshot?.timeOfDay, snapshot?.weather, settings.musicEnabled]);
 
-  // Init audio on first user interaction (browsers require gesture)
+  // Init audio on first user interaction (browsers require gesture).
+  // Also wire sfxClick to every button press + sfxError to window "error" events.
   useEffect(() => {
     const handler = () => { resumeAudio(); };
     window.addEventListener("click", handler, { once: true });
     window.addEventListener("keydown", handler, { once: true });
+    // Play a subtle click SFX on every button press (item 6.2 audio polish).
+    const clickSfx = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const btn = target.closest("button");
+      if (!btn) return;
+      // Skip buttons inside the chat input area (too noisy while typing).
+      if (btn.closest("[data-no-click-sfx]")) return;
+      try { sfxClick(); } catch {}
+    };
+    window.addEventListener("click", clickSfx);
+    // Play an error tone on uncaught runtime errors.
+    const errSfx = () => { try { sfxError(); } catch {} };
+    window.addEventListener("error", errSfx);
     return () => {
       window.removeEventListener("click", handler);
       window.removeEventListener("keydown", handler);
+      window.removeEventListener("click", clickSfx);
+      window.removeEventListener("error", errSfx);
     };
   }, []);
 
@@ -374,6 +405,10 @@ export default function Home() {
                   });
                   // ===== SFX (item 6.2) =====
                   try {
+                    // Dice-roll clatter: fire whenever any dice were rolled this action.
+                    if ((ev.playerRolls?.length ?? 0) > 0 || (ev.monsterRolls?.length ?? 0) > 0) {
+                      sfxDiceRoll();
+                    }
                     if (event.combatStarted) sfxCombatStart();
                     if (event.monsterThatDied) sfxMonsterDeath();
                     else if (isCrit) sfxCrit();
