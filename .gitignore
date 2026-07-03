@@ -54,3 +54,11 @@ server.log
 /skills/
 # tool results (agent artifacts)
 tool-results/
+
+# Large binaries — not needed in repo
+download/
+upload/
+preview-*.png
+tool-results/
+dev.log
+*.log
