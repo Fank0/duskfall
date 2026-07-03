@@ -701,3 +701,65 @@ Final verification commands run:
 - `bunx tsc --noEmit` → 0 errors
 - `bun run lint` → 0 errors, 0 warnings
 - `bun run build` → ✓ SUCCEEDED (Compiled successfully in 8.3s, all 30 routes generated)
+
+---
+Task ID: restore-lost
+Agent: restore-agent
+Task: Restore lost features (quick-use abilities, layout, items)
+
+Work Log:
+1. Read worklog.md (last 5 sections) — reviewed audit findings and prior bug-fix work. Project is at v3.0, deployed, lint/tsc/build all clean.
+2. Extracted old versions from download/duskfall.zip into /tmp/old-sheet.tsx, /tmp/old-chat.tsx, /tmp/old-page.tsx, /tmp/old-grid.tsx and diffed against current versions.
+3. Diff of file lists (unzip -l vs find src/) — every file in the OLD zip exists in the NEW project. New project has many more files (auth, saves, dialogue, craft, equip, tts, translate, etc.) — no missing components or lib files.
+4. Old page.tsx layout (PartyPanel+CharacterSheet LEFT, Scene+CombatGrid CENTER, ChatPanel RIGHT) is IDENTICAL to current page.tsx layout. So the user's "inventory and tactical grid are still in wrong positions" complaint is NOT a structural regression — it's a proportions issue (grid capped at 340px, aside only 288px wide).
+
+Fix 1 + Fix 2 (commit 0ac701b): Restored "система быстрого применения" (quick-use system).
+  - CharacterSheet.tsx: added `onQuickAction?: (text: string) => void` prop. Added two helper builders:
+      * buildAbilityQuickText(a) — damage → "Я использую «X» против врага!"; heal → "…для лечения."; buff/utility → "Я использую «X»."; scroll/consumable → "Я читаю свиток «X»."
+      * buildItemQuickText(item) — potion → "Я выпиваю зелье «X»."; scroll → "Я читаю свиток «X»."; weapon → "Я переключаюсь на «X»."; other → "Я использую «X»."
+  - Made every ability <li> and inventory <li> clickable when isYou && onQuickAction: onClick, cursor-pointer, hover:border-amber-700/60 hover:bg-amber-950/30, title="Нажмите, чтобы использовать". Added a small italic hint "клик — использовать" / "клик — применить" next to the section headers.
+  - Imported the Ability type from abilities.ts (was previously only used internally).
+  - Updated characterSheetComparator + CharacterSheetProps to include onQuickAction in the identity check (so memo doesn't skip re-renders when the handler changes).
+  - page.tsx: passed onQuickAction={sendAction} to the local player's CharacterSheet. This routes the quick-action text through the same SSE mechanics pipeline as the chat input (so dice rolls, HP changes, AoE overlays, animations all fire normally).
+
+Fix 3 (commit a9b3430): Layout fix — make tactical grid + inventory panel more prominent.
+  - CombatGrid.tsx: bumped the grid's max-width from 340px → 380/440/520px responsive (mobile/sm/lg). On desktop the 10x10 grid is now ~52px per cell instead of ~34px — much more usable for tactical positioning.
+  - page.tsx: widened the left aside from lg:w-72 (288px) → lg:w-80 (320px) so the character sheet's inventory + abilities section has room to breathe (especially with the new equipment summary, AC breakdown, spell slots, conditions, and clickable quick-use rows).
+  - Kept the column order the same as the old version (party+sheet LEFT, scene+grid CENTER, chat RIGHT) since the structural layout matched the old one — only proportions needed fixing.
+
+Fix 4 (no commit — verification only): Compared old vs new for other lost features.
+  - Verified all 7 dialog components exist: BestiaryPanel, SpellbookPanel, ItemDatabasePanel, QuestJournal, WorldMap, CombatLog, SettingsMenu. All wired up to their header buttons via useState + onOpenChange.
+  - Verified ChatPanel's QUICK_ACTIONS i18n keys (actions.attack, actions.explore, actions.talk, game.move) all exist in src/lib/game/i18n.ts in all 6 languages (ru, en, es, de, fr, zh). Labels render correctly, not as raw keys.
+  - Old CombatGrid (194 lines) did NOT have targeting mode (attack/move/ability) — that claim in the task description was incorrect. The current CombatGrid (867 lines) has token animations, AoE overlays, flanking lines, loot/trap cells, condition badges, etc. — strictly more features, no regression.
+  - Old CharacterSheet (242 lines) did NOT have clickable inventory items. The "система быстрого применения" the user remembered was likely from an intermediate version that's not in the zip. Either way, Fix 1+2 re-added it.
+
+Fix 5 (commit a93ddb9): Verified all 7 header buttons work.
+  - Журнал (Quest Journal) → setQuestOpen(true) → QuestJournal ✓
+  - Карта (Map) → setMapOpen(true) → WorldMap ✓ (disabled in combat)
+  - Бестиарий (Bestiary) → setBestiaryOpen(true) → BestiaryPanel ✓
+  - Книга заклинаний (Spellbook) → setSpellbookOpen(true) → SpellbookPanel ✓
+  - Предметы (Items) → setItemDbOpen(true) → ItemDatabasePanel ✓
+  - Лог боя (Combat Log) → setCombatLogOpen(true) → CombatLog ✓
+  - Настройки (Settings) → setSettingsOpen(true) → SettingsMenu ✓
+  - Also verified the NPC dialogue dropdown trigger (openDialogueWith) is wired up correctly.
+  - Cosmetic fix: aligned CombatLog JSX block indentation with surrounding modal siblings (was 2 spaces over-indented).
+
+Stage Summary:
+- features restored: 1 (quick-use system for abilities + inventory items — contextual action text routed through the DM action stream)
+- features improved: 2 (tactical grid made ~50% larger; inventory aside widened from 288px → 320px)
+- features verified working: 7 header buttons, ChatPanel i18n, CombatGrid animations/AoE/conditions, all dialog modals
+- files NOT removed from old version: 0 (every file in download/duskfall.zip already existed in the current project — the new project is a strict superset)
+- lint: 0 errors, 0 warnings (clean)
+- tsc: 0 errors (clean)
+- build: ✓ SUCCEEDED — all 31 routes compile
+- commits made: 3 (0ac701b quick-use system, a9b3430 layout proportions, a93ddb9 CombatLog indentation)
+- no new dependencies added
+- no schema changes (db:push not needed)
+- did NOT edit llm.ts (per constraint)
+- all user-facing text in Russian (uses i18n t() with ru as primary; quick-action builder strings are Russian literals matching the existing chat action style)
+- no existing features removed — only ADD-back (quick-use) + proportion tweaks (grid/aside width) + cosmetic indentation
+
+Final verification commands run:
+- `bunx tsc --noEmit` → 0 errors
+- `bun run lint` → 0 errors, 0 warnings
+- `bun run build` → ✓ succeeded, 31 routes compiled
