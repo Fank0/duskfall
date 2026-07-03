@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { Lang } from "./i18n";
 
 /** Available themes (item 21). */
 export type Theme = "default" | "forest" | "ember" | "ocean";
@@ -25,6 +26,8 @@ export interface SettingsState {
   musicEnabled: boolean;
   musicVolume: number; // 0..1
   sfxVolume: number; // 0..1
+  /** UI language (i18n-restore). Russian by default. */
+  lang: Lang;
   // setters
   setTokenShape: (v: "round" | "square") => void;
   setShowTokenNames: (v: boolean) => void;
@@ -37,6 +40,7 @@ export interface SettingsState {
   setMusicEnabled: (v: boolean) => void;
   setMusicVolume: (v: number) => void;
   setSfxVolume: (v: number) => void;
+  setLang: (v: Lang) => void;
 }
 
 /**
@@ -55,6 +59,7 @@ export const useSettings = create<SettingsState>()(
       musicEnabled: true,
       musicVolume: 0.4,
       sfxVolume: 0.5,
+      lang: "ru",
       setTokenShape: (v) => set({ tokenShape: v }),
       setShowTokenNames: (v) => set({ showTokenNames: v }),
       setTheme: (v) => set({ theme: v }),
@@ -66,6 +71,7 @@ export const useSettings = create<SettingsState>()(
       setMusicEnabled: (v) => set({ musicEnabled: v }),
       setMusicVolume: (v) => set({ musicVolume: Math.max(0, Math.min(1, v)) }),
       setSfxVolume: (v) => set({ sfxVolume: Math.max(0, Math.min(1, v)) }),
+      setLang: (v) => set({ lang: v }),
     }),
     { name: "duskfall-settings" }
   )
