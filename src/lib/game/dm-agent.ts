@@ -534,7 +534,8 @@ async function narrateMonsterTurn(
     ac: number | null;
     location: string;
   },
-  lang: Lang = defaultLang()
+  lang: Lang = defaultLang(),
+  signal?: AbortSignal
 ): Promise<string> {
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
@@ -552,9 +553,11 @@ async function narrateMonsterTurn(
     const text = await chatComplete([
       { role: "system", content: buildNarrationPrompt(lang) },
       { role: "user", content: `Напиши короткое повествование (2-4 предложения) хода монстра:\n${lines.join("\n")}` },
-    ]);
+    ], signal);
     if (text && text.trim().length > 15) return text.trim();
-  } catch (e) {
+  } catch (e: any) {
+    // AbortError is expected on client disconnect — don't log it.
+    if (e?.name === "AbortError") throw e;
     console.error("[DM] narrateMonsterTurn error:", e);
   }
   // fallback
@@ -1267,7 +1270,12 @@ function emptyMonster(): MonsterTurnResult {
 }
 
 // ---------- turn advancement ----------
-async function advanceTurn(roomCode: string, roomId: string, lang: Lang = defaultLang()): Promise<{
+async function advanceTurn(
+  roomCode: string,
+  roomId: string,
+  lang: Lang = defaultLang(),
+  signal?: AbortSignal
+): Promise<{
   ended: boolean;
   monsterTurns: { name: string; narrative: string; result: MonsterTurnResult }[];
   nextTurnName: string | null;
@@ -1353,7 +1361,7 @@ async function advanceTurn(roomCode: string, roomId: string, lang: Lang = defaul
         attackTotal: result.rolls[0]?.total ?? null,
         ac: result.rolls[0]?.target ?? null,
         location: snap?.location ?? "",
-      }, lang);
+      }, lang, signal);
       await db.chatMessage.create({
         data: { roomId, role: "dm", speaker: "", round: room.round, content: narrative },
       });
@@ -1557,14 +1565,14 @@ export async function resolvePlayerMechanics(
     const first = order[0];
     if (first && first.combatantName === actorName && first.combatantType === "player") {
       // The actor already acted (opening strike) — advance once.
-      const adv = await advanceTurn(roomCode, roomId, lang);
+      const adv = await advanceTurn(roomCode, roomId, lang, signal);
       if (adv.ended) combatEnded = true;
       nextTurnName = adv.nextTurnName;
       nextTurnType = adv.nextTurnType;
       for (const mt of adv.monsterTurns) monsterRolls.push(...mt.result.rolls);
     } else {
       // Start from turnIndex 0. If it's a monster, run monster turns.
-      const adv = await advanceTurn(roomCode, roomId, lang);
+      const adv = await advanceTurn(roomCode, roomId, lang, signal);
       if (adv.ended) combatEnded = true;
       nextTurnName = adv.nextTurnName;
       nextTurnType = adv.nextTurnType;
@@ -1573,7 +1581,7 @@ export async function resolvePlayerMechanics(
     }
   } else if (wasCombatActive && !combatEnded) {
     // Normal in-combat advance after the player's turn.
-    const adv = await advanceTurn(roomCode, roomId, lang);
+    const adv = await advanceTurn(roomCode, roomId, lang, signal);
     if (adv.ended) combatEnded = true;
     nextTurnName = adv.nextTurnName;
     nextTurnType = adv.nextTurnType;
