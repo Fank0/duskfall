@@ -9,6 +9,16 @@ import {
 } from "./presets";
 import { randomStartLocation } from "./locations";
 import { generateDungeonMap } from "./world-map";
+import { inferEquipProps } from "./item-props";
+
+/** Serialize a Partial<Stats> into a JSON string for storage. */
+function serializeEquipStats(stats: Partial<Record<"str" | "dex" | "con" | "int" | "wis" | "cha", number>>): string {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(stats)) {
+    if (v && v !== 0) out[k] = v;
+  }
+  return JSON.stringify(out);
+}
 
 export interface CreatePlayerInput {
   name: string;
@@ -160,12 +170,20 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
   });
   // Starting inventory: class items + background item.
   for (const item of p.startItems) {
+    const props = inferEquipProps(item.name, item.type, item.description);
     await db.inventoryItem.create({
-      data: { roomId, playerName: input.name, itemName: item.name, itemType: item.type, quantity: 1, description: item.description },
+      data: {
+        roomId, playerName: input.name, itemName: item.name, itemType: item.type, quantity: 1, description: item.description,
+        equipSlot: props.equipSlot, acBonus: props.acBonus, statBonus: serializeEquipStats(props.statBonus), damageNotation: props.damageNotation,
+      },
     });
   }
+  const bgProps = inferEquipProps(input.background.item.name, input.background.item.type, input.background.item.description);
   await db.inventoryItem.create({
-    data: { roomId, playerName: input.name, itemName: input.background.item.name, itemType: input.background.item.type, quantity: 1, description: input.background.item.description },
+    data: {
+      roomId, playerName: input.name, itemName: input.background.item.name, itemType: input.background.item.type, quantity: 1, description: input.background.item.description,
+      equipSlot: bgProps.equipSlot, acBonus: bgProps.acBonus, statBonus: serializeEquipStats(bgProps.statBonus), damageNotation: bgProps.damageNotation,
+    },
   });
   return player;
 }

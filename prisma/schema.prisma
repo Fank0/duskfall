@@ -98,6 +98,10 @@ model Player {
   eqHands          String?
   eqAccessory1     String?
   eqAccessory2     String?
+  // Cumulative AC bonus currently applied from equipped items (delta from base preset AC).
+  acBonusApplied   Int      @default(0)
+  // JSON of cumulative stat bonuses currently applied from equipped items, e.g. {"str":2,"dex":1}.
+  equipStatsApplied String  @default("")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

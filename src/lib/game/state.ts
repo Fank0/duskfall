@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { abilityModifier } from "./dice";
 import { rollD20 } from "./dice";
 import { CONDITIONS, getCondition } from "./conditions";
+import { inferEquipProps } from "./item-props";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -19,6 +20,8 @@ import type {
   NpcState,
   ResolvedRoll,
   InventoryChange,
+  EquipmentSlot,
+  StatKey,
 } from "./types";
 
 export const GRID_SIZE = 10;
@@ -398,6 +401,30 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     }
   }
 
+  // Equipped items per player (so the DM can narrate the hero's loadout and
+  // verify they actually have a weapon equipped before narrating an attack).
+  const equippedLines: string[] = [];
+  for (const p of snap.players) {
+    const equippedIds = Object.values(p.equipment).filter(Boolean) as string[];
+    if (equippedIds.length === 0) continue;
+    const equippedItems = items.filter((it) => equippedIds.includes(it.id));
+    if (equippedItems.length === 0) continue;
+    const summary = equippedItems
+      .map((it) => {
+        const acTag = it.acBonus > 0 ? ` (+${it.acBonus} AC)` : "";
+        const statTag = Object.entries(it.statBonus).length > 0
+          ? ` (${Object.entries(it.statBonus).map(([k, v]) => `+${v} ${k.toUpperCase()}`).join(", ")})`
+          : "";
+        return `${it.itemName}${acTag}${statTag}`;
+      })
+      .join(", ");
+    equippedLines.push(`Экипировка ${p.name}: ${summary}`);
+  }
+  if (equippedLines.length > 0) {
+    lines.push("=== Экипировка героев ===");
+    lines.push(...equippedLines);
+  }
+
   const activeMonsters = snap.monsters.filter((m) => m.isActive);
   const hiddenMonsters = snap.monsters.filter((m) => !m.isActive);
   if (activeMonsters.length > 0) {
@@ -599,6 +626,8 @@ export async function applyInventoryChanges(
           data: { quantity: existing.quantity + 1 },
         });
       } else {
+        // Infer equipment slot + bonuses from name + type + description.
+        const props = inferEquipProps(c.item, c.type || "misc", c.description || "");
         await db.inventoryItem.create({
           data: {
             roomId,
@@ -607,6 +636,10 @@ export async function applyInventoryChanges(
             itemType: c.type || "misc",
             quantity: 1,
             description: c.description || "",
+            equipSlot: props.equipSlot,
+            acBonus: props.acBonus,
+            statBonus: serializeEquipStats(props.statBonus),
+            damageNotation: props.damageNotation,
           },
         });
       }
@@ -615,6 +648,18 @@ export async function applyInventoryChanges(
         where: { roomId, playerName, itemName: c.item },
       });
       if (existing) {
+        // If the item is currently equipped, unequip it first.
+        const player = await db.player.findFirst({ where: { name: playerName, roomId } });
+        if (player) {
+          for (const col of ALL_EQUIP_COLUMNS) {
+            if ((player as any)[col] === existing.id) {
+              await db.player.update({ where: { id: player.id }, data: { [col]: null } as any });
+            }
+          }
+          if (player) {
+            await recomputePlayerAC(roomId, playerName);
+          }
+        }
         if (existing.quantity > 1) {
           await db.inventoryItem.update({
             where: { id: existing.id },
@@ -1372,3 +1417,215 @@ export async function getLivingNpcs(roomId: string): Promise<NpcState[]> {
   const list = await db.npc.findMany({ where: { roomId, isAlive: true }, orderBy: { createdAt: "asc" } });
   return list.map(toNpc);
 }
+
+// ---------- Equipment slots ----------
+const SLOT_TO_COLUMN: Record<EquipmentSlot, "eqWeapon" | "eqShield" | "eqHead" | "eqChest" | "eqLegs" | "eqHands" | "eqAccessory1" | "eqAccessory2"> = {
+  weapon: "eqWeapon",
+  shield: "eqShield",
+  head: "eqHead",
+  chest: "eqChest",
+  legs: "eqLegs",
+  hands: "eqHands",
+  accessory: "eqAccessory1", // default first slot
+};
+
+const ALL_EQUIP_COLUMNS = [
+  "eqWeapon", "eqShield", "eqHead", "eqChest", "eqLegs", "eqHands", "eqAccessory1", "eqAccessory2",
+] as const;
+
+/** Parse a JSON stat-bonus string into a Partial<Stats>. */
+function parseEquipStats(raw: string | null | undefined): Partial<Record<StatKey, number>> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Partial<Record<StatKey, number>> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        const num = Number(v) || 0;
+        if (num && (k === "str" || k === "dex" || k === "con" || k === "int" || k === "wis" || k === "cha")) {
+          out[k as StatKey] = num;
+        }
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+/** Serialize a Partial<Stats> into a JSON string for storage. */
+function serializeEquipStats(stats: Partial<Record<StatKey, number>>): string {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(stats)) {
+    if (v && v !== 0) out[k] = v;
+  }
+  return JSON.stringify(out);
+}
+
+/** Find the equipped-item-id stored in a given slot column. */
+function slotColumnToSlot(col: string): EquipmentSlot | null {
+  switch (col) {
+    case "eqWeapon": return "weapon";
+    case "eqShield": return "shield";
+    case "eqHead": return "head";
+    case "eqChest": return "chest";
+    case "eqLegs": return "legs";
+    case "eqHands": return "hands";
+    case "eqAccessory1":
+    case "eqAccessory2": return "accessory";
+    default: return null;
+  }
+}
+
+/** Recompute a player's AC and stats based on their currently-equipped items.
+ *  The player.ac column stores effective AC (preset base + cumulative equipment bonus).
+ *  The player.str/dex/etc. columns store effective stats (base + cumulative equipment bonus).
+ *  We track the cumulative applied bonus in `acBonusApplied` / `equipStatsApplied`
+ *  so we can cleanly reverse it when items are unequipped. */
+export async function recomputePlayerAC(roomId: string, playerName: string): Promise<{ ac: number }> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return { ac: 0 };
+  // Collect equipped item ids.
+  const equippedIds: string[] = [];
+  for (const col of ALL_EQUIP_COLUMNS) {
+    const id = (p as any)[col] as string | null;
+    if (id) equippedIds.push(id);
+  }
+  // Load the items.
+  const equippedItems = equippedIds.length > 0
+    ? await db.inventoryItem.findMany({ where: { id: { in: equippedIds }, roomId } })
+    : [];
+  // Sum AC + stat bonuses from equipped items (re-inferred from name+type+description).
+  let newAcBonus = 0;
+  const newStatBonus: Partial<Record<StatKey, number>> = {};
+  for (const it of equippedItems) {
+    const props = inferEquipProps(it.itemName, it.itemType, it.description);
+    newAcBonus += props.acBonus;
+    for (const [k, v] of Object.entries(props.statBonus) as [StatKey, number][]) {
+      newStatBonus[k] = (newStatBonus[k] ?? 0) + v;
+    }
+  }
+  // Reverse previously-applied bonus, then apply new.
+  const oldAcBonus = p.acBonusApplied ?? 0;
+  const oldStatBonus = parseEquipStats(p.equipStatsApplied);
+  const data: any = {
+    acBonusApplied: newAcBonus,
+    equipStatsApplied: serializeEquipStats(newStatBonus),
+  };
+  // Update AC: subtract old, add new.
+  data.ac = Math.max(0, p.ac - oldAcBonus + newAcBonus);
+  // Update each stat: subtract old, add new.
+  for (const stat of ["str", "dex", "con", "int", "wis", "cha"] as StatKey[]) {
+    const oldV = oldStatBonus[stat] ?? 0;
+    const newV = newStatBonus[stat] ?? 0;
+    const delta = newV - oldV;
+    if (delta !== 0) {
+      const cur = (p as any)[stat] as number;
+      data[stat] = Math.max(1, cur + delta);
+      // If CON changes, max HP changes too (1 HP per +1 CON per level retroactively).
+      if (stat === "con") {
+        const conDelta = delta;
+        const hpDelta = conDelta * p.level;
+        data.maxHp = Math.max(1, p.maxHp + hpDelta);
+        data.hp = Math.max(0, Math.min(data.maxHp, p.hp + hpDelta));
+      }
+    }
+  }
+  await db.player.update({ where: { id: p.id }, data });
+  return { ac: data.ac as number };
+}
+
+/** Equip an item to a slot on the player. Validates ownership + class restrictions.
+ *  If the item is already equipped in another slot, it's moved. */
+export async function equipItem(
+  roomId: string,
+  playerName: string,
+  itemId: string,
+  slot?: EquipmentSlot
+): Promise<{ ok: boolean; error?: string }> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return { ok: false, error: "Герой не найден." };
+  const item = await db.inventoryItem.findFirst({ where: { id: itemId, roomId, playerName } });
+  if (!item) return { ok: false, error: "Предмет не найден в инвентаре." };
+  const inferred = inferEquipProps(item.itemName, item.itemType, item.description);
+  const targetSlot = slot ?? inferred.equipSlot;
+  if (!targetSlot) return { ok: false, error: "Этот предмет нельзя экипировать." };
+  // Class restriction: wizard/sorcerer/warlock can't equip heavy armor.
+  if (targetSlot === "chest" && inferred.isHeavyArmor) {
+    const { NO_HEAVY_ARMOR_CLASSES } = await import("./item-props");
+    if (NO_HEAVY_ARMOR_CLASSES.has(p.charClass)) {
+      return { ok: false, error: `${p.charClass} не может носить тяжёлую броню.` };
+    }
+  }
+  // Determine the slot column to write to.
+  let slotCol: "eqWeapon" | "eqShield" | "eqHead" | "eqChest" | "eqLegs" | "eqHands" | "eqAccessory1" | "eqAccessory2";
+  if (targetSlot === "accessory") {
+    // Pick the first empty accessory slot; if both full, replace accessory1.
+    slotCol = p.eqAccessory1 ? (p.eqAccessory2 ? "eqAccessory1" : "eqAccessory2") : "eqAccessory1";
+  } else {
+    slotCol = SLOT_TO_COLUMN[targetSlot];
+  }
+  // If the item is already equipped somewhere else, clear that slot.
+  for (const col of ALL_EQUIP_COLUMNS) {
+    if (col === slotCol) continue;
+    if ((p as any)[col] === itemId) {
+      await db.player.update({ where: { id: p.id }, data: { [col]: null } as any });
+    }
+  }
+  // Set the new slot.
+  await db.player.update({ where: { id: p.id }, data: { [slotCol]: itemId } as any });
+  // Recompute AC + stats.
+  await recomputePlayerAC(roomId, playerName);
+  return { ok: true };
+}
+
+/** Unequip whatever is in a given slot. */
+export async function unequipItem(
+  roomId: string,
+  playerName: string,
+  slot: EquipmentSlot | "accessory1" | "accessory2"
+): Promise<{ ok: boolean; error?: string }> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return { ok: false, error: "Герой не найден." };
+  let col: "eqWeapon" | "eqShield" | "eqHead" | "eqChest" | "eqLegs" | "eqHands" | "eqAccessory1" | "eqAccessory2";
+  if (slot === "accessory1") {
+    col = "eqAccessory1";
+  } else if (slot === "accessory2") {
+    col = "eqAccessory2";
+  } else {
+    col = SLOT_TO_COLUMN[slot as EquipmentSlot];
+    // For accessory slot, fall back to accessory1.
+    if (slot === "accessory" && !p.eqAccessory1 && p.eqAccessory2) col = "eqAccessory2";
+  }
+  if (!(p as any)[col]) return { ok: false, error: "Слот уже пуст." };
+  await db.player.update({ where: { id: p.id }, data: { [col]: null } as any });
+  await recomputePlayerAC(roomId, playerName);
+  return { ok: true };
+}
+
+/** Get the list of equipped items (with their slot info) for a player. */
+export async function getEquippedItems(roomId: string, playerName: string): Promise<{ slot: EquipmentSlot | "accessory1" | "accessory2"; item: InventoryItemState | null }[]> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return [];
+  const slots: { col: typeof ALL_EQUIP_COLUMNS[number]; slot: EquipmentSlot | "accessory1" | "accessory2" }[] = [
+    { col: "eqWeapon", slot: "weapon" },
+    { col: "eqShield", slot: "shield" },
+    { col: "eqHead", slot: "head" },
+    { col: "eqChest", slot: "chest" },
+    { col: "eqLegs", slot: "legs" },
+    { col: "eqHands", slot: "hands" },
+    { col: "eqAccessory1", slot: "accessory1" },
+    { col: "eqAccessory2", slot: "accessory2" },
+  ];
+  const ids = slots.map((s) => (p as any)[s.col] as string | null).filter(Boolean) as string[];
+  const items = ids.length > 0 ? await db.inventoryItem.findMany({ where: { id: { in: ids }, roomId } }) : [];
+  return slots.map((s) => {
+    const id = (p as any)[s.col] as string | null;
+    const item = id ? items.find((i) => i.id === id) : null;
+    return { slot: s.slot, item: item ? toInventory(item) : null };
+  });
+}
+
+// Allow slotColumnToSlot to be used externally (currently unused but exported for completeness).
+export { slotColumnToSlot };

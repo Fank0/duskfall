@@ -354,6 +354,46 @@ export default function Home() {
     [session]
   );
 
+  const equipItem = useCallback(
+    async (itemId: string, slot?: "weapon" | "shield" | "head" | "chest" | "legs" | "hands" | "accessory") => {
+      if (!session) return;
+      const res = await fetch("/api/game/equip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, itemId, slot }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSnapshot(data.snapshot);
+        pingRoom(session.roomCode);
+        toast.success("Предмет экипирован.");
+      } else {
+        toast.error(data.error ?? "Не удалось экипировать предмет.");
+      }
+    },
+    [session]
+  );
+
+  const unequipItem = useCallback(
+    async (slot: "weapon" | "shield" | "head" | "chest" | "legs" | "hands" | "accessory" | "accessory1" | "accessory2") => {
+      if (!session) return;
+      const res = await fetch("/api/game/equip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, unequipSlot: slot }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSnapshot(data.snapshot);
+        pingRoom(session.roomCode);
+        toast.success("Предмет снят.");
+      } else {
+        toast.error(data.error ?? "Не удалось снять предмет.");
+      }
+    },
+    [session]
+  );
+
   const handleRest = useCallback(
     async (restType: "short" | "long") => {
       if (!session) return;
@@ -647,6 +687,8 @@ export default function Home() {
               isYou
               isTurn={isYourTurn && snapshot.combatActive}
               conditions={snapshot.conditions.filter((c) => c.targetName === you.name)}
+              onEquip={equipItem}
+              onUnequip={unequipItem}
             />
           )}
           <DiceLog rolls={snapshot.diceLog} />
