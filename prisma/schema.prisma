@@ -20,6 +20,8 @@ model Room {
   turnIndex    Int      @default(0) // index into the initiative order
   introShown   Boolean  @default(false)
   explorationActorIndex Int @default(0) // whose turn it is during exploration (index into players by createdAt)
+  currentMapX  Int      @default(-1) // world-map x coordinate (-1 = no map yet)
+  currentMapY  Int      @default(-1) // world-map y coordinate
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -32,6 +34,7 @@ model Room {
   inventory    InventoryItem[]
   conditions   Condition[]
   quests       Quest[]
+  mapRooms     MapRoom[]
 }
 
 /// A player character belonging to a room (a party member).
@@ -205,4 +208,22 @@ model Quest {
   updatedAt   DateTime @updatedAt
 
   @@index([roomId, status])
+}
+
+/// A node in the room's procedurally-generated world map (dungeon rooms).
+model MapRoom {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  x           Int
+  y           Int
+  label       String
+  roomType    String   // combat | loot | npc | puzzle | safe | boss | entrance
+  discovered  Boolean  @default(false)
+  connections String   @default("") // comma-separated "x,y" coords of neighbour rooms
+  description String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@unique([roomId, x, y])
+  @@index([roomId, discovered])
 }

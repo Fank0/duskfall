@@ -8,6 +8,7 @@ import {
   maxSpellSlotsForLevel, isCasterClass, hitDiceForClass,
 } from "./presets";
 import { randomStartLocation } from "./locations";
+import { generateDungeonMap } from "./world-map";
 
 export interface CreatePlayerInput {
   name: string;
@@ -46,6 +47,13 @@ export async function seedRoomContent(roomId: string, input: CreatePlayerInput) 
 
   // Update the room's location label.
   await db.room.update({ where: { id: roomId }, data: { location: loc.name } });
+
+  // Generate a procedural dungeon map for the room (entrance auto-discovered).
+  try {
+    await generateDungeonMap(roomId, 1);
+  } catch (e) {
+    console.error("[seed] generateDungeonMap failed:", e);
+  }
 
   // Opening narrative.
   await db.chatMessage.create({

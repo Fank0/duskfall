@@ -15,6 +15,7 @@ import type {
   InitiativeEntryState,
   ConditionState,
   QuestState,
+  MapRoomState,
   ResolvedRoll,
   InventoryChange,
 } from "./types";
@@ -200,6 +201,27 @@ function toQuest(q: any): QuestState {
   };
 }
 
+function toMapRoom(m: any): MapRoomState {
+  const conns = (m.connections ?? "")
+    .split(",")
+    .map((s: string) => s.trim())
+    .filter(Boolean)
+    .map((s: string) => {
+      const [x, y] = s.split(":").map((n) => Number(n));
+      return { x: Number.isFinite(x) ? x : 0, y: Number.isFinite(y) ? y : 0 };
+    });
+  return {
+    id: m.id,
+    x: m.x,
+    y: m.y,
+    label: m.label,
+    roomType: m.roomType as MapRoomState["roomType"],
+    discovered: Boolean(m.discovered),
+    connections: conns,
+    description: m.description ?? "",
+  };
+}
+
 // ---------- room helpers ----------
 export async function getRoomByCode(code: string) {
   const c = String(code || "").toUpperCase().trim();
@@ -225,7 +247,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
   const room = await getRoomByCode(roomCode);
   if (!room) return null;
 
-  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions, quests] = await Promise.all([
+  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
@@ -235,10 +257,33 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     db.initiativeEntry.findMany({ where: { roomId: room.id }, orderBy: { order: "asc" } }),
     db.condition.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.quest.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    db.mapRoom.findMany({ where: { roomId: room.id }, orderBy: [{ y: "asc" }, { x: "asc" }] }),
   ]);
 
   const order = initiatives;
   const currentEntry = order[room.turnIndex] ?? null;
+
+  // Only reveal discovered rooms to the client; their connections are filtered
+  // to discovered-only so hidden rooms aren't leaked.
+  const discoveredKeys = new Set(mapRoomsAll.filter((r) => r.discovered).map((r) => `${r.x},${r.y}`));
+  const discoveredRooms = mapRoomsAll
+    .filter((r) => r.discovered)
+    .map(toMapRoom)
+    .map((r) => ({
+      ...r,
+      connections: r.connections.filter((c) => discoveredKeys.has(`${c.x},${c.y}`)),
+    }));
+
+  // Time-of-day / weather fall back to defaults until items 9 & 10 wire the
+  // corresponding Room columns. Reading via cast avoids hard-deps on those
+  // fields existing on the Prisma type yet.
+  const roomAny = room as any;
+  const timeOfDay = (roomAny.timeOfDay ?? "day") as "dawn" | "day" | "dusk" | "night";
+  const weather = (roomAny.weather ?? "clear") as "clear" | "rain" | "fog" | "storm" | "snow";
+  const currentMapPos =
+    room.currentMapX >= 0 && room.currentMapY >= 0
+      ? { x: room.currentMapX, y: room.currentMapY }
+      : null;
 
   return {
     roomCode: room.code,
@@ -259,6 +304,10 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     currentExplorerName: room.combatActive ? null : (players.filter((p) => p.isAlive && p.hp > 0)[room.explorationActorIndex % Math.max(1, players.filter((p) => p.isAlive && p.hp > 0).length)]?.name ?? players[0]?.name ?? null),
     conditions: conditions.map(toCondition),
     quests: quests.map(toQuest),
+    mapRooms: discoveredRooms,
+    timeOfDay,
+    weather,
+    currentMapPos,
   };
 }
 
@@ -354,6 +403,22 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       const objs = q.objectives.length > 0 ? ` | Цели: ${q.objectives.join(", ")}` : "";
       const rew = q.reward ? ` | Награда: ${q.reward}` : "";
       lines.push(`«${q.title}» — ${q.description || "(без описания)"}${objs}${rew}`);
+    }
+  }
+
+  // World map: party position + discovered rooms.
+  if (snap.currentMapPos) {
+    const here = snap.mapRooms.find((r) => r.x === snap.currentMapPos!.x && r.y === snap.currentMapPos!.y);
+    lines.push(
+      `=== Карта мира ===\nТекущая позиция: (${snap.currentMapPos.x},${snap.currentMapPos.y})${
+        here ? ` — ${here.label} [${here.roomType}]` : ""
+      }`
+    );
+    if (snap.mapRooms.length > 0) {
+      lines.push(
+        "Открытые комнаты: " +
+          snap.mapRooms.map((r) => `(${r.x},${r.y}) ${r.label}[${r.roomType}]`).join("; ")
+      );
     }
   }
 
@@ -1009,4 +1074,18 @@ export async function updateQuestStatus(
 export async function getQuests(roomId: string): Promise<QuestState[]> {
   const list = await db.quest.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
   return list.map(toQuest);
+}
+
+// ---------- World Map snapshot helper ----------
+/** Get the discovered map rooms (filtered for client display). */
+export async function getDiscoveredMapSnapshot(roomId: string): Promise<MapRoomState[]> {
+  const all = await db.mapRoom.findMany({ where: { roomId }, orderBy: [{ y: "asc" }, { x: "asc" }] });
+  const discoveredKeys = new Set(all.filter((r) => r.discovered).map((r) => `${r.x},${r.y}`));
+  return all
+    .filter((r) => r.discovered)
+    .map(toMapRoom)
+    .map((r) => ({
+      ...r,
+      connections: r.connections.filter((c) => discoveredKeys.has(`${c.x},${c.y}`)),
+    }));
 }

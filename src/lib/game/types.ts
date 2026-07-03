@@ -276,6 +276,20 @@ export interface QuestState {
   updatedAt: string;
 }
 
+/** A room node in the procedural world map. */
+export type MapRoomType = "combat" | "loot" | "npc" | "puzzle" | "safe" | "boss" | "entrance";
+
+export interface MapRoomState {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  roomType: MapRoomType;
+  discovered: boolean;
+  connections: { x: number; y: number }[];
+  description: string;
+}
+
 export interface GameStateSnapshot {
   roomCode: string;
   hostName: string;
@@ -299,6 +313,14 @@ export interface GameStateSnapshot {
   conditions: ConditionState[];
   /** quests tracked in the room's journal */
   quests: QuestState[];
+  /** discovered rooms of the world map (only revealed ones reach the client) */
+  mapRooms: MapRoomState[];
+  /** current time of day cycle: dawn | day | dusk | night */
+  timeOfDay: "dawn" | "day" | "dusk" | "night";
+  /** current weather: clear | rain | fog | storm | snow */
+  weather: "clear" | "rain" | "fog" | "storm" | "snow";
+  /** current world-map position (room coordinates the party is in) */
+  currentMapPos: { x: number; y: number } | null;
 }
 
 export interface Stats {

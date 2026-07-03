@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -16,6 +16,7 @@ import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
 import { Lobby } from "@/components/dnd/Lobby";
 import { LevelUpModal } from "@/components/dnd/LevelUpModal";
 import { QuestJournal } from "@/components/dnd/QuestJournal";
+import { WorldMap } from "@/components/dnd/WorldMap";
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, ResolvedEvent } from "@/lib/game/types";
 
@@ -56,6 +57,8 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [lastAoe, setLastAoe] = useState<AoEOverlay | null>(null);
   const [questOpen, setQuestOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [isMovingRoom, setIsMovingRoom] = useState(false);
 
   // Restore session on mount.
   useEffect(() => {
@@ -328,6 +331,49 @@ export default function Home() {
     [session]
   );
 
+  const moveRoom = useCallback(
+    async (x: number, y: number) => {
+      if (!session || isMovingRoom) return;
+      setIsMovingRoom(true);
+      try {
+        const res = await fetch("/api/game/move-room", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, x, y }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setSnapshot(data.snapshot);
+          pingRoom(session.roomCode);
+          toast.success(`Вы вошли в: ${data.room?.label ?? ""}`);
+          // Trigger a background image generation for the new room type.
+          if (data.room?.roomType) {
+            fetch("/api/game/image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                roomCode: session.roomCode,
+                prompt: `Dark fantasy ${data.room.roomType} room, dungeon, painterly concept art`,
+                title: data.room.label ?? "Сцена",
+              }),
+            })
+              .then((r) => r.json())
+              .then((d) => { if (d.ok) return fetchState(session.roomCode, true); })
+              .catch(() => {})
+              .finally(() => pingRoom(session.roomCode));
+          }
+        } else {
+          toast.error(data.error ?? "Не удалось войти в комнату.");
+        }
+      } catch {
+        toast.error("Ошибка перемещения.");
+      } finally {
+        setIsMovingRoom(false);
+      }
+    },
+    [session, isMovingRoom, fetchState]
+  );
+
   // ===== Lobby =====
   if (!session) {
     return <Lobby onEntered={handleEntered} />;
@@ -402,6 +448,17 @@ export default function Home() {
                 {snapshot.quests.filter((q) => q.status === "active").length}
               </span>
             )}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMapOpen(true)}
+            disabled={snapshot.combatActive}
+            className="gap-1.5 border-sky-800/50 bg-sky-950/20 text-sky-200 hover:bg-sky-950/40 disabled:opacity-40"
+            title="Карта мира"
+          >
+            <MapIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Карта</span>
           </Button>
           <Button variant="ghost" size="sm" onClick={leaveRoom} className="text-muted-foreground">
             Выйти
@@ -498,6 +555,16 @@ export default function Home() {
         open={questOpen}
         onOpenChange={setQuestOpen}
         quests={snapshot.quests}
+      />
+
+      {/* ===== World map modal ===== */}
+      <WorldMap
+        open={mapOpen}
+        onOpenChange={setMapOpen}
+        rooms={snapshot.mapRooms}
+        currentPos={snapshot.currentMapPos}
+        onMove={moveRoom}
+        isMoving={isMovingRoom}
       />
     </div>
   );
