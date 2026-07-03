@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon } from "lucide-react";
-import type { PlayerState, InventoryItemState } from "@/lib/game/types";
+import type { PlayerState, InventoryItemState, ConditionState } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { computeAbilities } from "@/lib/game/abilities";
+import { CONDITIONS } from "@/lib/game/conditions";
 import { cn } from "@/lib/utils";
 
 const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
@@ -33,12 +34,14 @@ export function CharacterSheet({
   isYou,
   isTurn,
   compact,
+  conditions = [],
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
   isYou?: boolean;
   isTurn?: boolean;
   compact?: boolean;
+  conditions?: ConditionState[];
 }) {
   const hpPct = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0;
   const hpColor =
@@ -99,6 +102,37 @@ export function CharacterSheet({
             <div className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-500", hpColor)} style={{ width: `${hpPct}%` }} />
           </div>
         </div>
+
+        {/* Active conditions */}
+        {conditions.length > 0 && (
+          <div className="mt-2">
+            <div className="flex items-center gap-1.5 pb-1">
+              <Skull className="h-3 w-3 text-red-300" />
+              <span className="text-[11px] font-semibold gold-text">Состояния</span>
+              <Badge variant="secondary" className="ml-auto text-[8px]">{conditions.length}</Badge>
+            </div>
+            <ul className="flex flex-wrap gap-1">
+              {conditions.map((c) => {
+                const def = CONDITIONS[c.condition];
+                const icon = def?.icon ?? "❓";
+                const name = def?.name ?? c.condition;
+                const color = def?.color ?? "#888";
+                return (
+                  <li
+                    key={c.id}
+                    title={def?.description ?? name}
+                    className="flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px]"
+                    style={{ background: `${color}22`, borderColor: `${color}66`, color }}
+                  >
+                    <span>{icon}</span>
+                    <span className="font-medium">{name}</span>
+                    <span className="text-[8px] opacity-70">{c.duration} р</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
 
         {!compact && (
           <>

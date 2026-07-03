@@ -33,9 +33,12 @@ import {
   awardXP,
   xpForMonster,
   advanceExplorationTurn,
+  applyCondition,
+  tickConditions,
 } from "./state";
 import { rollDice, rollD20, abilityModifier } from "./dice";
 import { extractJson } from "./json";
+import { getCondition } from "./conditions";
 import {
   damageBonusFromTalents,
   applyDamageReduction,
@@ -51,6 +54,7 @@ import type {
   ResolvedEvent,
   InventoryChange,
   PlayerState,
+  PlannedCondition,
 } from "./types";
 
 
@@ -87,6 +91,27 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Подземелий дл�
 - tokenMoves двигай ТОЛЬКО действующего героя. Координаты 0..9.
 - Лечение: healing.notation (например "2d4+2"). target — имя героя.
 
+СОСТОЯНИЯ (Conditions):
+Доступные типы состояний (используй их в поле "conditions"):
+- "poisoned" (🤢 Отравлен) — помеха на атаки и проверки. Ядовитое оружие, ядовитые газы.
+- "stunned" (💫 Оглушён) — пропускает ход. Оглушающий удар, громкий звук.
+- "frightened" (😨 Напуган) — помеха на проверки. Жуткий рёв, магия страха.
+- "burning" (🔥 Горит) — 1d4 урона огнём каждый раунд. Пламя, поджог.
+- "slowed" (🐌 Замедлен) — скорость вдвое. Лёд, тина, тяжёлые оковы.
+- "blinded" (🙈 Ослеплён) — помоха на атаки. Яркая вспышка, грязь в глазах.
+- "prone" (⬇️ Сбит с ног) — скорость вдвое. Сбит ударами, поскользнулся.
+- "blessed" (✨ Благословен) — +1d4 к атакам и спасброскам. Благословение жреца.
+- "shielded" (🛡️ Под щитом) — +2 к AC. Магический щит, барьер.
+- "weakened" (💀 Ослаблен) — помеха на атаки. Колдовство, проклятие, болезнь.
+
+Поле conditions — массив объектов { target, type, duration, source }:
+- target: точное имя героя/монстра из контекста.
+- type: один из перечисленных выше идентификаторов.
+- duration: целое число раундов (обычно 2-4).
+- source: что применило состояние (заклинание, способность, предмет).
+Пример: "conditions": [ { "target": "Гоблин-разведчик", "type": "burning", "duration": 3, "source": "Огненная стрела" } ]
+Не каждое действие накладывает состояние — добавляй только когда это уместно (например, кислота, огонь, яд, оглушение, страх).
+
 ВЫВОД: только валидный JSON без пояснений, по схеме:
 {
   "category": "combat|exploration|social|ability_check|invalid|other",
@@ -98,12 +123,15 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Подземелий дл�
     "playerDamage": null, "healing": null,
     "inventory": [ { "action": "add", "item": "Название", "type": "potion", "description": "..." } ],
     "tokenMoves": [ { "name": "Имя героя", "newX": 2, "newY": 7 } ],
+    "conditions": [ { "target": "Гоблин-разведчик", "type": "burning", "duration": 3, "source": "Огненная стрела" } ],
     "monsterDies": false, "goldChange": 0, "sceneChange": false
   },
   "failure": {
     "narrative": "...", "monsterDamage": null,
     "playerDamage": { "notation": "1d6+2" }, "healing": null,
-    "inventory": [], "tokenMoves": [], "monsterDies": false, "goldChange": 0, "sceneChange": false
+    "inventory": [], "tokenMoves": [],
+    "conditions": [],
+    "monsterDies": false, "goldChange": 0, "sceneChange": false
   },
   "imagePrompt": "english dark fantasy scene description, detailed",
   "imageNeeded": true
@@ -338,6 +366,7 @@ interface ResolutionResult {
   imagePrompt: string;
   imageNeeded: boolean;
   branchNarrative: string;
+  appliedConditionCount: number;
 }
 
 async function resolvePlayerAction(
@@ -351,6 +380,22 @@ async function resolvePlayerAction(
   // Fetch the acting player's full state (for talent modifiers).
   const snap0 = await getSnapshot(roomCode);
   const actorState: PlayerState | undefined = snap0?.players.find((p) => p.name === actorName);
+  // The actor should always exist at this point (verified upstream), but
+  // guard against an undefined snapshot defensively so talent helpers don't
+  // crash — pass a no-talent stub PlayerState instead.
+  const actor: PlayerState = actorState ?? {
+    id: "", name: actorName, charClass: "", level: 1,
+    hp: 1, maxHp: 1, ac: 10,
+    str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
+    proficiencyBonus: 2, gold: 0, posX: 0, posY: 0,
+    color: "#888", weaponName: "", weaponNotation: "1d4",
+    portraitUrl: null, isHost: false, isAlive: true,
+    race: "human", raceName: "Человек", background: "soldier", backgroundName: "Солдат",
+    xp: 0, selectedTalents: [],
+    bonusStr: 0, bonusDex: 0, bonusCon: 0,
+    bonusInt: 0, bonusWis: 0, bonusCha: 0,
+    pendingLevelUp: false,
+  };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
   if (plan.rolls.length > 0) {
@@ -397,7 +442,7 @@ async function resolvePlayerAction(
     if (m) {
       const dmg = rollDice(branch.monsterDamage.notation);
       // Talent: bonus flat damage + vampiric heal.
-      const bonus = damageBonusFromTalents(actorState);
+      const bonus = damageBonusFromTalents(actor);
       const isCrit = playerRolls.some((r) => r.purpose === "СИЛ" || r.purpose === "action" || r.purpose === "ЛОВ")
         ? false : false; // crit handled via natural roll below
       void isCrit;
@@ -409,7 +454,7 @@ async function resolvePlayerAction(
       });
       const result = await damageMonster(roomId, m.id, damageDealtToMonster);
       // Vampiric heal.
-      const vampHeal = rollVampiricHeal(actorState, damageDealtToMonster);
+      const vampHeal = rollVampiricHeal(actor, damageDealtToMonster);
       if (vampHeal > 0) {
         await healPlayer(roomId, actorName, vampHeal);
         healingToPlayer += vampHeal;
@@ -421,13 +466,13 @@ async function resolvePlayerAction(
       if (result.died) {
         monsterThatDied = m.name;
         // Heal-on-kill talent.
-        const killHeal = rollHealOnKill(actorState);
+        const killHeal = rollHealOnKill(actor);
         if (killHeal > 0) {
           await healPlayer(roomId, actorName, killHeal);
           healingToPlayer += killHeal;
           healedPlayer = actorName;
           await logDiceRoll(roomId, round, actorName, {
-            label: "Лечение за убийство", notation: healOnKillNotation(actorState) || `${killHeal}`, modifier: 0, result: killHeal, total: killHeal, purpose: "healing",
+            label: "Лечение за убийство", notation: healOnKillNotation(actor) || `${killHeal}`, modifier: 0, result: killHeal, total: killHeal, purpose: "healing",
           });
         }
         // Award XP to the killing player.
@@ -444,7 +489,7 @@ async function resolvePlayerAction(
     let dmg = rollDice(branch.playerDamage.notation);
     let total = dmg.total;
     // Talent: damage reduction.
-    total = applyDamageReduction(actorState, total);
+    total = applyDamageReduction(actor, total);
     damageDealtToPlayer = total;
     damagedPlayer = actorName; // failure backlash hits the actor
     await logDiceRoll(roomId, round, actorName, {
@@ -472,6 +517,37 @@ async function resolvePlayerAction(
     await adjustGold(roomId, actorName, goldChange);
   }
 
+  // Apply conditions the DM planned for this outcome (success or failure).
+  // Determine target type (player/monster) and write a system chat line.
+  const plannedConditions: PlannedCondition[] = Array.isArray(branch.conditions) ? branch.conditions : [];
+  let appliedConditionCount = 0;
+  if (plannedConditions.length > 0) {
+    const players = await db.player.findMany({ where: { roomId }, select: { name: true } });
+    const monsters = await db.monster.findMany({ where: { roomId }, select: { name: true } });
+    const playerNames = new Set(players.map((p) => p.name));
+    const monsterNames = new Set(monsters.map((m) => m.name));
+    for (const pc of plannedConditions) {
+      if (!pc || !pc.target || !pc.type) continue;
+      const targetType: "player" | "monster" = playerNames.has(pc.target) ? "player"
+        : monsterNames.has(pc.target) ? "monster"
+        : pc.target === actorName ? "player"
+        : "monster";
+      const applied = await applyCondition(roomId, pc.target, targetType, pc.type, pc.duration ?? 3, pc.source ?? actorName);
+      if (applied) {
+        appliedConditionCount++;
+        const def = getCondition(applied.condition);
+        const nameRu = def?.name ?? applied.condition;
+        const icon = def?.icon ?? "❓";
+        await db.chatMessage.create({
+          data: {
+            roomId, role: "system", speaker: "", round,
+            content: `${pc.target} получает состояние: ${icon} ${nameRu} (${applied.duration} раундов).`,
+          },
+        });
+      }
+    }
+  }
+
   return {
     playerRolls, outcome,
     damageDealtToMonster, monsterThatDied,
@@ -481,6 +557,7 @@ async function resolvePlayerAction(
     category: plan.category,
     imagePrompt: plan.imagePrompt, imageNeeded: plan.imageNeeded,
     branchNarrative: branch.narrative,
+    appliedConditionCount,
   };
 }
 
@@ -505,7 +582,7 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   void nearest;
   const targetRes = await moveMonsterTowardNearestPlayer(roomId, m.id);
   const dist = targetRes.distAfter;
-  const targetName = targetRes.targetName;
+  const targetName: string = targetRes.targetName ?? "";
 
   const rolls: ResolvedRoll[] = [];
 
@@ -514,7 +591,7 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     return {
       taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
       monsterName: m.name, moved: true,
-      narrativeLine: `${m.name} приближается к ${targetName}.`,
+      narrativeLine: `${m.name} приближается к ${targetName || "героям"}.`,
     };
   }
 
@@ -618,9 +695,11 @@ async function advanceTurn(roomCode: string, roomId: string): Promise<{
   while (safety++ < 50) {
     let nextIndex = room.turnIndex + 1;
     let round = room.round;
+    let roundAdvanced = false;
     if (nextIndex >= order.length) {
       nextIndex = 0;
       round += 1;
+      roundAdvanced = true;
     }
     await setRoomState(roomId, { turnIndex: nextIndex, round });
     // re-read room + order
@@ -629,6 +708,16 @@ async function advanceTurn(roomCode: string, roomId: string): Promise<{
     room.turnIndex = room2.turnIndex;
     room.round = room2.round;
     order = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+    // At the start of a new round, tick all conditions (decrement durations,
+    // apply per-round damage like burning, remove expired).
+    if (roundAdvanced) {
+      const tickMessages = await tickConditions(roomId);
+      for (const msg of tickMessages) {
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: msg },
+        });
+      }
+    }
     const current = order[room.turnIndex];
     if (!current) {
       return { ended: true, monsterTurns, nextTurnName: null, nextTurnType: null };

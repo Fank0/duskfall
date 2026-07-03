@@ -378,6 +378,7 @@ export default function Home() {
               inventory={yourInventory}
               isYou
               isTurn={isYourTurn && snapshot.combatActive}
+              conditions={snapshot.conditions.filter((c) => c.targetName === you.name)}
             />
           )}
           <DiceLog rolls={snapshot.diceLog} />
@@ -396,6 +397,7 @@ export default function Home() {
             combatActive={snapshot.combatActive}
             round={snapshot.round}
             currentTurnName={snapshot.currentTurnName}
+            conditions={snapshot.conditions}
           />
         </section>
 

@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Swords, MapPin, Crosshair } from "lucide-react";
-import type { PlayerState, MonsterState } from "@/lib/game/types";
+import type { PlayerState, MonsterState, ConditionState } from "@/lib/game/types";
+import { CONDITIONS } from "@/lib/game/conditions";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE } from "@/lib/game/state";
 
@@ -13,15 +14,28 @@ export function CombatGrid({
   combatActive,
   round,
   currentTurnName,
+  conditions,
 }: {
   players: PlayerState[];
   monsters: MonsterState[];
   combatActive: boolean;
   round: number;
   currentTurnName: string | null;
+  conditions: ConditionState[];
 }) {
   const activeMonsters = monsters.filter((m) => m.isActive);
   const alivePlayers = players.filter((p) => p.isAlive || p.hp > 0);
+
+  // Group conditions by target name (id -> ConditionState[]).
+  const condsByTarget = useMemo(() => {
+    const map = new Map<string, ConditionState[]>();
+    for (const c of conditions) {
+      const arr = map.get(c.targetName) ?? [];
+      arr.push(c);
+      map.set(c.targetName, arr);
+    }
+    return map;
+  }, [conditions]);
 
   const cells = useMemo(() => {
     const map = new Map<string, { players: PlayerState[]; monster?: MonsterState }>();
@@ -86,10 +100,15 @@ export function CombatGrid({
                     <PlayerToken
                       players={cellPlayers}
                       currentTurnName={currentTurnName}
+                      conditions={condsByTarget.get(cellPlayers[0].name) ?? []}
                     />
                   )}
                   {monster && (
-                    <MonsterToken monster={monster} isTurn={currentTurnName === monster.name} />
+                    <MonsterToken
+                      monster={monster}
+                      isTurn={currentTurnName === monster.name}
+                      conditions={condsByTarget.get(monster.name) ?? []}
+                    />
                   )}
                 </div>
               );
@@ -120,7 +139,43 @@ export function CombatGrid({
   );
 }
 
-function PlayerToken({ players, currentTurnName }: { players: PlayerState[]; currentTurnName: string | null }) {
+/** Small vertical stack of condition emoji icons shown at the top-right of a token. */
+function ConditionIcons({ conditions }: { conditions: ConditionState[] }) {
+  if (conditions.length === 0) return null;
+  return (
+    <div className="absolute -right-1 -top-1 z-10 flex flex-col items-center gap-px">
+      {conditions.slice(0, 4).map((c) => {
+        const def = CONDITIONS[c.condition];
+        const icon = def?.icon ?? "❓";
+        const name = def?.name ?? c.condition;
+        const color = def?.color ?? "#888";
+        return (
+          <span
+            key={c.id}
+            title={`${name} (${c.duration} раундов)`}
+            className="flex h-3 w-3 items-center justify-center rounded-full border border-black/50 text-[8px] leading-none shadow-sm"
+            style={{ background: `${color}cc` }}
+          >
+            {icon}
+          </span>
+        );
+      })}
+      {conditions.length > 4 && (
+        <span className="text-[7px] leading-none text-amber-300/80">+{conditions.length - 4}</span>
+      )}
+    </div>
+  );
+}
+
+function PlayerToken({
+  players,
+  currentTurnName,
+  conditions,
+}: {
+  players: PlayerState[];
+  currentTurnName: string | null;
+  conditions: ConditionState[];
+}) {
   // Show the first player in the cell as the token (others stack).
   const p = players[0];
   const isTurn = currentTurnName === p.name;
@@ -141,10 +196,11 @@ function PlayerToken({ players, currentTurnName }: { players: PlayerState[]; cur
       >
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{p.name.slice(0, 2).toUpperCase()}</span>
         {players.length > 1 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-stone-800 text-[7px] text-amber-300">
+          <span className="absolute -left-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-stone-800 text-[7px] text-amber-300">
             {players.length}
           </span>
         )}
+        <ConditionIcons conditions={conditions} />
       </div>
       <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
         <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
@@ -154,7 +210,15 @@ function PlayerToken({ players, currentTurnName }: { players: PlayerState[]; cur
   );
 }
 
-function MonsterToken({ monster, isTurn }: { monster: MonsterState; isTurn: boolean }) {
+function MonsterToken({
+  monster,
+  isTurn,
+  conditions,
+}: {
+  monster: MonsterState;
+  isTurn: boolean;
+  conditions: ConditionState[];
+}) {
   const hpPct = monster.maxHp > 0 ? (monster.hp / monster.maxHp) * 100 : 0;
   const hpColor = hpPct > 60 ? "bg-emerald-500" : hpPct > 30 ? "bg-amber-500" : "bg-red-600";
   return (
@@ -171,6 +235,7 @@ function MonsterToken({ monster, isTurn }: { monster: MonsterState; isTurn: bool
         title={monster.name}
       >
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{monster.label}</span>
+        <ConditionIcons conditions={conditions} />
       </div>
       <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
         <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />

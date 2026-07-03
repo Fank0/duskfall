@@ -30,6 +30,7 @@ model Room {
   scenes       Scene[]
   initiatives  InitiativeEntry[]
   inventory    InventoryItem[]
+  conditions   Condition[]
 }
 
 /// A player character belonging to a room (a party member).
@@ -167,4 +168,19 @@ model InitiativeEntry {
   isAlive       Boolean @default(true)
 
   @@unique([roomId, combatantName])
+}
+
+/// Active conditions (poisoned, stunned, etc.) applied to players or monsters.
+model Condition {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  targetName  String   // player or monster name
+  targetType  String   // "player" | "monster"
+  condition   String   // condition id (poisoned, stunned, ...)
+  duration    Int      @default(3) // rounds remaining
+  source      String   @default("") // who/what applied it
+  createdAt   DateTime @default(now())
+
+  @@index([roomId, targetName])
 }

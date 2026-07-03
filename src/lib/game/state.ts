@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { abilityModifier } from "./dice";
 import { rollD20 } from "./dice";
+import { CONDITIONS, getCondition } from "./conditions";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -12,6 +13,7 @@ import type {
   DiceRollState,
   SceneState,
   InitiativeEntryState,
+  ConditionState,
   ResolvedRoll,
   InventoryChange,
 } from "./types";
@@ -138,6 +140,18 @@ function toInitiative(i: any): InitiativeEntryState {
   };
 }
 
+function toCondition(c: any): ConditionState {
+  return {
+    id: c.id,
+    targetName: c.targetName,
+    targetType: c.targetType,
+    condition: c.condition,
+    duration: c.duration,
+    source: c.source,
+    createdAt: c.createdAt.toISOString(),
+  };
+}
+
 // ---------- room helpers ----------
 export async function getRoomByCode(code: string) {
   const c = String(code || "").toUpperCase().trim();
@@ -163,7 +177,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
   const room = await getRoomByCode(roomCode);
   if (!room) return null;
 
-  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives] = await Promise.all([
+  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
@@ -171,6 +185,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     db.diceRoll.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.scene.findFirst({ where: { roomId: room.id, isActive: true }, orderBy: { createdAt: "desc" } }),
     db.initiativeEntry.findMany({ where: { roomId: room.id }, orderBy: { order: "asc" } }),
+    db.condition.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
   ]);
 
   const order = initiatives;
@@ -193,6 +208,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     currentTurnName: currentEntry?.combatantName ?? null,
     currentTurnType: (currentEntry?.combatantType as "player" | "monster") ?? null,
     currentExplorerName: room.combatActive ? null : (players.filter((p) => p.isAlive && p.hp > 0)[room.explorationActorIndex % Math.max(1, players.filter((p) => p.isAlive && p.hp > 0).length)]?.name ?? players[0]?.name ?? null),
+    conditions: conditions.map(toCondition),
   };
 }
 
@@ -258,6 +274,19 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       const cur = i === snap.turnIndex ? " <- СЕЙЧАС" : "";
       lines.push(`${i + 1}. ${e.combatantName} (${e.combatantType}, инициатива ${e.initiative})${cur}`);
     });
+  }
+
+  // Active conditions per target.
+  if (snap.conditions.length > 0) {
+    lines.push("=== Активные состояния ===");
+    for (const c of snap.conditions) {
+      const def = getCondition(c.condition);
+      const nameRu = def?.name ?? c.condition;
+      const icon = def?.icon ?? "❓";
+      lines.push(
+        `${c.targetName} (${c.targetType}): ${icon} ${nameRu} — ${c.duration} раундов. Источник: ${c.source || "—"}.`
+      );
+    }
   }
 
   const recent = snap.chat.slice(-6);
@@ -665,4 +694,85 @@ export function xpForMonster(maxHp: number): number {
   if (maxHp <= 13) return 50;
   if (maxHp <= 20) return 100;
   return 150;
+}
+
+// ---------- Conditions ----------
+/** Apply a condition to a target. Refreshes duration if already active for the same condition. */
+export async function applyCondition(
+  roomId: string,
+  targetName: string,
+  targetType: "player" | "monster",
+  type: string,
+  duration: number,
+  source: string
+): Promise<ConditionState | null> {
+  // Only accept known condition ids — silently skip unknown ones.
+  if (!CONDITIONS[type]) return null;
+  const safeDuration = Math.max(1, Math.min(50, Math.floor(duration) || 3));
+  // If an active condition of the same type already exists on the target, refresh it.
+  const existing = await db.condition.findFirst({
+    where: { roomId, targetName, condition: type },
+  });
+  if (existing) {
+    await db.condition.update({
+      where: { id: existing.id },
+      data: { duration: Math.max(existing.duration, safeDuration), source: source || existing.source },
+    });
+    const refreshed = await db.condition.findUnique({ where: { id: existing.id } });
+    return refreshed ? toCondition(refreshed) : null;
+  }
+  const created = await db.condition.create({
+    data: { roomId, targetName, targetType, condition: type, duration: safeDuration, source },
+  });
+  return toCondition(created);
+}
+
+/** Get all conditions in a room (optionally filtered by target name). */
+export async function getConditions(
+  roomId: string,
+  targetName?: string
+): Promise<ConditionState[]> {
+  const where = targetName ? { roomId, targetName } : { roomId };
+  const list = await db.condition.findMany({ where, orderBy: { createdAt: "asc" } });
+  return list.map(toCondition);
+}
+
+/** Decrement all conditions in the room by 1 round and remove expired ones.
+ *  Also applies damagePerRound effects (e.g. burning) to the affected targets.
+ *  Returns a brief human-readable summary of damage applied. */
+export async function tickConditions(roomId: string): Promise<string[]> {
+  const list = await db.condition.findMany({ where: { roomId } });
+  const messages: string[] = [];
+  for (const c of list) {
+    const def = CONDITIONS[c.condition];
+    // Apply end-of-round damage (burning) BEFORE decrementing/expiring.
+    if (def?.damagePerRound) {
+      // Roll 1d{N} damage.
+      const dmg = Math.floor(Math.random() * def.damagePerRound) + 1;
+      if (dmg > 0) {
+        if (c.targetType === "player") {
+          await damagePlayer(roomId, c.targetName, dmg);
+        } else {
+          // Find the monster by name.
+          const m = await db.monster.findFirst({ where: { name: c.targetName, roomId } });
+          if (m) await damageMonster(roomId, m.id, dmg);
+        }
+        messages.push(`${c.targetName} получает ${dmg} урона от ${def.name.toLowerCase()} (${def.icon}).`);
+      }
+    }
+    const newDuration = c.duration - 1;
+    if (newDuration <= 0) {
+      await db.condition.delete({ where: { id: c.id } });
+      const nameRu = def?.name ?? c.condition;
+      messages.push(`Состояние «${nameRu}» спадает с ${c.targetName}.`);
+    } else {
+      await db.condition.update({ where: { id: c.id }, data: { duration: newDuration } });
+    }
+  }
+  return messages;
+}
+
+/** Remove all conditions from a target (e.g. on death, rest). */
+export async function clearConditionsForTarget(roomId: string, targetName: string): Promise<void> {
+  await db.condition.deleteMany({ where: { roomId, targetName } });
 }

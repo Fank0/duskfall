@@ -41,6 +41,16 @@ export interface OutcomeEffects {
   monsterDies?: boolean;
   goldChange?: number;
   sceneChange?: boolean;
+  /** Conditions applied to a player/monster by this outcome. */
+  conditions?: PlannedCondition[];
+}
+
+/** A condition the DM planned to apply to a target. */
+export interface PlannedCondition {
+  target: string; // target name
+  type: string; // condition id (poisoned, stunned, ...)
+  duration: number; // rounds
+  source: string; // who/what applied it
 }
 
 export interface DMResolution {
@@ -193,6 +203,17 @@ export interface InitiativeEntryState {
   isAlive: boolean;
 }
 
+/** An active condition on a player or monster. */
+export interface ConditionState {
+  id: string;
+  targetName: string;
+  targetType: "player" | "monster";
+  condition: string; // condition id
+  duration: number; // rounds remaining
+  source: string;
+  createdAt: string;
+}
+
 export interface GameStateSnapshot {
   roomCode: string;
   hostName: string;
@@ -212,6 +233,8 @@ export interface GameStateSnapshot {
   currentTurnType: "player" | "monster" | null;
   /** whose turn it is during exploration (null in combat) */
   currentExplorerName: string | null;
+  /** active conditions on every player/monster in the room */
+  conditions: ConditionState[];
 }
 
 export interface Stats {
