@@ -17,7 +17,7 @@ export const LIMITS = {
   PLAYER_NAME_MAX: 20,
   /** Username for auth (if we add auth later). */
   USERNAME_MIN: 3,
-  USERNAME_MAX: 24,
+  USERNAME_MAX: 20,
   /** Password for auth. */
   PASSWORD_MIN: 8,
   PASSWORD_MAX: 128,
