@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, Shirt, Hammer } from "lucide-react";
 import type { PlayerState, InventoryItemState, ConditionState, EquipmentSlot } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
-import { computeAbilities } from "@/lib/game/abilities";
+import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { CONDITIONS } from "@/lib/game/conditions";
 import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
@@ -61,6 +61,7 @@ export const CharacterSheet = memo(function CharacterSheet({
   hasForge = false,
   hasEnchant = false,
   onCraft,
+  onQuickAction,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -74,6 +75,13 @@ export const CharacterSheet = memo(function CharacterSheet({
   hasForge?: boolean;
   hasEnchant?: boolean;
   onCraft?: (recipeId: string) => Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }>;
+  /**
+   * Quick-use handler — when supplied, abilities and inventory items become
+   * clickable. Clicking sends a contextual action text (e.g.
+   * `Я использую "Огненный шар" против врага!`) which the parent feeds into
+   * the chat / DM action stream. Restored "система быстрого применения".
+   */
+  onQuickAction?: (text: string) => void;
 }) {
   const [equipOpen, setEquipOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
@@ -294,6 +302,9 @@ export const CharacterSheet = memo(function CharacterSheet({
             <div className="flex items-center gap-1.5 pb-1">
               <Backpack className="h-3 w-3 text-amber-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("character.inventory")}</span>
+              {isYou && onQuickAction && (
+                <span className="ml-1 text-[8px] italic text-amber-300/70">клик — использовать</span>
+              )}
               <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
             </div>
             <ScrollArea className="fantasy-scroll max-h-40 pr-1">
@@ -301,17 +312,35 @@ export const CharacterSheet = memo(function CharacterSheet({
                 <p className="py-2 text-center text-[10px] italic text-muted-foreground">{tt("character.empty")}</p>
               ) : (
                 <ul className="space-y-1">
-                  {inventory.map((item) => (
-                    <li key={item.id} className="rounded border border-border/40 bg-stone-900/40 p-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="truncate text-[11px] font-medium">{item.itemName}</span>
-                        {item.quantity > 1 && <Badge variant="outline" className="text-[8px]">x{item.quantity}</Badge>}
-                      </div>
-                      {item.description && (
-                        <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{item.description}</p>
-                      )}
-                    </li>
-                  ))}
+                  {inventory.map((item) => {
+                    // Quick-use: clicking an inventory item sends a contextual
+                    // action to the chat. Only enabled for the local player
+                    // ("isYou") when the parent supplies onQuickAction.
+                    const canQuickUse = isYou && onQuickAction;
+                    const handleQuickUse = canQuickUse
+                      ? () => onQuickAction(buildItemQuickText(item))
+                      : undefined;
+                    return (
+                      <li
+                        key={item.id}
+                        onClick={handleQuickUse}
+                        title={canQuickUse ? "Нажмите, чтобы использовать" : undefined}
+                        className={cn(
+                          "rounded border border-border/40 bg-stone-900/40 p-1.5",
+                          canQuickUse &&
+                            "cursor-pointer transition-colors hover:border-amber-700/60 hover:bg-amber-950/30"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="truncate text-[11px] font-medium">{item.itemName}</span>
+                          {item.quantity > 1 && <Badge variant="outline" className="text-[8px]">x{item.quantity}</Badge>}
+                        </div>
+                        {item.description && (
+                          <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{item.description}</p>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </ScrollArea>
@@ -322,64 +351,80 @@ export const CharacterSheet = memo(function CharacterSheet({
             <div className="flex items-center gap-1.5 pb-1">
               <Sparkles className="h-3 w-3 text-amber-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("character.abilities")}</span>
+              {isYou && onQuickAction && (
+                <span className="ml-1 text-[8px] italic text-amber-300/70">клик — применить</span>
+              )}
               <Badge variant="secondary" className="ml-auto text-[8px]">
                 {computeAbilities(player, inventory).length}
               </Badge>
             </div>
             <ScrollArea className="fantasy-scroll max-h-44 pr-1">
               <ul className="space-y-1">
-                {computeAbilities(player, inventory).map((a) => (
-                  <li
-                    key={a.id}
-                    className={cn(
-                      "rounded border p-1.5",
-                      a.consumable
-                        ? "border-amber-700/50 bg-amber-950/20"
-                        : "border-border/40 bg-stone-900/40"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="flex items-center gap-1 truncate text-[11px] font-semibold">
-                        {a.source === "scroll" && <ScrollIcon className="h-3 w-3 shrink-0 text-amber-300" />}
-                        {a.source === "spell" && <Sparkles className="h-3 w-3 shrink-0 text-purple-300" />}
-                        {a.name}
-                      </span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        {a.consumable && (
-                          <Badge className="bg-amber-900/60 text-[7px] text-amber-200">расходуемый</Badge>
-                        )}
-                        {a.slotLevel && a.slotLevel > 0 && (
-                          <Badge variant="outline" className="text-[7px] border-purple-700/50 text-purple-300">
-                            яч.{a.slotLevel}
-                          </Badge>
-                        )}
-                        {a.uses && a.uses > 1 && (
-                          <Badge variant="outline" className="text-[8px]">x{a.uses}</Badge>
-                        )}
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[7px]",
-                            a.source === "race" ? "border-emerald-700/50 text-emerald-300" :
-                            a.source === "class" ? "border-sky-700/50 text-sky-300" :
-                            a.source === "talent" ? "border-purple-700/50 text-purple-300" :
-                            a.source === "spell" ? "border-fuchsia-700/50 text-fuchsia-300" :
-                            "border-amber-700/50 text-amber-300"
+                {computeAbilities(player, inventory).map((a) => {
+                  // Quick-use: clicking an ability sends a contextual action to
+                  // the chat. Damage → "против врага", heal → "для лечения",
+                  // buff → neutral, scroll → "читаю свиток".
+                  const canQuickUse = isYou && onQuickAction;
+                  const handleQuickUse = canQuickUse
+                    ? () => onQuickAction(buildAbilityQuickText(a))
+                    : undefined;
+                  return (
+                    <li
+                      key={a.id}
+                      onClick={handleQuickUse}
+                      title={canQuickUse ? "Нажмите, чтобы использовать" : undefined}
+                      className={cn(
+                        "rounded border p-1.5",
+                        a.consumable
+                          ? "border-amber-700/50 bg-amber-950/20"
+                          : "border-border/40 bg-stone-900/40",
+                        canQuickUse &&
+                          "cursor-pointer transition-colors hover:border-amber-700/60 hover:bg-amber-950/30"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="flex items-center gap-1 truncate text-[11px] font-semibold">
+                          {a.source === "scroll" && <ScrollIcon className="h-3 w-3 shrink-0 text-amber-300" />}
+                          {a.source === "spell" && <Sparkles className="h-3 w-3 shrink-0 text-purple-300" />}
+                          {a.name}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-1">
+                          {a.consumable && (
+                            <Badge className="bg-amber-900/60 text-[7px] text-amber-200">расходуемый</Badge>
                           )}
-                        >
-                          {a.source === "race" ? "народ" : a.source === "class" ? "класс" : a.source === "talent" ? "талант" : a.source === "spell" ? "закл." : "свиток"}
-                        </Badge>
+                          {a.slotLevel && a.slotLevel > 0 && (
+                            <Badge variant="outline" className="text-[7px] border-purple-700/50 text-purple-300">
+                              яч.{a.slotLevel}
+                            </Badge>
+                          )}
+                          {a.uses && a.uses > 1 && (
+                            <Badge variant="outline" className="text-[8px]">x{a.uses}</Badge>
+                          )}
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[7px]",
+                              a.source === "race" ? "border-emerald-700/50 text-emerald-300" :
+                              a.source === "class" ? "border-sky-700/50 text-sky-300" :
+                              a.source === "talent" ? "border-purple-700/50 text-purple-300" :
+                              a.source === "spell" ? "border-fuchsia-700/50 text-fuchsia-300" :
+                              "border-amber-700/50 text-amber-300"
+                            )}
+                          >
+                            {a.source === "race" ? "народ" : a.source === "class" ? "класс" : a.source === "talent" ? "талант" : a.source === "spell" ? "закл." : "свиток"}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                    <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{a.description}</p>
-                    {a.castNotation && (
-                      <span className="mt-0.5 inline-block font-mono text-[9px] text-red-300">
-                        {a.castType === "heal" ? "лечение " : a.castType === "buff" ? "эффект " : "урон "}
-                        {a.castNotation}
-                      </span>
-                    )}
-                  </li>
-                ))}
+                      <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{a.description}</p>
+                      {a.castNotation && (
+                        <span className="mt-0.5 inline-block font-mono text-[9px] text-red-300">
+                          {a.castType === "heal" ? "лечение " : a.castType === "buff" ? "эффект " : "урон "}
+                          {a.castNotation}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </ScrollArea>
           </>
@@ -436,7 +481,8 @@ function characterSheetComparator(
     !Object.is(prev.hasEnchant, next.hasEnchant) ||
     !Object.is(prev.onEquip, next.onEquip) ||
     !Object.is(prev.onUnequip, next.onUnequip) ||
-    !Object.is(prev.onCraft, next.onCraft)
+    !Object.is(prev.onCraft, next.onCraft) ||
+    !Object.is(prev.onQuickAction, next.onQuickAction)
   ) {
     return false;
   }
@@ -461,7 +507,59 @@ type CharacterSheetProps = {
   hasForge?: boolean;
   hasEnchant?: boolean;
   onCraft?: (recipeId: string) => Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }>;
+  onQuickAction?: (text: string) => void;
 };
+
+/**
+ * Build a contextual quick-action chat text for an ability click.
+ * - damage abilities → `Я использую "Огненный шар" против врага!`
+ * - heal abilities   → `Я использую "Лечение" для лечения.`
+ * - buff abilities   → `Я использую "Щит".`
+ * - consumable scroll→ `Я читаю свиток "Огненный шар".`
+ * - utility / other  → `Я использую "<name>".`
+ */
+function buildAbilityQuickText(a: Ability): string {
+  if (a.source === "scroll" || a.consumable) {
+    return `Я читаю свиток «${a.name}».`;
+  }
+  switch (a.castType) {
+    case "damage":
+      return `Я использую «${a.name}» против врага!`;
+    case "heal":
+      return `Я использую «${a.name}» для лечения.`;
+    case "buff":
+      return `Я использую «${a.name}».`;
+    default:
+      return `Я использую «${a.name}».`;
+  }
+}
+
+/**
+ * Build a contextual quick-action chat text for an inventory item click.
+ * - potion → `Я выпиваю зелье <name>.`
+ * - scroll → `Я читаю свиток <name>.`
+ * - weapon → `Я переключаюсь на <name>.`
+ * - other  → `Я использую <name>.`
+ */
+function buildItemQuickText(item: InventoryItemState): string {
+  const name = item.itemName;
+  // Detect potions by item type OR by name containing "зелье" / "potion".
+  const isPotion = item.itemType === "potion" || /зелье|potion/i.test(name);
+  // Detect scrolls by item type OR by name starting with "свиток" / "scroll".
+  const isScroll = item.itemType === "scroll" || /^свиток|^scroll/i.test(name);
+  // Detect weapons by item type OR inferred equip slot.
+  const isWeapon = item.itemType === "weapon" || item.equipSlot === "weapon";
+  if (isScroll) return `Я читаю свиток «${stripPrefix(name, "свиток")}».`;
+  if (isPotion) return `Я выпиваю зелье «${stripPrefix(name, "зелье")}».`;
+  if (isWeapon) return `Я переключаюсь на «${name}».`;
+  return `Я использую «${name}».`;
+}
+
+/** Strip a leading prefix word (e.g. "Свиток огненного шара" → "огненный шар"). */
+function stripPrefix(name: string, prefix: string): string {
+  const re = new RegExp(`^${prefix}\\s+`, "i");
+  return name.replace(re, "");
+}
 
 /** Compare two PlayerState objects on the fields that affect rendering. */
 function playerEqual(a: PlayerState, b: PlayerState): boolean {

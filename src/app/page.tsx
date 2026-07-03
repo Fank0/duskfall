@@ -1015,6 +1015,15 @@ export default function Home() {
               hasForge={snapshot.hasForge}
               hasEnchant={snapshot.hasEnchant}
               onCraft={craftItem}
+              /*
+               * Quick-use system (restored): clicking an ability or inventory
+               * item in your sheet sends a contextual action to the DM via the
+               * chat / action stream — e.g. clicking "Огненный шар" sends
+               * `Я использую "Огненный шар" против врага!`. The handler is the
+               * same sendAction the chat input uses, so it routes through the
+               * SSE mechanics pipeline (dice rolls, HP changes, etc.).
+               */
+              onQuickAction={sendAction}
             />
           )}
           <DiceLog rolls={snapshot.diceLog} />
