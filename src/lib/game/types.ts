@@ -141,6 +141,12 @@ export interface PlayerState {
   bonusWis: number;
   bonusCha: number;
   pendingLevelUp: boolean;
+  /** Current spell slots per level: {"1":2,"2":0,...} */
+  spellSlots: Record<string, number>;
+  /** Max spell slots per level: {"1":2,"2":0,...} */
+  maxSpellSlots: Record<string, number>;
+  /** Hit die size (e.g. 8 for d8). */
+  hitDice: number;
 }
 
 export interface MonsterState {

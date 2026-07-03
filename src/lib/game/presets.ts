@@ -372,3 +372,75 @@ export function applyRaceBonuses(base: Stats, race: RacePreset): Stats {
   });
   return out;
 }
+
+// ---------- Spell slots (D&D 5e SRD, levels 1-5) ----------
+/** Classes that can cast spells (and thus have spell slots). */
+export const CASTER_CLASSES: Set<string> = new Set([
+  "wizard", "sorcerer", "warlock", "cleric", "druid", "bard", "ranger", "paladin",
+]);
+
+/** True if the given (lowercase) class id is a spellcaster. */
+export function isCasterClass(classId: string): boolean {
+  return CASTER_CLASSES.has(classId.toLowerCase());
+}
+
+/** Full-caster spell slots per level (D&D 5e SRD, levels 1-5). */
+const FULL_CASTER_SLOTS: Record<number, Record<string, number>> = {
+  1: { "1": 2 },
+  2: { "1": 3 },
+  3: { "1": 4, "2": 2 },
+  4: { "1": 4, "2": 3 },
+  5: { "1": 4, "2": 3, "3": 2 },
+};
+
+/** Half-caster (paladin/ranger) spell slots per level. Level 1 has none — we
+ *  simplify and grant 2 level-1 slots so the system is usable from level 1. */
+const HALF_CASTER_SLOTS: Record<number, Record<string, number>> = {
+  1: { "1": 2 },
+  2: { "1": 2 },
+  3: { "1": 3 },
+  4: { "1": 3, "2": 1 },
+  5: { "1": 4, "2": 2 },
+};
+
+/** Half-caster classes (paladin, ranger). */
+const HALF_CASTERS: Set<string> = new Set(["paladin", "ranger"]);
+
+/** Returns the max spell slots per level for a class at a given character level.
+ *  Returns an empty object for non-casters. */
+export function maxSpellSlotsForLevel(charClass: string, level: number): Record<string, number> {
+  const classId = getClassIdByCharClass(charClass);
+  if (!isCasterClass(classId)) return {};
+  const clampedLevel = Math.max(1, Math.min(5, Math.floor(level) || 1));
+  const table = HALF_CASTERS.has(classId) ? HALF_CASTER_SLOTS : FULL_CASTER_SLOTS;
+  // Clone so callers can mutate safely.
+  const base = table[clampedLevel] ?? { "1": 2 };
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(base)) out[k] = v;
+  return out;
+}
+
+/** Hit die size per class (D&D 5e SRD). */
+const HIT_DICE: Record<string, number> = {
+  fighter: 10, barbarian: 12, paladin: 10, ranger: 10, rogue: 8, monk: 8,
+  wizard: 6, sorcerer: 6, warlock: 8, cleric: 8, druid: 8, bard: 8,
+};
+
+/** Hit die size (e.g. 10 for d10) for a class. Defaults to 8. */
+export function hitDiceForClass(charClass: string): number {
+  const classId = getClassIdByCharClass(charClass);
+  return HIT_DICE[classId] ?? 8;
+}
+
+/** Slot-consuming abilities mapped by class id — used by the DM agent to detect
+ *  when a player's action spends a spell slot. */
+export const SLOT_CONSUMING_ABILITIES: Record<string, string[]> = {
+  paladin: ["божественная кара", "divine smite", "кара"],
+  ranger: ["метка охотника", "hunter's mark", "метка"],
+  wizard: ["огненный шар", "fireball", "магическая стрела", "magic missile", "молния", "lightning", "ледяной шторм", "ice storm", "конус холода", "cone of cold"],
+  sorcerer: ["огненный шар", "fireball", "магическая стрела", "magic missile", "молния", "lightning"],
+  warlock: ["ведьмин снаряд", "witch bolt", "адское возмездие", "hellish rebuke", "тёмная школа", "darkness"],
+  cleric: ["лечение ран", "cure wounds", "благословение", "bless", "духовное оружие", "spiritual weapon"],
+  druid: ["лечащие слова", "healing word", "гром-жезл", "шторм", "луна", "тернии"],
+  bard: ["визгливый смех", "tasha's hideous laughter", "исцеление", "healing word"],
+};

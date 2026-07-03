@@ -16,6 +16,8 @@ export interface Ability {
   castNotation?: string; // damage/heal roll when activated (e.g. "8d6")
   castType?: "damage" | "heal" | "buff" | "utility";
   uses?: number; // remaining uses (scrolls = quantity in inventory)
+  /** If set, using this ability consumes a spell slot of this level (1..5). */
+  slotLevel?: number;
 }
 
 // ---------- Racial (innate) abilities ----------
@@ -69,10 +71,10 @@ export const CLASS_ABILITIES: Record<string, Ability[]> = {
     { id: "barbarian_rage", name: "Ярость", description: "Сопротивление урону, +2 к урону ближнего боя (2/долгий отдых).", source: "class", sourceLabel: "Варвар", castType: "buff" },
   ],
   paladin: [
-    { id: "paladin_smite", name: "Божественная кара", description: "При попадании: 2d8 урона излучением (тратит ячейку заклинания).", source: "class", sourceLabel: "Паладин", castNotation: "2d8", castType: "damage" },
+    { id: "paladin_smite", name: "Божественная кара", description: "При попадании: 2d8 урона излучением (тратит ячейку заклинания).", source: "class", sourceLabel: "Паладин", castNotation: "2d8", castType: "damage", slotLevel: 1 },
   ],
   ranger: [
-    { id: "ranger_mark", name: "Метка охотника", description: "Помечает цель: +1d6 урона по ней (концентрация).", source: "class", sourceLabel: "Следопыт", castNotation: "1d6", castType: "damage" },
+    { id: "ranger_mark", name: "Метка охотника", description: "Помечает цель: +1d6 урона по ней (концентрация).", source: "class", sourceLabel: "Следопыт", castNotation: "1d6", castType: "damage", slotLevel: 1 },
   ],
   rogue: [
     { id: "rogue_sneak", name: "Скрытая атака", description: "+1d6 урона при преимуществе или союзнике рядом.", source: "class", sourceLabel: "Плут", castNotation: "1d6", castType: "damage" },

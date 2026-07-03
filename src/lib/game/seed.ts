@@ -3,7 +3,10 @@
 
 import { db } from "@/lib/db";
 import type { CharClassPreset, RacePreset, BackgroundPreset } from "./types";
-import { PARTY_POSITIONS, applyRaceBonuses } from "./presets";
+import {
+  PARTY_POSITIONS, applyRaceBonuses,
+  maxSpellSlotsForLevel, isCasterClass, hitDiceForClass,
+} from "./presets";
 import { randomStartLocation } from "./locations";
 
 export interface CreatePlayerInput {
@@ -98,6 +101,12 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
   const finalInt = Math.min(18, stats.int + b.int);
   const finalWis = Math.min(18, stats.wis + b.wis);
   const finalCha = Math.min(18, stats.cha + b.cha);
+  // Spell slots: only casters get them; slots start full.
+  const maxSlots = isCasterClass(p.id)
+    ? maxSpellSlotsForLevel(p.charClass, 1)
+    : {};
+  const spellSlots = { ...maxSlots };
+  const hitDice = hitDiceForClass(p.charClass);
   const player = await db.player.create({
     data: {
       roomId,
@@ -136,6 +145,9 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       bonusWis: b.wis,
       bonusCha: b.cha,
       pendingLevelUp: false,
+      spellSlots: JSON.stringify(spellSlots),
+      maxSpellSlots: JSON.stringify(maxSlots),
+      hitDice,
     },
   });
   // Starting inventory: class items + background item.

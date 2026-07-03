@@ -283,6 +283,33 @@ export default function Home() {
     [session]
   );
 
+  const handleRest = useCallback(
+    async (restType: "short" | "long") => {
+      if (!session) return;
+      setIsThinking(true);
+      try {
+        const res = await fetch("/api/game/rest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, restType }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setSnapshot(data.snapshot);
+          pingRoom(session.roomCode);
+          toast.success(restType === "long" ? "Долгий отдых завершён." : "Короткий отдых завершён.");
+        } else {
+          toast.error(data.error ?? "Не удалось отдохнуть.");
+        }
+      } catch {
+        toast.error("Ошибка отдыха.");
+      } finally {
+        setIsThinking(false);
+      }
+    },
+    [session]
+  );
+
   // ===== Lobby =====
   if (!session) {
     return <Lobby onEntered={handleEntered} />;
@@ -412,6 +439,7 @@ export default function Home() {
             yourName={session.playerName}
             currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
             onSend={sendAction}
+            onRest={handleRest}
           />
         </section>
       </main>

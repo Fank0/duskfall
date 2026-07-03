@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock,
+  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon,
 } from "lucide-react";
 import type { ChatMessageState } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,7 @@ export function ChatPanel({
   yourName,
   currentTurnName,
   onSend,
+  onRest,
 }: {
   messages: ChatMessageState[];
   isThinking: boolean;
@@ -35,6 +36,7 @@ export function ChatPanel({
   yourName: string;
   currentTurnName: string | null;
   onSend: (text: string) => void;
+  onRest?: (restType: "short" | "long") => void;
 }) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -131,6 +133,30 @@ export function ChatPanel({
             {q.label}
           </button>
         ))}
+        {onRest && (
+          <>
+            <button
+              type="button"
+              disabled={combatActive || isThinking || isDead}
+              onClick={() => onRest("short")}
+              title="Короткий отдых: бросок кости здоровья, восстановление половины. Колдуну возвращаются ячейки."
+              className="flex items-center gap-1 rounded-full border border-sky-800/60 bg-sky-950/40 px-2.5 py-1 text-[11px] text-sky-200 transition-colors hover:bg-sky-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Bed className="h-3 w-3" />
+              Короткий отдых
+            </button>
+            <button
+              type="button"
+              disabled={combatActive || isThinking || isDead}
+              onClick={() => onRest("long")}
+              title="Долгий отдых: полное восстановление HP, все ячейки заклинаний, снятие кратковременных состояний."
+              className="flex items-center gap-1 rounded-full border border-indigo-800/60 bg-indigo-950/40 px-2.5 py-1 text-[11px] text-indigo-200 transition-colors hover:bg-indigo-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Moon className="h-3 w-3" />
+              Долгий отдых
+            </button>
+          </>
+        )}
       </div>
 
       {/* Input */}

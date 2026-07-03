@@ -35,10 +35,16 @@ import {
   advanceExplorationTurn,
   applyCondition,
   tickConditions,
+  spendSpellSlot,
 } from "./state";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
 import { extractJson } from "./json";
 import { getCondition, attackBonusDice } from "./conditions";
+import {
+  getClassIdByCharClass,
+  isCasterClass,
+  SLOT_CONSUMING_ABILITIES,
+} from "./presets";
 import {
   damageBonusFromTalents,
   applyDamageReduction,
@@ -56,6 +62,25 @@ import type {
   PlayerState,
   PlannedCondition,
 } from "./types";
+
+
+/** Parse a JSON spell-slot string into a Record<string, number>. Defensive. */
+function parseSlotsSafe(raw: string | null | undefined): Record<string, number> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = Math.max(0, Math.floor(Number(v) || 0));
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
 
 
 const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Подземелий для D&D 5e, ведущий тёмное фэнтези-приключение для группы героев. Твоя задача — спланировать механику разрешения действия ОДНОГО героя.
@@ -404,6 +429,7 @@ async function resolvePlayerAction(
     bonusStr: 0, bonusDex: 0, bonusCon: 0,
     bonusInt: 0, bonusWis: 0, bonusCha: 0,
     pendingLevelUp: false,
+    spellSlots: {}, maxSpellSlots: {}, hitDice: 8,
   };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
@@ -691,6 +717,9 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     bonusStr: target.bonusStr, bonusDex: target.bonusDex, bonusCon: target.bonusCon,
     bonusInt: target.bonusInt, bonusWis: target.bonusWis, bonusCha: target.bonusCha,
     pendingLevelUp: target.pendingLevelUp,
+    spellSlots: parseSlotsSafe(target.spellSlots),
+    maxSpellSlots: parseSlotsSafe(target.maxSpellSlots),
+    hitDice: target.hitDice ?? 8,
   };
   const targetAC = effectiveAC(targetState);
 
@@ -901,6 +930,36 @@ export async function resolvePlayerMechanics(
 
   // 1. Plan the mechanics first.
   const plan = await planResolution(roomCode, actorName, playerAction);
+
+  // Spell-slot detection: if the action text mentions a slot-consuming
+  // ability for the actor's class, try to spend a spell slot. If none remain,
+  // override the plan as invalid.
+  if (plan.category !== "invalid") {
+    const classId = getClassIdByCharClass(actor.charClass);
+    const isCaster = isCasterClass(classId);
+    const slotAbilities = SLOT_CONSUMING_ABILITIES[classId] ?? [];
+    const actionLower = playerAction.toLowerCase();
+    const usedSlotAbility =
+      isCaster && slotAbilities.some((name) => actionLower.includes(name.toLowerCase()));
+    if (usedSlotAbility) {
+      const spend = await spendSpellSlot(roomId, actorName, 1);
+      if (!spend.ok) {
+        plan.category = "invalid";
+        plan.invalidReason =
+          "Закончились ячейки заклинаний. Отдохните, чтобы восстановить их.";
+      } else {
+        // Log the spent slot so it shows up in the dice log.
+        await logDiceRoll(roomId, round, actorName, {
+          label: `Ячейка заклинания ур.${spend.level}`,
+          notation: "slot",
+          modifier: 0,
+          result: spend.level,
+          total: spend.level,
+          purpose: "spell_slot",
+        });
+      }
+    }
+  }
 
   // INVALID action: the DM rejected it as impossible. Do NOT consume the turn,
   // do NOT apply effects — just narrate the rejection.

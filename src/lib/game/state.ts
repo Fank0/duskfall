@@ -21,6 +21,23 @@ import type {
 export const GRID_SIZE = 10;
 
 // ---------- mappers ----------
+function parseSpellSlots(raw: string | null | undefined): Record<string, number> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = Math.max(0, Math.floor(Number(v) || 0));
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
 function toPlayer(p: any): PlayerState {
   return {
     id: p.id,
@@ -59,6 +76,9 @@ function toPlayer(p: any): PlayerState {
     bonusWis: p.bonusWis,
     bonusCha: p.bonusCha,
     pendingLevelUp: p.pendingLevelUp,
+    spellSlots: parseSpellSlots(p.spellSlots),
+    maxSpellSlots: parseSpellSlots(p.maxSpellSlots),
+    hitDice: p.hitDice ?? 8,
   };
 }
 
@@ -239,8 +259,15 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
   for (const p of snap.players) {
     const mod = (k: number) => abilityModifier(k);
     const status = p.isAlive && p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : "ПАЛ";
+    const slotEntries = Object.entries(p.maxSpellSlots).filter(([, v]) => v > 0);
+    const slotInfo =
+      slotEntries.length > 0
+        ? ` | Ячейки заклинаний: ${slotEntries
+            .map(([lv, max]) => `ур.${lv}:${p.spellSlots[lv] ?? 0}/${max}`)
+            .join(", ")}`
+        : "";
     lines.push(
-      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation}) | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo} | Позиция (${p.posX},${p.posY})`
     );
   }
 
@@ -699,6 +726,66 @@ export async function applyLevelUpTalent(roomId: string, playerName: string, tal
     data: { selectedTalents: existing.join(","), pendingLevelUp: false },
   });
   return true;
+}
+
+// ---------- Spell slots ----------
+function safeParseSlots(raw: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, number> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        out[k] = Math.max(0, Math.floor(Number(v) || 0));
+      }
+      return out;
+    }
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function serializeSlots(slots: Record<string, number>): string {
+  return JSON.stringify(slots);
+}
+
+/** Try to spend a spell slot of `level` (or higher if needed). Returns the
+ *  spent level on success, or null if no slot was available. */
+export async function spendSpellSlot(
+  roomId: string,
+  playerName: string,
+  level: number
+): Promise<{ ok: boolean; level: number }> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return { ok: false, level: 0 };
+  const slots = safeParseSlots(p.spellSlots);
+  // Try the requested level first, then ascend.
+  const tryLevels = [level, level + 1, level + 2, level + 3, level + 4, level + 5];
+  for (const lv of tryLevels) {
+    const key = String(lv);
+    if ((slots[key] ?? 0) > 0) {
+      slots[key] -= 1;
+      await db.player.update({ where: { id: p.id }, data: { spellSlots: serializeSlots(slots) } });
+      return { ok: true, level: lv };
+    }
+  }
+  return { ok: false, level: 0 };
+}
+
+/** Restore ALL spell slots to max (used on long rest). */
+export async function restoreAllSpellSlots(roomId: string, playerName: string): Promise<void> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return;
+  const max = safeParseSlots(p.maxSpellSlots);
+  await db.player.update({ where: { id: p.id }, data: { spellSlots: serializeSlots({ ...max }) } });
+}
+
+/** Restore spell slots for a specific class (e.g. warlock on short rest). */
+export async function restoreSpellSlotsForShortRest(roomId: string, playerName: string, charClass: string): Promise<void> {
+  // Warlock: restore all slots on short rest. Other casters keep their slots.
+  const isWarlock = charClass.toLowerCase() === "warlock";
+  if (!isWarlock) return;
+  await restoreAllSpellSlots(roomId, playerName);
 }
 
 /** Standard XP reward per monster CR (compressed). */

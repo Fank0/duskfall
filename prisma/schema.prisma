@@ -73,6 +73,9 @@ model Player {
   bonusWis         Int      @default(0)
   bonusCha         Int      @default(0)
   pendingLevelUp   Boolean  @default(false)
+  spellSlots       String   @default("") // JSON {"1":2,"2":0,...}
+  maxSpellSlots    String   @default("") // JSON {"1":2,"2":0,...}
+  hitDice          Int      @default(8)  // hit die size for short-rest healing
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

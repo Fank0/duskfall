@@ -9,6 +9,7 @@ import type { PlayerState, InventoryItemState, ConditionState } from "@/lib/game
 import { abilityModifier } from "@/lib/game/dice";
 import { computeAbilities } from "@/lib/game/abilities";
 import { CONDITIONS } from "@/lib/game/conditions";
+import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { cn } from "@/lib/utils";
 
 const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
@@ -47,6 +48,13 @@ export function CharacterSheet({
   const hpColor =
     hpPct > 60 ? "from-emerald-600 to-emerald-500" : hpPct > 30 ? "from-amber-600 to-amber-500" : "from-red-700 to-red-600";
   const dead = !player.isAlive || player.hp <= 0;
+
+  // Spell slots — only for casters. Show a row of filled/empty circles per level.
+  const isCaster = isCasterClass(getClassIdByCharClass(player.charClass));
+  const slotLevels = Object.keys(player.maxSpellSlots)
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && player.maxSpellSlots[String(n)] > 0)
+    .sort((a, b) => a - b);
 
   return (
     <Card
@@ -102,6 +110,40 @@ export function CharacterSheet({
             <div className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-500", hpColor)} style={{ width: `${hpPct}%` }} />
           </div>
         </div>
+
+        {/* Spell slots (casters only) */}
+        {isCaster && slotLevels.length > 0 && (
+          <div className="mt-2 rounded border border-border/40 bg-stone-900/40 px-2 py-1.5">
+            <div className="mb-1 flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-purple-300" />
+              <span className="text-[10px] font-semibold gold-text">Ячейки заклинаний</span>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {slotLevels.map((lv) => {
+                const max = player.maxSpellSlots[String(lv)] ?? 0;
+                const cur = player.spellSlots[String(lv)] ?? 0;
+                return (
+                  <div key={lv} className="flex items-center gap-1" title={`Уровень ${lv}: ${cur}/${max} ячеек`}>
+                    <span className="text-[9px] font-mono text-muted-foreground">ур.{lv}</span>
+                    <div className="flex gap-0.5">
+                      {Array.from({ length: max }).map((_, i) => (
+                        <span
+                          key={i}
+                          className={cn(
+                            "h-2 w-2 rounded-full border transition-colors",
+                            i < cur
+                              ? "border-purple-400/80 bg-purple-500 shadow-[0_0_4px_rgba(168,85,247,0.6)]"
+                              : "border-border/60 bg-stone-800/80"
+                          )}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Active conditions */}
         {conditions.length > 0 && (
