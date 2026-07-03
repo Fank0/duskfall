@@ -1137,12 +1137,12 @@ export default function Home() {
       <SettingsMenu open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       {/* ===== Combat log modal (item 19) ===== */}
-        <CombatLog
-          open={combatLogOpen}
-          onOpenChange={setCombatLogOpen}
-          rolls={snapshot.diceLog}
-          chat={snapshot.chat}
-        />
+      <CombatLog
+        open={combatLogOpen}
+        onOpenChange={setCombatLogOpen}
+        rolls={snapshot.diceLog}
+        chat={snapshot.chat}
+      />
       {/* ===== Bestiary modal (item 4) ===== */}
       <BestiaryPanel open={bestiaryOpen} onOpenChange={setBestiaryOpen} />
       {/* ===== Spellbook modal (item 2 of spellbook task) ===== */}
