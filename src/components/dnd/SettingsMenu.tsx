@@ -8,8 +8,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Circle, Square, Type, Palette, ZoomIn, Volume2, Music, Speaker } from "lucide-react";
+import { Settings, Circle, Square, Type, Palette, ZoomIn, Volume2, Music, Speaker, Globe } from "lucide-react";
 import { useSettings, type Theme, type UiScale } from "@/lib/game/settings";
+import { LANGS, type Lang } from "@/lib/game/i18n";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +58,32 @@ export function SettingsMenu({
         </DialogHeader>
 
         <div className="fantasy-scroll flex-1 overflow-y-auto px-5 pb-5 pt-1 space-y-5">
+          {/* ===== Language (i18n-restore) ===== */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
+              <Globe className="h-3.5 w-3.5" /> Язык / Language
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              {LANGS.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  onClick={() => settings.setLang(l.code as Lang)}
+                  title={l.label}
+                  className={cn(
+                    "flex flex-col items-center gap-0.5 rounded-md border p-2 text-[11px] transition-all",
+                    settings.lang === l.code
+                      ? "border-primary bg-primary/15 text-primary ring-2 ring-primary/60"
+                      : "border-border/50 bg-stone-900/40 text-muted-foreground hover:bg-stone-900/70"
+                  )}
+                >
+                  <span className="text-base leading-none">{l.flag}</span>
+                  <span className="text-center leading-tight">{l.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
           {/* ===== Theme (item 21) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
