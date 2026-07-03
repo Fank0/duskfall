@@ -35,6 +35,7 @@ model Room {
   conditions   Condition[]
   quests       Quest[]
   mapRooms     MapRoom[]
+  npcs         Npc[]
 }
 
 /// A player character belonging to a room (a party member).
@@ -226,4 +227,22 @@ model MapRoom {
 
   @@unique([roomId, x, y])
   @@index([roomId, discovered])
+}
+
+/// An NPC living in the room (merchant, questgiver, ally, enemy).
+model Npc {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name        String
+  role        String   // merchant | questgiver | ally | enemy
+  disposition String   @default("neutral") // friendly | neutral | hostile
+  isAlive     Boolean  @default(true)
+  location    String   @default("") // where they stand ("У прилавка")
+  notes       String   @default("") // free-form DM notes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([roomId, name])
+  @@index([roomId, role])
 }

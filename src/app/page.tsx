@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -17,8 +17,15 @@ import { Lobby } from "@/components/dnd/Lobby";
 import { LevelUpModal } from "@/components/dnd/LevelUpModal";
 import { QuestJournal } from "@/components/dnd/QuestJournal";
 import { WorldMap } from "@/components/dnd/WorldMap";
+import { DialoguePanel } from "@/components/dnd/DialoguePanel";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
-import type { GameStateSnapshot, ResolvedEvent } from "@/lib/game/types";
+import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
 
 const LS_KEY = "dnd_vtt_session";
 
@@ -59,6 +66,9 @@ export default function Home() {
   const [questOpen, setQuestOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [isMovingRoom, setIsMovingRoom] = useState(false);
+  const [dialogueOpen, setDialogueOpen] = useState(false);
+  const [dialogueNpc, setDialogueNpc] = useState<NpcState | null>(null);
+  const [isDialogueBusy, setIsDialogueBusy] = useState(false);
 
   // Restore session on mount.
   useEffect(() => {
@@ -374,6 +384,53 @@ export default function Home() {
     [session, isMovingRoom, fetchState]
   );
 
+  const handleDialogueAction = useCallback(
+    async (
+      action: "intro" | "about" | "business" | "leave" | "buy" | "sell",
+      item?: string
+    ): Promise<{ narrative?: string; stock?: any[]; tradeOutcome?: any } | null> => {
+      if (!session || !dialogueNpc) return null;
+      setIsDialogueBusy(true);
+      try {
+        const res = await fetch("/api/game/dialogue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomCode: session.roomCode,
+            playerName: session.playerName,
+            npcName: dialogueNpc.name,
+            action,
+            item,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setSnapshot(data.snapshot);
+          pingRoom(session.roomCode);
+          return {
+            narrative: data.narrative,
+            stock: data.stock,
+            tradeOutcome: data.tradeOutcome,
+          };
+        } else {
+          toast.error(data.error ?? "Диалог не удался.");
+          return null;
+        }
+      } catch {
+        toast.error("Ошибка диалога.");
+        return null;
+      } finally {
+        setIsDialogueBusy(false);
+      }
+    },
+    [session, dialogueNpc]
+  );
+
+  const openDialogueWith = useCallback((npc: NpcState) => {
+    setDialogueNpc(npc);
+    setDialogueOpen(true);
+  }, []);
+
   // ===== Lobby =====
   if (!session) {
     return <Lobby onEntered={handleEntered} />;
@@ -460,6 +517,35 @@ export default function Home() {
             <MapIcon className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Карта</span>
           </Button>
+          {/* Dialogue trigger: dropdown of NPCs in the room (hidden when none). */}
+          {snapshot.npcs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={snapshot.combatActive}
+                  className="gap-1.5 border-emerald-800/50 bg-emerald-950/20 text-emerald-200 hover:bg-emerald-950/40 disabled:opacity-40"
+                  title="Поговорить с NPC"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Поговорить</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {snapshot.npcs.map((n) => (
+                  <DropdownMenuItem
+                    key={n.id}
+                    onClick={() => openDialogueWith(n)}
+                    className="flex items-center justify-between gap-2 text-xs"
+                  >
+                    <span className="truncate">{n.name}</span>
+                    <span className="text-[9px] uppercase text-muted-foreground">{n.role}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button variant="ghost" size="sm" onClick={leaveRoom} className="text-muted-foreground">
             Выйти
           </Button>
@@ -565,6 +651,18 @@ export default function Home() {
         currentPos={snapshot.currentMapPos}
         onMove={moveRoom}
         isMoving={isMovingRoom}
+      />
+
+      {/* ===== Dialogue modal ===== */}
+      <DialoguePanel
+        key={dialogueNpc?.id ?? "none"}
+        open={dialogueOpen}
+        onOpenChange={setDialogueOpen}
+        npc={dialogueNpc}
+        playerGold={you?.gold ?? 0}
+        playerInventory={snapshot.inventory.filter((i) => i.playerName === session.playerName)}
+        onAction={handleDialogueAction}
+        isBusy={isDialogueBusy}
       />
     </div>
   );

@@ -16,6 +16,7 @@ import type {
   ConditionState,
   QuestState,
   MapRoomState,
+  NpcState,
   ResolvedRoll,
   InventoryChange,
 } from "./types";
@@ -222,6 +223,18 @@ function toMapRoom(m: any): MapRoomState {
   };
 }
 
+function toNpc(n: any): NpcState {
+  return {
+    id: n.id,
+    name: n.name,
+    role: (n.role ?? "ally") as NpcState["role"],
+    disposition: (n.disposition ?? "neutral") as NpcState["disposition"],
+    isAlive: Boolean(n.isAlive),
+    location: n.location ?? "",
+    notes: n.notes ?? "",
+  };
+}
+
 // ---------- room helpers ----------
 export async function getRoomByCode(code: string) {
   const c = String(code || "").toUpperCase().trim();
@@ -247,7 +260,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
   const room = await getRoomByCode(roomCode);
   if (!room) return null;
 
-  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll] = await Promise.all([
+  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
@@ -258,6 +271,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     db.condition.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.quest.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.mapRoom.findMany({ where: { roomId: room.id }, orderBy: [{ y: "asc" }, { x: "asc" }] }),
+    db.npc.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
   ]);
 
   const order = initiatives;
@@ -305,6 +319,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     conditions: conditions.map(toCondition),
     quests: quests.map(toQuest),
     mapRooms: discoveredRooms,
+    npcs: npcs.filter((n) => n.isAlive).map(toNpc),
     timeOfDay,
     weather,
     currentMapPos,
@@ -419,6 +434,16 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
         "Открытые комнаты: " +
           snap.mapRooms.map((r) => `(${r.x},${r.y}) ${r.label}[${r.roomType}]`).join("; ")
       );
+    }
+  }
+
+  // NPCs in the room.
+  if (snap.npcs.length > 0) {
+    lines.push("=== NPC в локации ===");
+    for (const n of snap.npcs) {
+      const loc = n.location ? ` @ ${n.location}` : "";
+      const notes = n.notes ? ` | ${n.notes}` : "";
+      lines.push(`${n.name} [${n.role}, ${n.disposition}]${loc}${notes}`);
     }
   }
 
@@ -1088,4 +1113,59 @@ export async function getDiscoveredMapSnapshot(roomId: string): Promise<MapRoomS
       ...r,
       connections: r.connections.filter((c) => discoveredKeys.has(`${c.x},${c.y}`)),
     }));
+}
+
+// ---------- NPCs ----------
+/** Create or update an NPC in the room (matched by name). Returns the upserted NPC. */
+export async function upsertNpc(
+  roomId: string,
+  name: string,
+  role: "merchant" | "questgiver" | "ally" | "enemy",
+  disposition: "friendly" | "neutral" | "hostile" = "neutral",
+  location = "",
+  notes = ""
+): Promise<NpcState | null> {
+  const cleanName = (name || "").trim().slice(0, 80);
+  if (!cleanName) return null;
+  const existing = await db.npc.findFirst({ where: { roomId, name: cleanName } });
+  if (existing) {
+    const updated = await db.npc.update({
+      where: { id: existing.id },
+      data: {
+        role,
+        disposition,
+        location: location || existing.location,
+        notes: notes || existing.notes,
+        isAlive: true,
+      },
+    });
+    return toNpc(updated);
+  }
+  const created = await db.npc.create({
+    data: {
+      roomId,
+      name: cleanName,
+      role,
+      disposition,
+      location,
+      notes,
+      isAlive: true,
+    },
+  });
+  return toNpc(created);
+}
+
+/** Mark an NPC as dead (e.g. killed in combat). */
+export async function killNpc(roomId: string, name: string): Promise<boolean> {
+  const res = await db.npc.updateMany({
+    where: { roomId, name, isAlive: true },
+    data: { isAlive: false },
+  });
+  return res.count > 0;
+}
+
+/** Get all living NPCs in a room. */
+export async function getLivingNpcs(roomId: string): Promise<NpcState[]> {
+  const list = await db.npc.findMany({ where: { roomId, isAlive: true }, orderBy: { createdAt: "asc" } });
+  return list.map(toNpc);
 }

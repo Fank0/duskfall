@@ -45,6 +45,8 @@ export interface OutcomeEffects {
   conditions?: PlannedCondition[];
   /** Optional quest journal update — create a new quest or change an existing one's status. */
   quest?: PlannedQuest | null;
+  /** Optional NPC to introduce/upsert in the room. */
+  npc?: PlannedNpc | null;
 }
 
 /** A quest the DM planned to add/update in the room's journal. */
@@ -55,6 +57,15 @@ export interface PlannedQuest {
   reward?: string;
   /** "active" creates a new quest; "completed"/"failed" can update an existing quest with the same title. */
   status: "active" | "completed" | "failed";
+}
+
+/** An NPC the DM planned to introduce in the room. */
+export interface PlannedNpc {
+  name: string;
+  role: "merchant" | "questgiver" | "ally" | "enemy";
+  disposition?: "friendly" | "neutral" | "hostile";
+  location?: string;
+  notes?: string;
 }
 
 /** A condition the DM planned to apply to a target. */
@@ -290,6 +301,20 @@ export interface MapRoomState {
   description: string;
 }
 
+/** An NPC living in the room. */
+export type NpcRole = "merchant" | "questgiver" | "ally" | "enemy";
+export type NpcDisposition = "friendly" | "neutral" | "hostile";
+
+export interface NpcState {
+  id: string;
+  name: string;
+  role: NpcRole;
+  disposition: NpcDisposition;
+  isAlive: boolean;
+  location: string;
+  notes: string;
+}
+
 export interface GameStateSnapshot {
   roomCode: string;
   hostName: string;
@@ -315,6 +340,8 @@ export interface GameStateSnapshot {
   quests: QuestState[];
   /** discovered rooms of the world map (only revealed ones reach the client) */
   mapRooms: MapRoomState[];
+  /** NPCs present in the room */
+  npcs: NpcState[];
   /** current time of day cycle: dawn | day | dusk | night */
   timeOfDay: "dawn" | "day" | "dusk" | "night";
   /** current weather: clear | rain | fog | storm | snow */
