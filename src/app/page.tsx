@@ -276,7 +276,7 @@ export default function Home() {
         const res = await fetch("/api/game/action", {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, action: text }),
+          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, action: text, lang }),
         });
         if (!res.ok || !res.body) {
           toast.error("Мастер не ответил.");
@@ -439,7 +439,7 @@ export default function Home() {
         setIsThinking(false);
       }
     },
-    [session, isThinking, fetchState]
+    [session, isThinking, fetchState, lang]
   );
 
   const resetGame = useCallback(async () => {

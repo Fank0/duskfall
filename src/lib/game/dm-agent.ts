@@ -68,6 +68,7 @@ import type {
   MonsterState,
   PlannedCondition,
 } from "./types";
+import { llmLangName, type Lang, defaultLang } from "./i18n";
 
 
 /** Parse a JSON spell-slot string into a Record<string, number>. Defensive. */
@@ -292,11 +293,46 @@ NPC (неигровые персонажи):
   "imageNeeded": true
 }
 
-ВАЖНО: narrative пиши на русском, тёмное фэнтези, атмосферно. Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически. При category="invalid" success/failure можно заполнить пустыми — они не используются.`;
+__NARRATIVE_LANG_LINE__`;
 
-const SYSTEM_PROMPT_NARRATION = `Ты — Мастер Подземелий для D&D 5e. Напиши насыщенное, атмосферное повествование на РУССКОМ языке в стиле тёмного фэнтези (3-6 предложений) для разрешённого действия героя. Вплети реальные результаты бросков и урона. Опиши действия героя и реакцию противника. Не используй markdown. Не повторяйся. Будь кинематографичен.`;
+const SYSTEM_PROMPT_NARRATION_TPL = `Ты — Мастер Подземелий для D&D 5e. Напиши насыщенное, атмосферное повествование __NARRATIVE_LANG_TAG__ в стиле тёмного фэнтези (3-6 предложений) для разрешённого действия героя. Вплети реальные результаты бросков и урона. Опиши действия героя и реакцию противника. Не используй markdown. Не повторяйся. Будь кинематографичен.`;
 
 // ---------- LLM helpers ----------
+
+/**
+ * Build the planning system prompt for the given language. The narrative
+ * language directive is injected from `llmLangName(lang)` so the LLM writes
+ * its narrative in the player's selected language. All non-narrative output
+ * (invalidReason, quest titles, etc.) remains in Russian per the schema.
+ */
+function buildPlanningPrompt(lang: Lang = defaultLang()): string {
+  const ln = llmLangName(lang);
+  const narrativeLine = `ВАЖНО: narrative пиши на языке: ${ln}, тёмное фэнтези, атмосферно. Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически. При category="invalid" success/failure можно заполнить пустыми — они не используются.`;
+  return SYSTEM_PROMPT_PLANNING.replace("__NARRATIVE_LANG_LINE__", narrativeLine);
+}
+
+/** Build the standalone narration system prompt for the given language. */
+function buildNarrationPrompt(lang: Lang = defaultLang()): string {
+  const ln = llmLangName(lang);
+  return SYSTEM_PROMPT_NARRATION_TPL.replace(
+    "__NARRATIVE_LANG_TAG__",
+    `на языке: ${ln}`
+  );
+}
+
+/**
+ * Build the combined plan+narrative system prompt. Replaces the planning
+ * prompt's narrative directive with an extended one that also requires a
+ * top-level "narrative" field on the JSON output.
+ */
+function buildCombinedPrompt(lang: Lang = defaultLang()): string {
+  const ln = llmLangName(lang);
+  const originalLine = `ВАЖНО: narrative пиши на языке: ${ln}, тёмное фэнтези, атмосферно. Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически. При category="invalid" success/failure можно заполнить пустыми — они не используются.`;
+  const replacement = `ВАЖНО: narrative пиши на языке: ${ln}, тёмное фэнтези, атмосферно (2-4 предложения, кратко и кинематографично). Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически.
+
+ОБЯЗАТЕЛЬНО добавь поле "narrative" в верхний уровень JSON — это финальный нарратив на языке: ${ln} (2-4 предложения) для итога действия (при category="invalid" — объяснение игроку почему невозможно; иначе — описание произошедшего с учётом успеха/провала бросков).`;
+  return buildPlanningPrompt(lang).replace(originalLine, replacement);
+}
 
 // Prompt cache for trivial (non-combat) actions. Keyed by roomCode + action
 // text. 30s TTL. Only stores plans with category="exploration" or "social".
@@ -338,7 +374,8 @@ function isNonCombatAction(actionText: string): boolean {
 async function planResolution(
   roomCode: string,
   actorName: string,
-  playerAction: string
+  playerAction: string,
+  lang: Lang = defaultLang()
 ): Promise<DMResolution> {
   // Prompt-cache hit for trivial actions (avoids an LLM round-trip entirely).
   const cached = getCachedPlan(roomCode, playerAction);
@@ -353,7 +390,7 @@ async function planResolution(
   try {
     const raw = await chatComplete(
       [
-        { role: "system", content: SYSTEM_PROMPT_PLANNING },
+        { role: "system", content: buildPlanningPrompt(lang) },
         { role: "user", content: userMsg },
       ],
       undefined,
@@ -375,13 +412,14 @@ async function planResolution(
 export async function planAndNarrate(
   roomCode: string,
   actorName: string,
-  playerAction: string
+  playerAction: string,
+  lang: Lang = defaultLang()
 ): Promise<{ plan: DMResolution; narrative: string }> {
   const context = await getDMContext(roomCode, actorName);
   const userMsg = `КОНТЕКСТ ИГРЫ:\n${context}\n\nДЕЙСТВУЮЩИЙ ГЕРОЙ: ${actorName}\nДЕЙСТВИЕ: ${playerAction}\n\nСпланируй механику И напиши нарратив в одном ответе. Верни только JSON.`;
   try {
     const raw = await chatComplete([
-      { role: "system", content: SYSTEM_PROMPT_COMBINED },
+      { role: "system", content: buildCombinedPrompt(lang) },
       { role: "user", content: userMsg },
     ]);
     const parsed = extractJson<DMResolution & { narrative: string }>(raw);
@@ -393,16 +431,9 @@ export async function planAndNarrate(
     console.error("[DM] planAndNarrate error:", e);
   }
   // Fallback: separate calls (slower but reliable).
-  const plan = await planResolution(roomCode, actorName, playerAction);
+  const plan = await planResolution(roomCode, actorName, playerAction, lang);
   return { plan, narrative: plan.success.narrative };
 }
-
-const SYSTEM_PROMPT_COMBINED = SYSTEM_PROMPT_PLANNING.replace(
-  'ВАЖНО: narrative пиши на русском, тёмное фэнтези, атмосферно. Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически. При category="invalid" success/failure можно заполнить пустыми — они не используются.',
-  `ВАЖНО: narrative пиши на русском, тёмное фэнтези, атмосферно (2-4 предложения, кратко и кинематографично). Если в контексте есть "Скрытые угрозы", герой может атаковать их — тогда бой начнётся автоматически.
-
-ОБЯЗАТЕЛЬНО добавь поле "narrative" в верхний уровень JSON — это финальный нарратив на русском (2-4 предложения) для итога действия (при category="invalid" — объяснение игроку почему невозможно; иначе — описание произошедшего с учётом успеха/провала бросков).`
-);
 
 function fallbackResolution(playerAction: string): DMResolution {
   return {
@@ -440,7 +471,8 @@ async function narrateAction(
     inventoryChanges: InventoryChange[];
     goldChange: number;
     location: string;
-  }
+  },
+  lang: Lang = defaultLang()
 ): Promise<string> {
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
@@ -461,7 +493,7 @@ async function narrateAction(
 
   try {
     const text = await chatComplete([
-      { role: "system", content: SYSTEM_PROMPT_NARRATION },
+      { role: "system", content: buildNarrationPrompt(lang) },
       { role: "user", content: `Напиши повествование:\n${lines.join("\n")}` },
     ]);
     if (text && text.trim().length > 20) return text.trim();
@@ -485,7 +517,8 @@ export async function* streamNarrativeAction(
     inventoryChanges: InventoryChange[];
     goldChange: number;
     location: string;
-  }
+  },
+  lang: Lang = defaultLang()
 ): AsyncGenerator<string> {
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
@@ -503,7 +536,7 @@ export async function* streamNarrativeAction(
   try {
     let full = "";
     for await (const delta of chatStream([
-      { role: "system", content: SYSTEM_PROMPT_NARRATION },
+      { role: "system", content: buildNarrationPrompt(lang) },
       { role: "user", content: `Напиши повествование (3-5 предложений):\n${lines.join("\n")}` },
     ])) {
       full += delta;
@@ -528,7 +561,8 @@ async function narrateMonsterTurn(
     attackTotal: number | null;
     ac: number | null;
     location: string;
-  }
+  },
+  lang: Lang = defaultLang()
 ): Promise<string> {
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
@@ -544,7 +578,7 @@ async function narrateMonsterTurn(
   }
   try {
     const text = await chatComplete([
-      { role: "system", content: SYSTEM_PROMPT_NARRATION },
+      { role: "system", content: buildNarrationPrompt(lang) },
       { role: "user", content: `Напиши короткое повествование (2-4 предложения) хода монстра:\n${lines.join("\n")}` },
     ]);
     if (text && text.trim().length > 15) return text.trim();
@@ -1238,7 +1272,7 @@ function emptyMonster(): MonsterTurnResult {
 }
 
 // ---------- turn advancement ----------
-async function advanceTurn(roomCode: string, roomId: string): Promise<{
+async function advanceTurn(roomCode: string, roomId: string, lang: Lang = defaultLang()): Promise<{
   ended: boolean;
   monsterTurns: { name: string; narrative: string; result: MonsterTurnResult }[];
   nextTurnName: string | null;
@@ -1324,7 +1358,7 @@ async function advanceTurn(roomCode: string, roomId: string): Promise<{
         attackTotal: result.rolls[0]?.total ?? null,
         ac: result.rolls[0]?.target ?? null,
         location: snap?.location ?? "",
-      });
+      }, lang);
       await db.chatMessage.create({
         data: { roomId, role: "dm", speaker: "", round: room.round, content: narrative },
       });
@@ -1353,7 +1387,8 @@ export interface MechanicsResult extends Omit<ResolvedEvent, "finalNarrative"> {
 export async function resolvePlayerMechanics(
   roomCode: string,
   actorName: string,
-  playerAction: string
+  playerAction: string,
+  lang: Lang = defaultLang()
 ): Promise<MechanicsResult> {
   const room = await db.room.findUnique({ where: { code: roomCode.toUpperCase() } });
   if (!room) throw new Error("Комната не найдена.");
@@ -1387,7 +1422,7 @@ export async function resolvePlayerMechanics(
   }
 
   // 1. Plan the mechanics first.
-  const plan = await planResolution(roomCode, actorName, playerAction);
+  const plan = await planResolution(roomCode, actorName, playerAction, lang);
 
   // Spell-slot detection: if the action text mentions a slot-consuming
   // ability for the actor's class, try to spend a spell slot. If none remain,
@@ -1500,14 +1535,14 @@ export async function resolvePlayerMechanics(
     const first = order[0];
     if (first && first.combatantName === actorName && first.combatantType === "player") {
       // The actor already acted (opening strike) — advance once.
-      const adv = await advanceTurn(roomCode, roomId);
+      const adv = await advanceTurn(roomCode, roomId, lang);
       if (adv.ended) combatEnded = true;
       nextTurnName = adv.nextTurnName;
       nextTurnType = adv.nextTurnType;
       for (const mt of adv.monsterTurns) monsterRolls.push(...mt.result.rolls);
     } else {
       // Start from turnIndex 0. If it's a monster, run monster turns.
-      const adv = await advanceTurn(roomCode, roomId);
+      const adv = await advanceTurn(roomCode, roomId, lang);
       if (adv.ended) combatEnded = true;
       nextTurnName = adv.nextTurnName;
       nextTurnType = adv.nextTurnType;
@@ -1516,7 +1551,7 @@ export async function resolvePlayerMechanics(
     }
   } else if (wasCombatActive && !combatEnded) {
     // Normal in-combat advance after the player's turn.
-    const adv = await advanceTurn(roomCode, roomId);
+    const adv = await advanceTurn(roomCode, roomId, lang);
     if (adv.ended) combatEnded = true;
     nextTurnName = adv.nextTurnName;
     nextTurnType = adv.nextTurnType;
