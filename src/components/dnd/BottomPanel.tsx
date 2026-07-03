@@ -1,9 +1,14 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
   Shirt, Hammer,
@@ -31,6 +36,14 @@ import {
  *   2. Инвентарь — clickable item chips (quick-use)
  *   3. Способности — clickable ability chips (race/class/talent/scroll/spell)
  *   4. Спелл-слоты — remaining spell slots per level (for casters)
+ *
+ * Quick-use visual feedback (Item 2):
+ *   - Click → 300ms amber pulse ring on the chip
+ *   - Click → 1.5s "отправлено ✓" sent hint badge
+ *   - Click → 500ms disabled (double-click protection)
+ *   - Hover → shadcn Tooltip with full ability/item description
+ *   - Slot-level abilities show a prominent "КN" colored circle
+ *   - Consumable scrolls show a small "расходуемый" badge
  */
 export const BottomPanel = memo(function BottomPanel({
   player,
@@ -97,10 +110,62 @@ export const BottomPanel = memo(function BottomPanel({
     combatActive,
     nearestMonsterName,
   };
-  const buildAbilityText = (a: Ability): string =>
-    buildAbilityQuickText(a, quickCtx);
-  const buildItemText = (item: InventoryItemState): string =>
-    buildItemQuickText(item, quickCtx);
+
+  // ===== Item 2: Quick-use visual feedback state =====
+  // For each chip id we track three transient states:
+  //   pulsing       — 300ms amber ring pulse after click
+  //   disabledChips — 500ms double-click protection
+  //   sentChips     — 1.5s "отправлено ✓" hint badge
+  // All three use immutable Set state so React detects every change.
+  const [pulsing, setPulsing] = useState<Set<string>>(() => new Set());
+  const [disabledChips, setDisabledChips] = useState<Set<string>>(() => new Set());
+  const [sentChips, setSentChips] = useState<Set<string>>(() => new Set());
+  // Pending timeout ids per chip — cleaned up on unmount.
+  const feedbackTimers = useRef<Map<string, number[]>>(new Map());
+
+  // Cleanup all pending feedback timers on unmount.
+  useEffect(() => {
+    const map = feedbackTimers.current;
+    return () => {
+      for (const ids of map.values()) {
+        for (const id of ids) window.clearTimeout(id);
+      }
+      map.clear();
+    };
+  }, []);
+
+  const triggerQuick = (id: string, text: string) => {
+    if (!canQuickUse) return;
+    // Double-click protection — ignore if still in cooldown.
+    if (disabledChips.has(id)) return;
+    onQuickAction?.(text);
+    setPulsing((prev) => new Set(prev).add(id));
+    setDisabledChips((prev) => new Set(prev).add(id));
+    setSentChips((prev) => new Set(prev).add(id));
+    const t1 = window.setTimeout(() => {
+      setPulsing((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+    }, 300);
+    const t2 = window.setTimeout(() => {
+      setDisabledChips((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+    }, 500);
+    const t3 = window.setTimeout(() => {
+      setSentChips((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+    }, 1500);
+    const prev = feedbackTimers.current.get(id) ?? [];
+    feedbackTimers.current.set(id, [...prev, t1, t2, t3]);
+  };
 
   return (
     <Card className="parchment rune-border border-border/80 p-3">
@@ -166,31 +231,52 @@ export const BottomPanel = memo(function BottomPanel({
               {inventory.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">Инвентарь пуст</span>
               ) : (
-                inventory.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    disabled={!canQuickUse}
-                    onClick={() => canQuickUse && onQuickAction?.(buildItemText(item))}
-                    title={canQuickUse ? "Нажмите, чтобы использовать" : item.itemName}
-                    className={cn(
-                      "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors",
-                      item.itemType === "potion" && "border-rose-700/40 bg-rose-950/20 text-rose-200",
-                      item.itemType === "scroll" && "border-amber-700/40 bg-amber-950/20 text-amber-200",
-                      item.itemType === "weapon" && "border-sky-700/40 bg-sky-950/20 text-sky-200",
-                      item.itemType === "armor" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",
-                      !["potion", "scroll", "weapon", "armor"].includes(item.itemType) && "border-border/40 bg-stone-900/40 text-stone-200",
-                      canQuickUse && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
-                      !canQuickUse && "cursor-default"
-                    )}
-                  >
-                    {item.itemType === "potion" && <Heart className="h-2.5 w-2.5" />}
-                    {item.itemType === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
-                    {item.itemType === "weapon" && <Swords className="h-2.5 w-2.5" />}
-                    <span className="truncate max-w-[80px]">{item.itemName}</span>
-                    {item.quantity > 1 && <span className="text-[8px] opacity-70">×{item.quantity}</span>}
-                  </button>
-                ))
+                inventory.map((item) => {
+                  const chipId = `item:${item.id}`;
+                  const isDisabled = !canQuickUse || disabledChips.has(chipId);
+                  const isPulsing = pulsing.has(chipId);
+                  const isSent = sentChips.has(chipId);
+                  const tooltip = buildItemTooltip(item);
+                  return (
+                    <Tooltip key={item.id}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          disabled={isDisabled}
+                          onClick={() => triggerQuick(chipId, buildItemQuickText(item, quickCtx))}
+                          className={cn(
+                            "relative flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-all",
+                            item.itemType === "potion" && "border-rose-700/40 bg-rose-950/20 text-rose-200",
+                            item.itemType === "scroll" && "border-amber-700/40 bg-amber-950/20 text-amber-200",
+                            item.itemType === "weapon" && "border-sky-700/40 bg-sky-950/20 text-sky-200",
+                            item.itemType === "armor" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",
+                            !["potion", "scroll", "weapon", "armor"].includes(item.itemType) && "border-border/40 bg-stone-900/40 text-stone-200",
+                            canQuickUse && !disabledChips.has(chipId) && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
+                            (!canQuickUse || disabledChips.has(chipId)) && "cursor-default",
+                            isPulsing && "ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.55)]",
+                          )}
+                        >
+                          {item.itemType === "potion" && <Heart className="h-2.5 w-2.5" />}
+                          {item.itemType === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
+                          {item.itemType === "weapon" && <Swords className="h-2.5 w-2.5" />}
+                          <span className="truncate max-w-[80px]">{item.itemName}</span>
+                          {item.quantity > 1 && <span className="text-[8px] opacity-70">×{item.quantity}</span>}
+                          {isSent && (
+                            <span className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-emerald-500 bg-emerald-950 px-1.5 py-px text-[8px] font-medium text-emerald-300 shadow">
+                              отправлено ✓
+                            </span>
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[240px] text-left text-[10px] leading-tight">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-amber-200">{item.itemName}</div>
+                          <div className="text-[9px] text-muted-foreground">{tooltip}</div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })
               )}
             </div>
           </ScrollArea>
@@ -214,35 +300,74 @@ export const BottomPanel = memo(function BottomPanel({
               {abilities.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">Нет способностей</span>
               ) : (
-                abilities.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    disabled={!canQuickUse}
-                    onClick={() => canQuickUse && onQuickAction?.(buildAbilityText(a))}
-                    title={canQuickUse ? `Нажмите, чтобы использовать: ${a.name}` : a.name}
-                    className={cn(
-                      "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors",
-                      a.source === "race" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",
-                      a.source === "class" && "border-sky-700/40 bg-sky-950/20 text-sky-200",
-                      a.source === "talent" && "border-purple-700/40 bg-purple-950/20 text-purple-200",
-                      a.source === "scroll" && "border-amber-700/40 bg-amber-950/20 text-amber-200",
-                      a.source === "spell" && "border-fuchsia-700/40 bg-fuchsia-950/20 text-fuchsia-200",
-                      !["race", "class", "talent", "scroll", "spell"].includes(a.source) && "border-border/40 bg-stone-900/40 text-stone-200",
-                      a.consumable && "ring-1 ring-amber-700/30",
-                      canQuickUse && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
-                      !canQuickUse && "cursor-default"
-                    )}
-                  >
-                    {a.source === "spell" && <Wand2 className="h-2.5 w-2.5" />}
-                    {a.source === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
-                    {a.source === "class" && <Zap className="h-2.5 w-2.5" />}
-                    {a.source === "race" && <Shield className="h-2.5 w-2.5" />}
-                    <span className="truncate max-w-[90px]">{a.name}</span>
-                    {a.slotLevel && <span className="text-[8px] opacity-70">я{a.slotLevel}</span>}
-                    {a.consumable && <span className="text-[7px] opacity-60">✦</span>}
-                  </button>
-                ))
+                abilities.map((a) => {
+                  const chipId = `abil:${a.id}`;
+                  const isDisabled = !canQuickUse || disabledChips.has(chipId);
+                  const isPulsing = pulsing.has(chipId);
+                  const isSent = sentChips.has(chipId);
+                  const tooltip = buildAbilityTooltip(a);
+                  return (
+                    <Tooltip key={a.id}>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          disabled={isDisabled}
+                          onClick={() => triggerQuick(chipId, buildAbilityQuickText(a, quickCtx))}
+                          className={cn(
+                            "relative flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-all",
+                            a.source === "race" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",
+                            a.source === "class" && "border-sky-700/40 bg-sky-950/20 text-sky-200",
+                            a.source === "talent" && "border-purple-700/40 bg-purple-950/20 text-purple-200",
+                            a.source === "scroll" && "border-amber-700/40 bg-amber-950/20 text-amber-200",
+                            a.source === "spell" && "border-fuchsia-700/40 bg-fuchsia-950/20 text-fuchsia-200",
+                            !["race", "class", "talent", "scroll", "spell"].includes(a.source) && "border-border/40 bg-stone-900/40 text-stone-200",
+                            a.consumable && "ring-1 ring-amber-700/30",
+                            canQuickUse && !disabledChips.has(chipId) && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
+                            (!canQuickUse || disabledChips.has(chipId)) && "cursor-default",
+                            isPulsing && "ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.55)]",
+                          )}
+                        >
+                          {a.source === "spell" && <Wand2 className="h-2.5 w-2.5" />}
+                          {a.source === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
+                          {a.source === "class" && <Zap className="h-2.5 w-2.5" />}
+                          {a.source === "race" && <Shield className="h-2.5 w-2.5" />}
+                          <span className="truncate max-w-[90px]">{a.name}</span>
+                          {/* Item 2 — prominent slot-level badge: colored circle "КN". */}
+                          {a.slotLevel && a.slotLevel > 0 && (
+                            <span
+                              className="ml-0.5 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full border border-fuchsia-400/70 bg-fuchsia-900/70 px-1 text-[8px] font-bold leading-none text-fuchsia-100"
+                              title={`Тратит ячейку ${a.slotLevel}-го круга`}
+                            >
+                              К{a.slotLevel}
+                            </span>
+                          )}
+                          {/* Item 2 — consumable badge for scrolls. */}
+                          {a.consumable && (
+                            <span className="ml-0.5 inline-flex items-center rounded border border-amber-700/50 bg-amber-950/60 px-1 text-[7px] font-medium leading-none text-amber-200">
+                              расходуемый
+                            </span>
+                          )}
+                          {isSent && (
+                            <span className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-emerald-500 bg-emerald-950 px-1.5 py-px text-[8px] font-medium text-emerald-300 shadow">
+                              отправлено ✓
+                            </span>
+                          )}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[260px] text-left text-[10px] leading-tight">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-amber-200">
+                            {a.name}
+                            {a.source === "spell" && a.slotLevel && a.slotLevel > 0 && (
+                              <span className="ml-1 text-fuchsia-300">· круг {a.slotLevel}</span>
+                            )}
+                          </div>
+                          <div className="text-[9px] text-muted-foreground">{tooltip}</div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })
               )}
             </div>
           </ScrollArea>
@@ -284,3 +409,35 @@ export const BottomPanel = memo(function BottomPanel({
     </Card>
   );
 });
+
+/** Build a one-line tooltip summary for an inventory item. */
+function buildItemTooltip(item: InventoryItemState): string {
+  const parts: string[] = [];
+  parts.push(`Тип: ${item.itemType}`);
+  if (item.quantity > 1) parts.push(`Количество: ${item.quantity}`);
+  if (item.equipSlot) parts.push(`Слот: ${item.equipSlot}`);
+  if (item.acBonus > 0) parts.push(`+${item.acBonus} AC`);
+  if (item.damageNotation) parts.push(`Урон: ${item.damageNotation}`);
+  if (item.description) parts.push(item.description);
+  return parts.join(" · ");
+}
+
+/** Build a one-line tooltip summary for an ability. */
+function buildAbilityTooltip(a: Ability): string {
+  const parts: string[] = [];
+  parts.push(`Источник: ${a.sourceLabel}`);
+  if (a.castType) {
+    const typeLabel =
+      a.castType === "damage" ? "урон" :
+      a.castType === "heal" ? "лечение" :
+      a.castType === "buff" ? "эффект" :
+      a.castType === "utility" ? "утилити" : a.castType;
+    parts.push(`Тип: ${typeLabel}`);
+  }
+  if (a.castNotation) parts.push(`Бросок: ${a.castNotation}`);
+  if (a.slotLevel && a.slotLevel > 0) parts.push(`Ячейка: ${a.slotLevel}-й круг`);
+  if (a.consumable) parts.push("Расходуемый");
+  if (a.uses && a.uses > 1) parts.push(`Осталось: ${a.uses}`);
+  if (a.description) parts.push(a.description);
+  return parts.join(" · ");
+}
