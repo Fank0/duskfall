@@ -75,17 +75,20 @@ export async function POST(req: NextRequest) {
     return rateLimitedResponse("actions", rl.retryAfterMs);
   }
 
-  metrics.recordApiRequest(true);
+  // NOTE: metrics.recordApiRequest(true) is intentionally NOT called here.
+  // The SSE stream's try/catch records the outcome (ok=true on success,
+  // ok=false on error) — calling it here would double-count every request.
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let succeeded = false;
       const send = (obj: unknown) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
       try {
         // 1. Resolve mechanics (plan, dice, effects, monster turns) — ~1-3s.
-        const mech = await resolvePlayerMechanics(roomCode, playerName, action, lang);
+        const mech = await resolvePlayerMechanics(roomCode, playerName, action, lang, req.signal);
         const snapshot = await getSnapshot(roomCode);
         send({ type: "mechanics", event: mech, snapshot });
 
@@ -100,7 +103,7 @@ export async function POST(req: NextRequest) {
           inventoryChanges: mech.inventoryChanges,
           goldChange: mech.goldChange,
           location: mech.location,
-        }, lang)) {
+        }, lang, req.signal)) {
           full += chunk;
           send({ type: "delta", text: chunk });
         }
@@ -122,17 +125,26 @@ export async function POST(req: NextRequest) {
           invalidateSnapshotCache(room.id);
         }
         send({ type: "done" });
+        succeeded = true;
       } catch (e: any) {
-        const status = e?.message?.includes("не ваш ход") || e?.message?.includes("Павший") ? 403 : 500;
-        send({ type: "error", error: e?.message ?? "Ошибка Мастера.", status });
-        metrics.recordApiRequest(false);
-        metrics.recordError();
-        logger.error("action stream failed", {
-          roomCode,
-          playerName,
-          error: e?.message ?? String(e),
-        });
+        // AbortError is expected when the client disconnects mid-stream —
+        // don't treat it as a server error.
+        if (e?.name === "AbortError") {
+          logger.info("action stream aborted (client disconnect)", { roomCode, playerName });
+          succeeded = true; // not a server fault
+        } else {
+          const status = e?.message?.includes("не ваш ход") || e?.message?.includes("Павший") ? 403 : 500;
+          send({ type: "error", error: e?.message ?? "Ошибка Мастера.", status });
+          metrics.recordApiRequest(false);
+          metrics.recordError();
+          logger.error("action stream failed", {
+            roomCode,
+            playerName,
+            error: e?.message ?? String(e),
+          });
+        }
       } finally {
+        if (succeeded) metrics.recordApiRequest(true);
         controller.close();
       }
     },

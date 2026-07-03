@@ -368,7 +368,8 @@ async function planResolution(
   roomCode: string,
   actorName: string,
   playerAction: string,
-  lang: Lang = defaultLang()
+  lang: Lang = defaultLang(),
+  signal?: AbortSignal
 ): Promise<DMResolution> {
   // Prompt-cache hit for trivial actions (avoids an LLM round-trip entirely).
   const cached = getCachedPlan(roomCode, playerAction);
@@ -386,7 +387,7 @@ async function planResolution(
         { role: "system", content: buildPlanningPrompt(lang) },
         { role: "user", content: userMsg },
       ],
-      undefined,
+      signal,
       preferFast
     );
     const parsed = extractJson<DMResolution>(raw);
@@ -394,7 +395,9 @@ async function planResolution(
       setCachedPlan(roomCode, playerAction, parsed);
       return parsed;
     }
-  } catch (e) {
+  } catch (e: any) {
+    // AbortError must propagate so the caller stops cleanly.
+    if (e?.name === "AbortError") throw e;
     console.error("[DM] planResolution error:", e);
   }
   return fallbackResolution(playerAction);
@@ -466,7 +469,8 @@ export async function* streamNarrativeAction(
     goldChange: number;
     location: string;
   },
-  lang: Lang = defaultLang()
+  lang: Lang = defaultLang(),
+  signal?: AbortSignal
 ): AsyncGenerator<string> {
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
@@ -486,12 +490,14 @@ export async function* streamNarrativeAction(
     for await (const delta of chatStream([
       { role: "system", content: buildNarrationPrompt(lang) },
       { role: "user", content: `Напиши повествование (3-5 предложений):\n${lines.join("\n")}` },
-    ])) {
+    ], signal)) {
       full += delta;
       yield delta;
     }
     if (full.trim().length > 20) return;
-  } catch (e) {
+  } catch (e: any) {
+    // AbortError must propagate so the caller can stop cleanly.
+    if (e?.name === "AbortError") throw e;
     console.error("[DM] streamNarrativeAction error:", e);
   }
   // Fallback: yield the branch narrative as a single chunk.
@@ -1359,7 +1365,8 @@ export async function resolvePlayerMechanics(
   roomCode: string,
   actorName: string,
   playerAction: string,
-  lang: Lang = defaultLang()
+  lang: Lang = defaultLang(),
+  signal?: AbortSignal
 ): Promise<MechanicsResult> {
   const room = await db.room.findUnique({ where: { code: roomCode.toUpperCase() } });
   if (!room) throw new Error("Комната не найдена.");
@@ -1402,7 +1409,7 @@ export async function resolvePlayerMechanics(
   }
 
   // 1. Plan the mechanics first.
-  const plan = await planResolution(roomCode, actorName, playerAction, lang);
+  const plan = await planResolution(roomCode, actorName, playerAction, lang, signal);
 
   // Spell-slot detection: if the action text mentions a slot-consuming
   // ability for the actor's class OR a known spellbook spell of level >= 1,
