@@ -1,12 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Skull, Users, Plus, LogIn } from "lucide-react";
+import { Skull, Users, Plus, LogIn, LogOut, Save, User as UserIcon, Loader2 } from "lucide-react";
 import { CharacterCreator } from "./CharacterCreator";
+import { AuthScreen, type AuthenticatedAccount } from "./AuthScreen";
+import { MySavesDialog } from "./MySavesDialog";
+import { toast } from "sonner";
 
 type View = "home" | "create" | "join";
+
+interface SaveSlotData {
+  slotNumber: number;
+  filled: boolean;
+  id?: string;
+  name?: string;
+  roomId?: string | null;
+  roomCode?: string | null;
+  playerId?: string | null;
+  charName?: string | null;
+  charClass?: string | null;
+  charRace?: string | null;
+  charLevel?: number;
+  lastPlayed?: string;
+}
 
 export function Lobby({
   onEntered,
@@ -14,6 +32,59 @@ export function Lobby({
   onEntered: (roomCode: string, playerName: string) => void;
 }) {
   const [view, setView] = useState<View>("home");
+  const [account, setAccount] = useState<AuthenticatedAccount | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [savesOpen, setSavesOpen] = useState(false);
+
+  // Auto-restore session on mount via /api/auth/me.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.ok && data.accountId && data.username) {
+          setAccount({ accountId: data.accountId, username: data.username });
+        }
+      })
+      .catch(() => {
+        /* network blip — treat as anonymous */
+      })
+      .finally(() => {
+        if (!cancelled) setAuthChecked(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      /* ignore */
+    }
+    setAccount(null);
+    toast("Вы вышли из аккаунта.");
+  }, []);
+
+  const handleAuthenticated = useCallback((acc: AuthenticatedAccount) => {
+    setAccount(acc);
+  }, []);
+
+  const handleContinueSave = useCallback(
+    (roomCode: string, slot: SaveSlotData) => {
+      // Use the charName from the slot to resume the session.
+      const playerName = slot.charName ?? "";
+      if (!playerName) {
+        toast.error("Не удалось определить героя в этом сохранении.");
+        return;
+      }
+      setSavesOpen(false);
+      onEntered(roomCode, playerName);
+    },
+    [onEntered]
+  );
 
   if (view === "create" || view === "join") {
     return (
@@ -35,6 +106,42 @@ export function Lobby({
         <p className="text-sm text-muted-foreground">
           Кооперативное приключение с ИИ-Мастером Подземелий · D&amp;D 5e
         </p>
+      </div>
+
+      {/* ===== Account bar ===== */}
+      <div className="mb-3 w-full max-w-md">
+        {!authChecked ? (
+          <div className="flex items-center justify-center gap-2 rounded-md border border-border/40 bg-stone-900/30 px-3 py-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Проверка сессии…
+          </div>
+        ) : account ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-800/40 bg-emerald-950/20 px-3 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              <UserIcon className="h-4 w-4 text-emerald-400" />
+              <span className="font-medium text-emerald-200">{account.username}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 border-amber-800/40 bg-amber-950/20 text-amber-200 hover:bg-amber-950/40"
+                onClick={() => setSavesOpen(true)}
+              >
+                <Save className="h-3.5 w-3.5" /> Мои сохранения
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-3.5 w-3.5" /> Выйти
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <AuthScreen onAuthenticated={handleAuthenticated} />
+        )}
       </div>
 
       <Card className="parchment rune-border w-full max-w-md border-border/80">
@@ -78,6 +185,12 @@ export function Lobby({
         народ, класс и происхождение героя. В бою ходы определяются броском
         инициативы (d20 + Ловкость).
       </p>
+
+      <MySavesDialog
+        open={savesOpen}
+        onOpenChange={setSavesOpen}
+        onContinue={handleContinueSave}
+      />
     </div>
   );
 }
