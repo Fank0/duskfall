@@ -26,6 +26,10 @@ export interface SettingsState {
   musicEnabled: boolean;
   musicVolume: number; // 0..1
   sfxVolume: number; // 0..1
+  /** TTS voice narration for DM messages (task tts-voice-dm). Opt-in. */
+  ttsEnabled: boolean;
+  ttsVolume: number; // 0..1
+  ttsVoice: "male" | "female" | "narrator";
   /** UI language (i18n-restore). Russian by default. */
   lang: Lang;
   // setters
@@ -40,6 +44,9 @@ export interface SettingsState {
   setMusicEnabled: (v: boolean) => void;
   setMusicVolume: (v: number) => void;
   setSfxVolume: (v: number) => void;
+  setTtsEnabled: (v: boolean) => void;
+  setTtsVolume: (v: number) => void;
+  setTtsVoice: (v: "male" | "female" | "narrator") => void;
   setLang: (v: Lang) => void;
 }
 
@@ -59,6 +66,10 @@ export const useSettings = create<SettingsState>()(
       musicEnabled: true,
       musicVolume: 0.4,
       sfxVolume: 0.5,
+      // TTS narration is opt-in (task tts-voice-dm).
+      ttsEnabled: false,
+      ttsVolume: 0.8,
+      ttsVoice: "male",
       lang: "ru",
       setTokenShape: (v) => set({ tokenShape: v }),
       setShowTokenNames: (v) => set({ showTokenNames: v }),
@@ -71,6 +82,9 @@ export const useSettings = create<SettingsState>()(
       setMusicEnabled: (v) => set({ musicEnabled: v }),
       setMusicVolume: (v) => set({ musicVolume: Math.max(0, Math.min(1, v)) }),
       setSfxVolume: (v) => set({ sfxVolume: Math.max(0, Math.min(1, v)) }),
+      setTtsEnabled: (v) => set({ ttsEnabled: v }),
+      setTtsVolume: (v) => set({ ttsVolume: Math.max(0, Math.min(1, v)) }),
+      setTtsVoice: (v) => set({ ttsVoice: v }),
       setLang: (v) => set({ lang: v }),
     }),
     { name: "duskfall-settings" }
