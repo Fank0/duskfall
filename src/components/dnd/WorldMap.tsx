@@ -130,7 +130,7 @@ export function WorldMap({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[88vh] flex flex-col gap-0 p-0">
+      <DialogContent className="sm:max-w-3xl xl:max-w-5xl max-h-[88vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <MapIcon className="h-5 w-5 text-amber-300" />

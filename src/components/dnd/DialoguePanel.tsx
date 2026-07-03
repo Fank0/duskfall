@@ -120,7 +120,7 @@ export function DialoguePanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[88vh] flex flex-col gap-0 p-0">
+      <DialogContent className="sm:max-w-2xl xl:max-w-3xl max-h-[88vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-3 font-serif gold-text">
             <span
