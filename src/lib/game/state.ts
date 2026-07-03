@@ -290,15 +290,36 @@ export async function generateRoomCode(): Promise<string> {
 }
 
 // ---------- snapshot ----------
+// In-memory snapshot cache (2s TTL) to avoid hammering the DB on every poll.
+// Keyed by roomId (mutations take roomId, so invalidation is cheap).
+const SNAPSHOT_CACHE_TTL_MS = 2000;
+const snapshotCache = new Map<string, { snapshot: GameStateSnapshot; expiry: number }>();
+
+/** Invalidate the cached snapshot for a room. Call after every mutation that
+ *  changes the snapshot (HP, inventory, position, chat, etc.). Safe to call
+ *  even if no cached entry exists. */
+export function invalidateSnapshotCache(roomId: string): void {
+  if (roomId) snapshotCache.delete(roomId);
+}
+
 export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot | null> {
   const room = await getRoomByCode(roomCode);
   if (!room) return null;
 
-  const [players, monsters, inventory, chat, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs] = await Promise.all([
+  // Cache hit (still valid)?
+  const now = Date.now();
+  const cached = snapshotCache.get(room.id);
+  if (cached && cached.expiry > now) {
+    return cached.snapshot;
+  }
+
+  // Take only the last 100 chat messages (descending then reverse to keep asc order).
+  // Older messages are loadable on demand via /api/game/chat-history.
+  const [players, monsters, inventory, chatDesc, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
-    db.chatMessage.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
+    db.chatMessage.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, take: 100 }),
     db.diceRoll.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "desc" }, take: 50 }),
     db.scene.findFirst({ where: { roomId: room.id, isActive: true }, orderBy: { createdAt: "desc" } }),
     db.initiativeEntry.findMany({ where: { roomId: room.id }, orderBy: { order: "asc" } }),
@@ -307,6 +328,8 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     db.mapRoom.findMany({ where: { roomId: room.id }, orderBy: [{ y: "asc" }, { x: "asc" }] }),
     db.npc.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
   ]);
+  // Reverse the chat so the snapshot exposes ascending chronological order.
+  const chat = chatDesc.slice().reverse();
 
   const order = initiatives;
   const currentEntry = order[room.turnIndex] ?? null;
@@ -347,7 +370,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
   // No Trap model exists yet — DM can populate later. Return empty array for now.
   const traps: { x: number; y: number; discovered: boolean }[] = [];
 
-  return {
+  const snapshot: GameStateSnapshot = {
     roomCode: room.code,
     hostName: room.hostName,
     players: players.map(toPlayer),
@@ -377,6 +400,10 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     lootCells,
     traps,
   };
+
+  // Populate the cache.
+  snapshotCache.set(room.id, { snapshot, expiry: now + SNAPSHOT_CACHE_TTL_MS });
+  return snapshot;
 }
 
 // ---------- DM context ----------
@@ -572,6 +599,7 @@ export async function logDiceRoll(
       allRolls: roll.allRolls && roll.allRolls.length > 0 ? JSON.stringify(roll.allRolls) : null,
     },
   });
+  invalidateSnapshotCache(roomId);
 }
 
 export async function damageMonster(roomId: string, monsterId: string, amount: number) {
@@ -589,6 +617,7 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
       data: { isAlive: false },
     });
   }
+  invalidateSnapshotCache(roomId);
   return { hp: newHp, died: newHp <= 0 };
 }
 
@@ -607,6 +636,7 @@ export async function damagePlayer(roomId: string, name: string, amount: number)
       data: { isAlive: false },
     });
   }
+  invalidateSnapshotCache(roomId);
   return { hp: newHp, died };
 }
 
@@ -618,6 +648,7 @@ export async function healPlayer(roomId: string, name: string, amount: number) {
     where: { id: p.id },
     data: { hp: newHp, isAlive: true },
   });
+  invalidateSnapshotCache(roomId);
   return newHp;
 }
 
@@ -636,6 +667,7 @@ export async function moveToken(
     const m = await db.monster.findFirst({ where: { name, roomId } });
     if (m) await db.monster.update({ where: { id: m.id }, data: { posX: x, posY: y } });
   }
+  invalidateSnapshotCache(roomId);
 }
 
 export async function applyInventoryChanges(
@@ -699,6 +731,7 @@ export async function applyInventoryChanges(
       }
     }
   }
+  invalidateSnapshotCache(roomId);
 }
 
 export async function adjustGold(roomId: string, name: string, amount: number) {
@@ -708,6 +741,7 @@ export async function adjustGold(roomId: string, name: string, amount: number) {
     where: { id: p.id },
     data: { gold: Math.max(0, p.gold + amount) },
   });
+  invalidateSnapshotCache(roomId);
 }
 
 export async function saveChatMessage(
@@ -721,6 +755,7 @@ export async function saveChatMessage(
   await db.chatMessage.create({
     data: { roomId, role, speaker, content, round, imageUrl: imageUrl ?? null },
   });
+  invalidateSnapshotCache(roomId);
 }
 
 export async function setRoomState(roomId: string, data: Partial<{
@@ -731,6 +766,7 @@ export async function setRoomState(roomId: string, data: Partial<{
   introShown: boolean;
 }>) {
   await db.room.update({ where: { id: roomId }, data });
+  invalidateSnapshotCache(roomId);
 }
 
 /** Find the nearest alive player to a monster (Chebyshev distance). */
@@ -789,12 +825,14 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
   ny = Math.max(0, Math.min(GRID_SIZE - 1, ny));
   await db.monster.update({ where: { id: m.id }, data: { posX: nx, posY: ny } });
   const distAfter = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+  invalidateSnapshotCache(roomId);
   return { newX: nx, newY: ny, distBefore, distAfter, targetName: p.name };
 }
 
 export async function setActiveScene(roomId: string, imageUrl: string, prompt: string, title: string) {
   await db.scene.updateMany({ where: { roomId, isActive: true }, data: { isActive: false } });
   await db.scene.create({ data: { roomId, imageUrl, prompt, title, isActive: true } });
+  invalidateSnapshotCache(roomId);
 }
 
 // ---------- initiative ----------
@@ -855,6 +893,7 @@ export async function rollInitiative(roomId: string): Promise<InitiativeEntrySta
     });
   }
   const saved = await db.initiativeEntry.findMany({ where: { roomId }, orderBy: { order: "asc" } });
+  invalidateSnapshotCache(roomId);
   return saved.map(toInitiative);
 }
 
@@ -943,6 +982,7 @@ export async function advanceExplorationTurn(roomId: string, justActedName: stri
   } else {
     await db.room.update({ where: { id: roomId }, data: { explorationActorIndex: nextIdx } });
   }
+  invalidateSnapshotCache(roomId);
 }
 
 /** Roll a new weather kind using the weighted distribution:
@@ -1060,6 +1100,7 @@ export async function awardXP(roomId: string, playerName: string, xp: number): P
       pendingASI: grantASI ? true : p.pendingASI,
     },
   });
+  invalidateSnapshotCache(roomId);
   return { leveledUp, newLevel };
 }
 
@@ -1081,6 +1122,7 @@ export async function applyLevelUpTalent(roomId: string, playerName: string, tal
     where: { id: p.id },
     data: { selectedTalents: existing.join(","), pendingLevelUp: false },
   });
+  invalidateSnapshotCache(roomId);
   return true;
 }
 
@@ -1121,6 +1163,7 @@ export async function applyLevelUpASI(
       pendingASI: false,
     } as any,
   });
+  invalidateSnapshotCache(roomId);
   return true;
 }
 
@@ -1162,6 +1205,7 @@ export async function spendSpellSlot(
     if ((slots[key] ?? 0) > 0) {
       slots[key] -= 1;
       await db.player.update({ where: { id: p.id }, data: { spellSlots: serializeSlots(slots) } });
+      invalidateSnapshotCache(roomId);
       return { ok: true, level: lv };
     }
   }
@@ -1174,6 +1218,7 @@ export async function restoreAllSpellSlots(roomId: string, playerName: string): 
   if (!p) return;
   const max = safeParseSlots(p.maxSpellSlots);
   await db.player.update({ where: { id: p.id }, data: { spellSlots: serializeSlots({ ...max }) } });
+  invalidateSnapshotCache(roomId);
 }
 
 /** Restore spell slots for a specific class (e.g. warlock on short rest). */
@@ -1215,11 +1260,13 @@ export async function applyCondition(
       data: { duration: Math.max(existing.duration, safeDuration), source: source || existing.source },
     });
     const refreshed = await db.condition.findUnique({ where: { id: existing.id } });
+    invalidateSnapshotCache(roomId);
     return refreshed ? toCondition(refreshed) : null;
   }
   const created = await db.condition.create({
     data: { roomId, targetName, targetType, condition: type, duration: safeDuration, source },
   });
+  invalidateSnapshotCache(roomId);
   return toCondition(created);
 }
 
@@ -1265,12 +1312,14 @@ export async function tickConditions(roomId: string): Promise<string[]> {
       await db.condition.update({ where: { id: c.id }, data: { duration: newDuration } });
     }
   }
+  invalidateSnapshotCache(roomId);
   return messages;
 }
 
 /** Remove all conditions from a target (e.g. on death, rest). */
 export async function clearConditionsForTarget(roomId: string, targetName: string): Promise<void> {
   await db.condition.deleteMany({ where: { roomId, targetName } });
+  invalidateSnapshotCache(roomId);
 }
 
 // ---------- AoE (area of effect) ----------
@@ -1355,6 +1404,7 @@ export async function createQuest(
       status: "active",
     },
   });
+  invalidateSnapshotCache(roomId);
   return toQuest(q);
 }
 
@@ -1368,6 +1418,7 @@ export async function updateQuestStatus(
     where: { id: questId, roomId },
     data: { status },
   });
+  if (res.count > 0) invalidateSnapshotCache(roomId);
   return res.count > 0;
 }
 
@@ -1415,6 +1466,7 @@ export async function upsertNpc(
         isAlive: true,
       },
     });
+    invalidateSnapshotCache(roomId);
     return toNpc(updated);
   }
   const created = await db.npc.create({
@@ -1428,6 +1480,7 @@ export async function upsertNpc(
       isAlive: true,
     },
   });
+  invalidateSnapshotCache(roomId);
   return toNpc(created);
 }
 
@@ -1437,6 +1490,7 @@ export async function killNpc(roomId: string, name: string): Promise<boolean> {
     where: { roomId, name, isAlive: true },
     data: { isAlive: false },
   });
+  if (res.count > 0) invalidateSnapshotCache(roomId);
   return res.count > 0;
 }
 
@@ -1561,6 +1615,7 @@ export async function recomputePlayerAC(roomId: string, playerName: string): Pro
     }
   }
   await db.player.update({ where: { id: p.id }, data });
+  invalidateSnapshotCache(roomId);
   return { ac: data.ac as number };
 }
 
@@ -1605,6 +1660,7 @@ export async function equipItem(
   await db.player.update({ where: { id: p.id }, data: { [slotCol]: itemId } as any });
   // Recompute AC + stats.
   await recomputePlayerAC(roomId, playerName);
+  invalidateSnapshotCache(roomId);
   return { ok: true };
 }
 
@@ -1629,6 +1685,7 @@ export async function unequipItem(
   if (!(p as any)[col]) return { ok: false, error: "Слот уже пуст." };
   await db.player.update({ where: { id: p.id }, data: { [col]: null } as any });
   await recomputePlayerAC(roomId, playerName);
+  invalidateSnapshotCache(roomId);
   return { ok: true };
 }
 

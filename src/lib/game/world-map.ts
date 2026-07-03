@@ -5,6 +5,7 @@
 // every other room starts hidden until the party moves into it.
 
 import { db } from "@/lib/db";
+import { invalidateSnapshotCache } from "./state";
 import type { MapRoomState, MapRoomType } from "./types";
 
 // ---------- RNG helpers ----------
@@ -298,6 +299,7 @@ export async function discoverRoom(roomId: string, x: number, y: number): Promis
   }
   // Update the room's current map position.
   await db.room.update({ where: { id: roomId }, data: { currentMapX: x, currentMapY: y } });
+  invalidateSnapshotCache(roomId);
   const refreshed = await db.mapRoom.findUnique({ where: { id: r.id } });
   return refreshed ? toMapRoomState(refreshed) : null;
 }

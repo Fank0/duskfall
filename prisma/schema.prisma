@@ -127,6 +127,8 @@ model Monster {
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([roomId, name])
 }
 
 /// Items carried by players (scoped to room + player name).
@@ -274,4 +276,5 @@ model Npc {
 
   @@unique([roomId, name])
   @@index([roomId, role])
+  @@index([roomId, isAlive])
 }
