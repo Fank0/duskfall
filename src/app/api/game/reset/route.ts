@@ -3,23 +3,43 @@ import { db } from "@/lib/db";
 import { getSnapshot } from "@/lib/game/state";
 import { seedRoomContent } from "@/lib/game/seed";
 import { getPresetByCharClass, getRace, getBackground } from "@/lib/game/presets";
+import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
 // POST /api/game/reset
 // Body: { roomCode, playerName }
 // Wipes the room and re-seeds, preserving the caller's race/class/background.
+// Only the host may reset the room.
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
-    const playerName = (body?.playerName ?? "").toString().trim();
-    if (!roomCode || !playerName) {
-      return NextResponse.json({ ok: false, error: "Укажите комнату и героя." }, { status: 400 });
+    const roomCodeRaw = (body?.roomCode ?? "").toString();
+    const playerNameRaw = (body?.playerName ?? "").toString();
+
+    // ===== Validation (audit-v2): use the shared validators. =====
+    const roomCodeError = validateRoomCode(roomCodeRaw);
+    if (roomCodeError) {
+      return NextResponse.json({ ok: false, error: roomCodeError }, { status: 400 });
     }
+    const playerNameError = validatePlayerName(playerNameRaw);
+    if (playerNameError) {
+      return NextResponse.json({ ok: false, error: playerNameError }, { status: 400 });
+    }
+
+    const roomCode = roomCodeRaw.toUpperCase().trim();
+    const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, 20);
+
     const room = await db.room.findUnique({ where: { code: roomCode } });
     if (!room) {
       return NextResponse.json({ ok: false, error: "Комната не найдена." }, { status: 404 });
+    }
+    // ===== Host check (audit-v2): only the host may reset the room. =====
+    if (room.hostName !== playerName) {
+      return NextResponse.json(
+        { ok: false, error: "Только хозяин комнаты может перезапустить игру." },
+        { status: 403 }
+      );
     }
     // Read the caller's identity BEFORE deleting so we can rebuild them.
     const oldPlayer = await db.player.findFirst({ where: { name: playerName, roomId: room.id } });
