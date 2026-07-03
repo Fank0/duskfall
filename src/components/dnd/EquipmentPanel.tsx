@@ -97,7 +97,7 @@ export function EquipmentPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[88vh] overflow-y-auto fantasy-scroll bg-card border-primary/40">
+      <DialogContent className="max-w-2xl xl:max-w-4xl max-h-[88vh] overflow-y-auto fantasy-scroll bg-card border-primary/40">
         <DialogHeader>
           <DialogTitle className="font-serif text-lg gold-text text-glow">Экипировка — {player.name}</DialogTitle>
           <DialogDescription>

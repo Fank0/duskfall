@@ -66,7 +66,7 @@ export function CraftingPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto fantasy-scroll bg-card border-primary/40">
+      <DialogContent className="max-w-3xl xl:max-w-5xl max-h-[88vh] overflow-y-auto fantasy-scroll bg-card border-primary/40">
         <DialogHeader>
           <DialogTitle className="font-serif text-lg gold-text text-glow">Крафт — {player.name}</DialogTitle>
           <DialogDescription>

@@ -99,7 +99,7 @@ export function SkillTreeModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto fantasy-scroll bg-card border-primary/40">
+      <DialogContent className="max-w-3xl xl:max-w-5xl max-h-[88vh] overflow-y-auto fantasy-scroll bg-card border-primary/40">
         <DialogHeader>
           <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full border-2 border-amber-500/60 bg-amber-950/40 animate-pulse-glow">
             <TrendingUp className="h-7 w-7 text-amber-300" />
