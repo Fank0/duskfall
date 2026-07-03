@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, Shirt, Hammer } from "lucide-react";
 import type { PlayerState, InventoryItemState, ConditionState, EquipmentSlot } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
-import { computeAbilities, type Ability } from "@/lib/game/abilities";
+import { computeAbilities } from "@/lib/game/abilities";
 import { CONDITIONS } from "@/lib/game/conditions";
 import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
@@ -17,6 +17,11 @@ import { shallowEqual } from "@/lib/game/shallow";
 import { useSettings } from "@/lib/game/settings";
 import { t } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
+import {
+  buildAbilityQuickText,
+  buildItemQuickText,
+  type QuickActionContext,
+} from "@/lib/game/quick-use";
 
 // Lazy-load the heavy EquipmentPanel + CraftingPanel modals (item 24:
 // dynamic import with ssr:false). These are only shown when the player
@@ -54,6 +59,8 @@ export const CharacterSheet = memo(function CharacterSheet({
   hasEnchant = false,
   onCraft,
   onQuickAction,
+  combatActive = false,
+  nearestMonsterName,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -74,6 +81,10 @@ export const CharacterSheet = memo(function CharacterSheet({
    * the chat / DM action stream. Restored "система быстрого применения".
    */
   onQuickAction?: (text: string) => void;
+  /** True while combat is active — enables targeted damage text (Item 1). */
+  combatActive?: boolean;
+  /** Name of the nearest active monster — used as damage target in text. */
+  nearestMonsterName?: string;
 }) {
   const [equipOpen, setEquipOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
@@ -85,6 +96,14 @@ export const CharacterSheet = memo(function CharacterSheet({
   const hpColor =
     hpPct > 60 ? "from-emerald-600 to-emerald-500" : hpPct > 30 ? "from-amber-600 to-amber-500" : "from-red-700 to-red-600";
   const dead = !player.isAlive || player.hp <= 0;
+
+  // Quick-use context (Item 1): drives contextual action text — e.g. damage
+  // abilities target the nearest monster during combat, scrolls use the
+  // «читаю свиток» phrasing, spells include their slot level (круг N).
+  const quickCtx: QuickActionContext = {
+    combatActive,
+    nearestMonsterName,
+  };
 
   // Spell slots — only for casters. Show a row of filled/empty circles per level.
   const isCaster = isCasterClass(getClassIdByCharClass(player.charClass));
@@ -310,7 +329,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                     // ("isYou") when the parent supplies onQuickAction.
                     const canQuickUse = isYou && onQuickAction;
                     const handleQuickUse = canQuickUse
-                      ? () => onQuickAction(buildItemQuickText(item))
+                      ? () => onQuickAction(buildItemQuickText(item, quickCtx))
                       : undefined;
                     return (
                       <li
@@ -358,7 +377,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                   // buff → neutral, scroll → "читаю свиток".
                   const canQuickUse = isYou && onQuickAction;
                   const handleQuickUse = canQuickUse
-                    ? () => onQuickAction(buildAbilityQuickText(a))
+                    ? () => onQuickAction(buildAbilityQuickText(a, quickCtx))
                     : undefined;
                   return (
                     <li
@@ -474,7 +493,9 @@ function characterSheetComparator(
     !Object.is(prev.onEquip, next.onEquip) ||
     !Object.is(prev.onUnequip, next.onUnequip) ||
     !Object.is(prev.onCraft, next.onCraft) ||
-    !Object.is(prev.onQuickAction, next.onQuickAction)
+    !Object.is(prev.onQuickAction, next.onQuickAction) ||
+    !Object.is(prev.combatActive, next.combatActive) ||
+    !Object.is(prev.nearestMonsterName, next.nearestMonsterName)
   ) {
     return false;
   }
@@ -500,58 +521,14 @@ type CharacterSheetProps = {
   hasEnchant?: boolean;
   onCraft?: (recipeId: string) => Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }>;
   onQuickAction?: (text: string) => void;
+  combatActive?: boolean;
+  nearestMonsterName?: string;
 };
 
-/**
- * Build a contextual quick-action chat text for an ability click.
- * - damage abilities → `Я использую "Огненный шар" против врага!`
- * - heal abilities   → `Я использую "Лечение" для лечения.`
- * - buff abilities   → `Я использую "Щит".`
- * - consumable scroll→ `Я читаю свиток "Огненный шар".`
- * - utility / other  → `Я использую "<name>".`
- */
-function buildAbilityQuickText(a: Ability): string {
-  if (a.source === "scroll" || a.consumable) {
-    return `Я читаю свиток «${a.name}».`;
-  }
-  switch (a.castType) {
-    case "damage":
-      return `Я использую «${a.name}» против врага!`;
-    case "heal":
-      return `Я использую «${a.name}» для лечения.`;
-    case "buff":
-      return `Я использую «${a.name}».`;
-    default:
-      return `Я использую «${a.name}».`;
-  }
-}
-
-/**
- * Build a contextual quick-action chat text for an inventory item click.
- * - potion → `Я выпиваю зелье <name>.`
- * - scroll → `Я читаю свиток <name>.`
- * - weapon → `Я переключаюсь на <name>.`
- * - other  → `Я использую <name>.`
- */
-function buildItemQuickText(item: InventoryItemState): string {
-  const name = item.itemName;
-  // Detect potions by item type OR by name containing "зелье" / "potion".
-  const isPotion = item.itemType === "potion" || /зелье|potion/i.test(name);
-  // Detect scrolls by item type OR by name starting with "свиток" / "scroll".
-  const isScroll = item.itemType === "scroll" || /^свиток|^scroll/i.test(name);
-  // Detect weapons by item type OR inferred equip slot.
-  const isWeapon = item.itemType === "weapon" || item.equipSlot === "weapon";
-  if (isScroll) return `Я читаю свиток «${stripPrefix(name, "свиток")}».`;
-  if (isPotion) return `Я выпиваю зелье «${stripPrefix(name, "зелье")}».`;
-  if (isWeapon) return `Я переключаюсь на «${name}».`;
-  return `Я использую «${name}».`;
-}
-
-/** Strip a leading prefix word (e.g. "Свиток огненного шара" → "огненный шар"). */
-function stripPrefix(name: string, prefix: string): string {
-  const re = new RegExp(`^${prefix}\\s+`, "i");
-  return name.replace(re, "");
-}
+// Note: quick-action text generation now lives in @/lib/game/quick-use
+// (buildAbilityQuickText / buildItemQuickText) and is consumed directly by
+// the inline click handlers above. This keeps a single source of truth for
+// the action-text rules across BottomPanel + CharacterSheet + hotkeys.
 
 /** Compare two PlayerState objects on the fields that affect rendering. */
 function playerEqual(a: PlayerState, b: PlayerState): boolean {

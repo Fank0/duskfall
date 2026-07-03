@@ -34,6 +34,7 @@ import {
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
 import { t } from "@/lib/game/i18n";
+import { findNearestMonsterName } from "@/lib/game/quick-use";
 
 // ===== Lazy-loaded heavy modals (item 24: dynamic import with ssr:false) =====
 // These components are large (full talent tree, settings dialog, dialogue
@@ -803,6 +804,14 @@ export default function Home() {
     : snapshot.currentExplorerName === session.playerName;
   const yourInventory = snapshot.inventory.filter((i) => i.playerName === session.playerName);
 
+  // Quick-use context (Item 1): name of the nearest active monster — used by
+  // the BottomPanel and CharacterSheet to build targeted damage action text
+  // (e.g. `Я использую «Огненный шар» против Гоблин-воин!`). Recomputed on
+  // every snapshot via a cheap O(monsters) scan.
+  const nearestMonsterName = you
+    ? findNearestMonsterName(snapshot.monsters, you.posX, you.posY)
+    : undefined;
+
   // UI customization (item 21): theme + scale, read from the settings store above.
   const themeAttr = settings.theme === "default" ? undefined : settings.theme;
   const scaleClass = `ui-scale-${settings.uiScale}`;
@@ -1026,6 +1035,8 @@ export default function Home() {
                 hasEnchant={snapshot.hasEnchant}
                 onCraft={craftItem}
                 onQuickAction={sendAction}
+                combatActive={snapshot.combatActive}
+                nearestMonsterName={nearestMonsterName}
               />
             )}
             <div className="min-h-0 flex-1">
@@ -1085,6 +1096,8 @@ export default function Home() {
             onUnequip={(slot) => unequipItem(slot as any)}
             hasAnyStation={snapshot.hasAlchemy || snapshot.hasForge || snapshot.hasEnchant}
             onCraft={() => {/* crafting opens via CharacterSheet — keep stub */}}
+            combatActive={snapshot.combatActive}
+            nearestMonsterName={nearestMonsterName}
           />
         )}
       </main>

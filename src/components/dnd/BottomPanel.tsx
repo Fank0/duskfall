@@ -13,6 +13,11 @@ import { useSettings } from "@/lib/game/settings";
 import { t } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 import type { PlayerState, InventoryItemState } from "@/lib/game/types";
+import {
+  buildAbilityQuickText,
+  buildItemQuickText,
+  type QuickActionContext,
+} from "@/lib/game/quick-use";
 
 /**
  * BottomPanel — full-width horizontal bar at the bottom of the game screen.
@@ -34,6 +39,8 @@ export const BottomPanel = memo(function BottomPanel({
   onUnequip,
   hasAnyStation = false,
   onCraft,
+  combatActive = false,
+  nearestMonsterName,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -41,6 +48,10 @@ export const BottomPanel = memo(function BottomPanel({
   onUnequip?: (slot: string) => void | Promise<void>;
   hasAnyStation?: boolean;
   onCraft?: () => void;
+  /** True while combat is active — enables targeted damage text. */
+  combatActive?: boolean;
+  /** Name of the nearest active monster — used as damage target in text. */
+  nearestMonsterName?: string;
 }) {
   const settings = useSettings();
   const lang = settings.lang;
@@ -79,20 +90,17 @@ export const BottomPanel = memo(function BottomPanel({
   } catch {}
   const hasSpellSlots = slots.length > 0;
 
-  const buildAbilityText = (a: Ability): string => {
-    if (a.castType === "heal") return `Я использую «${a.name}» для лечения.`;
-    if (a.castType === "damage") return `Я использую «${a.name}» против врага!`;
-    if (a.consumable) return `Я читаю свиток «${a.name}».`;
-    return `Я использую «${a.name}».`;
+  // Quick-use context (Item 1): drives contextual action text — e.g. damage
+  // abilities target the nearest monster during combat, scrolls use the
+  // «читаю свиток» phrasing, spells include their slot level (круг N).
+  const quickCtx: QuickActionContext = {
+    combatActive,
+    nearestMonsterName,
   };
-
-  const buildItemText = (item: InventoryItemState): string => {
-    const name = item.itemName;
-    if (item.itemType === "potion") return `Я выпиваю зелье «${name}».`;
-    if (item.itemType === "scroll") return `Я читаю свиток «${name}».`;
-    if (item.itemType === "weapon") return `Я переключаюсь на «${name}».`;
-    return `Я использую «${name}».`;
-  };
+  const buildAbilityText = (a: Ability): string =>
+    buildAbilityQuickText(a, quickCtx);
+  const buildItemText = (item: InventoryItemState): string =>
+    buildItemQuickText(item, quickCtx);
 
   return (
     <Card className="parchment rune-border border-border/80 p-3">
