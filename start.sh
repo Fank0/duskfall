@@ -30,10 +30,16 @@ fi
 mkdir -p /data 2>/dev/null || true
 
 # --- Create DB tables (Prisma) ---
-# bunx prisma pulls v7 (incompatible with our schema); prisma@6 is the working version.
-echo "[start] running prisma db push (v6)..."
-bunx prisma@6 db push --accept-data-loss 2>&1 && echo "[start] prisma OK" || \
-echo "[start] WARNING: prisma db push failed — tables may be missing"
+# Use the LOCAL prisma binary (not bunx/npx which may fail in production).
+echo "[start] running prisma db push..."
+if [ -x ./node_modules/.bin/prisma ]; then
+  ./node_modules/.bin/prisma db push --accept-data-loss 2>&1 && echo "[start] prisma OK" || \
+  echo "[start] WARNING: prisma db push failed — tables may be missing"
+else
+  echo "[start] prisma binary not found, trying bunx..."
+  bunx prisma@6 db push --accept-data-loss 2>&1 && echo "[start] prisma OK" || \
+  echo "[start] WARNING: prisma db push failed — tables may be missing"
+fi
 
 echo "[start] launching game-sync relay on port ${SYNC_PORT:-3003}..."
 cd /app/mini-services/game-sync
