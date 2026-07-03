@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, Shirt } from "lucide-react";
+import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, Shirt, Hammer } from "lucide-react";
 import type { PlayerState, InventoryItemState, ConditionState, EquipmentSlot } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { computeAbilities } from "@/lib/game/abilities";
@@ -13,6 +13,7 @@ import { CONDITIONS } from "@/lib/game/conditions";
 import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
 import { EquipmentPanel } from "./EquipmentPanel";
+import { CraftingPanel } from "./CraftingPanel";
 import { cn } from "@/lib/utils";
 
 const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
@@ -41,6 +42,10 @@ export function CharacterSheet({
   conditions = [],
   onEquip,
   onUnequip,
+  hasAlchemy = false,
+  hasForge = false,
+  hasEnchant = false,
+  onCraft,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -50,8 +55,14 @@ export function CharacterSheet({
   conditions?: ConditionState[];
   onEquip?: (itemId: string, slot?: EquipmentSlot) => Promise<void>;
   onUnequip?: (slot: EquipmentSlot | "accessory1" | "accessory2") => Promise<void>;
+  hasAlchemy?: boolean;
+  hasForge?: boolean;
+  hasEnchant?: boolean;
+  onCraft?: (recipeId: string) => Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }>;
 }) {
   const [equipOpen, setEquipOpen] = useState(false);
+  const [craftOpen, setCraftOpen] = useState(false);
+  const hasAnyStation = hasAlchemy || hasForge || hasEnchant;
   const hpPct = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0;
   const hpColor =
     hpPct > 60 ? "from-emerald-600 to-emerald-500" : hpPct > 30 ? "from-amber-600 to-amber-500" : "from-red-700 to-red-600";
@@ -228,15 +239,27 @@ export function CharacterSheet({
                 <span className="text-[11px] font-semibold gold-text">Экипировка</span>
                 <Badge variant="secondary" className="text-[8px]">{equippedCount}/8</Badge>
               </div>
-              {isYou && onEquip && onUnequip && (
-                <button
-                  type="button"
-                  onClick={() => setEquipOpen(true)}
-                  className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-amber-950/50"
-                >
-                  Открыть
-                </button>
-              )}
+              <div className="flex items-center gap-1">
+                {isYou && hasAnyStation && onCraft && (
+                  <button
+                    type="button"
+                    onClick={() => setCraftOpen(true)}
+                    className="rounded border border-purple-700/40 bg-purple-950/30 px-2 py-0.5 text-[10px] text-purple-200 transition-colors hover:bg-purple-950/50"
+                    title="Крафт"
+                  >
+                    <Hammer className="inline h-3 w-3" /> Крафт
+                  </button>
+                )}
+                {isYou && onEquip && onUnequip && (
+                  <button
+                    type="button"
+                    onClick={() => setEquipOpen(true)}
+                    className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-amber-950/50"
+                  >
+                    Открыть
+                  </button>
+                )}
+              </div>
             </div>
             {/* AC breakdown line */}
             <div className="mb-2 rounded border border-sky-800/40 bg-sky-950/20 px-2 py-1 text-[9px] text-sky-200">
@@ -347,6 +370,19 @@ export function CharacterSheet({
           onOpenChange={setEquipOpen}
           onEquip={onEquip}
           onUnequip={onUnequip}
+        />
+      )}
+      {/* Crafting modal — rendered for the local player when a station is available. */}
+      {isYou && hasAnyStation && onCraft && (
+        <CraftingPanel
+          player={player}
+          inventory={inventory}
+          hasAlchemy={hasAlchemy}
+          hasForge={hasForge}
+          hasEnchant={hasEnchant}
+          open={craftOpen}
+          onOpenChange={setCraftOpen}
+          onCraft={onCraft}
         />
       )}
     </Card>

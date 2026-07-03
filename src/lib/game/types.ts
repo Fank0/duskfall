@@ -47,6 +47,8 @@ export interface OutcomeEffects {
   quest?: PlannedQuest | null;
   /** Optional NPC to introduce/upsert in the room. */
   npc?: PlannedNpc | null;
+  /** Optional crafting stations the DM grants (e.g. when the hero finds an alchemy lab or forge). */
+  stations?: ("alchemy" | "forge" | "enchant")[];
 }
 
 /** A quest the DM planned to add/update in the room's journal. */

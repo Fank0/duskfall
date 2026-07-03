@@ -217,6 +217,13 @@ NPC (неигровые персонажи):
 - "notes": краткое описание/заметка — необязательно.
 Не каждое действие создаёт NPC — добавляй только когда герой знакомится с новым персонажем.
 
+ВЕРСТАКИ ДЛЯ КРАФТА (Crafting Stations):
+Если в результате действия герой находит или активирует верстак для крафта — заполни поле "stations" внутри success массивом идентификаторов верстаков, которые теперь доступны:
+- "alchemy" — алхимический стол (зелья, свитки).
+- "forge" — кузница (оружие, броня, щиты).
+- "enchant" — стол зачарования (магические кольца, амулеты, плащи).
+Пример: герой разбивает старую лабораторию и находит алхимический стол — "stations": ["alchemy"]. Если верстаков нет — оставь пустой массив или не добавляй поле.
+
 ПРЕИМУЩЕСТВО / ПОМЕХА (Advantage/Disadvantage):
 Поле "advantage" на верхнем уровне JSON задаёт режим броска атаки:
 - "advantage" — герой кидает 2d20 и берёт больший (атака из засады, со спины, по оглушённому/ослеплённому врагу, благоприятная позиция).
@@ -267,6 +274,7 @@ NPC (неигровые персонажи):
     "conditions": [ { "target": "Гоблин-разведчик", "type": "burning", "duration": 3, "source": "Огненная стрела" } ],
     "quest": null,
     "npc": null,
+    "stations": [],
     "monsterDies": false, "goldChange": 0, "sceneChange": false
   },
   "failure": {
@@ -276,6 +284,7 @@ NPC (неигровые персонажи):
     "conditions": [],
     "quest": null,
     "npc": null,
+    "stations": [],
     "monsterDies": false, "goldChange": 0, "sceneChange": false
   },
   "imagePrompt": "english dark fantasy scene description, detailed",
@@ -1004,6 +1013,32 @@ async function resolvePlayerAction(
           content: ` NPC: ${npc.name} [${role}, ${disposition}]${npc.location ? ` @ ${npc.location}` : ""}.`,
         },
       });
+    }
+  }
+
+  // ===== Crafting stations =====
+  // The DM may grant the party access to a crafting station (alchemy/forge/enchant)
+  // when the hero discovers one in the world. Persist on the Room row.
+  const plannedStations = Array.isArray(branch.stations) ? branch.stations : [];
+  if (plannedStations.length > 0) {
+    const room = await db.room.findUnique({ where: { id: roomId } });
+    if (room) {
+      const data: any = {};
+      const granted: string[] = [];
+      for (const s of plannedStations) {
+        if (s === "alchemy" && !room.hasAlchemy) { data.hasAlchemy = true; granted.push("Алхимия"); }
+        if (s === "forge" && !room.hasForge) { data.hasForge = true; granted.push("Кузница"); }
+        if (s === "enchant" && !room.hasEnchant) { data.hasEnchant = true; granted.push("Зачарование"); }
+      }
+      if (Object.keys(data).length > 0) {
+        await db.room.update({ where: { id: roomId }, data });
+        await db.chatMessage.create({
+          data: {
+            roomId, role: "system", speaker: "", round,
+            content: `🛠️ В комнате теперь доступен верстак: ${granted.join(", ")}.`,
+          },
+        });
+      }
     }
   }
 

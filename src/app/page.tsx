@@ -394,6 +394,37 @@ export default function Home() {
     [session]
   );
 
+  const craftItem = useCallback(
+    async (recipeId: string): Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }> => {
+      if (!session) return { success: false, error: "Нет сессии." };
+      try {
+        const res = await fetch("/api/game/craft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, recipeId }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setSnapshot(data.snapshot);
+          pingRoom(session.roomCode);
+          const c = data.craft;
+          if (c?.success) {
+            toast.success(`Создано: ${c.result ?? "предмет"}! (бросок ${c.roll} vs DC ${c.dc})`);
+          } else {
+            toast.error(`Крафт провалился (бросок ${c?.roll} vs DC ${c?.dc}).`);
+          }
+          return { success: Boolean(c?.success), result: c?.result, roll: c?.roll, dc: c?.dc };
+        }
+        toast.error(data.error ?? "Не удалось скрафтить.");
+        return { success: false, error: data.error };
+      } catch {
+        toast.error("Ошибка крафта.");
+        return { success: false, error: "Ошибка крафта." };
+      }
+    },
+    [session]
+  );
+
   const handleRest = useCallback(
     async (restType: "short" | "long") => {
       if (!session) return;
@@ -689,6 +720,10 @@ export default function Home() {
               conditions={snapshot.conditions.filter((c) => c.targetName === you.name)}
               onEquip={equipItem}
               onUnequip={unequipItem}
+              hasAlchemy={snapshot.hasAlchemy}
+              hasForge={snapshot.hasForge}
+              hasEnchant={snapshot.hasEnchant}
+              onCraft={craftItem}
             />
           )}
           <DiceLog rolls={snapshot.diceLog} />

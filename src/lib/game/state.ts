@@ -505,6 +505,15 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     }
   }
 
+  // Crafting stations available in the room.
+  const stations: string[] = [];
+  if (snap.hasAlchemy) stations.push("Алхимия");
+  if (snap.hasForge) stations.push("Кузница");
+  if (snap.hasEnchant) stations.push("Зачарование");
+  if (stations.length > 0) {
+    lines.push(`=== Верстаки крафта ===\nДоступны: ${stations.join(", ")}`);
+  }
+
   // Time of day.
   lines.push(
     `=== Время суток и погода ===\nСейчас: ${timeOfDayLabelRu(snap.timeOfDay)} · ${weatherLabelRu(snap.weather)}`
