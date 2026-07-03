@@ -11,8 +11,108 @@
 // image-gen model performs best on English dark-fantasy keywords).
 
 import type { MapRoomType } from "./types";
+import {
+  BESTIARY,
+  type BestiaryEntry,
+  type MonsterCategory,
+  getBestiaryEntryById,
+} from "./bestiary";
 
 export type DungeonBiomeId = "catacombs" | "caves" | "tower" | "forest" | "dungeon";
+
+// ---------- Bestiary integration ----------
+//
+// Each biome's `monsters` pool is now pulled from the central BESTIARY
+// catalogue in bestiary.ts. The mapping below pins which bestiary entry ids
+// belong to each biome — the spec calls for:
+//   catacombs → undead + cultists
+//   caves     → beasts + earth/water elementals
+//   tower     → elementals + demons + necromancers
+//   forest    → bandits + beasts
+//   dungeon   → goblins/orcs + undead
+
+/** Hex colour per monster category — drives the on-grid token tint. */
+export const CATEGORY_HEX: Record<MonsterCategory, string> = {
+  humanoid: "#d97706",
+  undead: "#a1a1aa",
+  beast: "#16a34a",
+  dragon: "#b91c1c",
+  demon: "#9333ea",
+  elemental: "#0284c7",
+  boss: "#7f1d1d",
+};
+
+/** Bestiary entry ids per biome — the monster pool the room-population
+ *  engine draws from (scaled to party level at spawn-time). */
+export const BIOME_MONSTER_IDS: Record<DungeonBiomeId, string[]> = {
+  catacombs: ["skeleton", "zombie", "ghoul", "shadow", "wight", "cultist", "cult-fanatic"],
+  caves: ["giant-spider", "giant-rat", "cave-bat-swarm", "wolf", "earth-elemental", "water-elemental"],
+  tower: ["fire-elemental", "air-elemental", "ice-mephit", "lightning-mephit", "imp", "quasit", "shadow-demon", "necromancer"],
+  forest: ["bandit", "bandit-captain", "wolf", "dire-wolf", "boar", "brown-bear", "owl"],
+  dungeon: ["goblin", "goblin-warrior", "goblin-shaman", "hobgoblin", "orc", "orc-brute", "skeleton", "zombie", "wraith"],
+};
+
+/** Convert a bestiary entry into the BiomeMonster shape the room-population
+ *  engine expects (lossy: discards CR/loot/specialAbility — those are read
+ *  back from the bestiary on the DM-context side via findBestiaryEntryByName). */
+function bestiaryToBiomeMonster(e: BestiaryEntry): BiomeMonster {
+  return {
+    name: e.name,
+    hp: e.hp,
+    ac: e.ac,
+    damage: e.damageNotation,
+    attackBonus: e.attackBonus,
+    color: CATEGORY_HEX[e.category],
+    description: e.description,
+  };
+}
+
+/** Resolve a biome's bestiary entry ids into the BiomeMonster[] pool. Missing
+ *  ids are skipped (logged via console.warn) so a typo doesn't crash dungeon
+ *  generation. */
+function resolveBiomeMonsters(biomeId: DungeonBiomeId): BiomeMonster[] {
+  const ids = BIOME_MONSTER_IDS[biomeId];
+  const out: BiomeMonster[] = [];
+  for (const id of ids) {
+    const entry = getBestiaryEntryById(id);
+    if (!entry) {
+      console.warn(`[dungeon-biomes] bestiary entry "${id}" not found for biome "${biomeId}"`);
+      continue;
+    }
+    out.push(bestiaryToBiomeMonster(entry));
+  }
+  return out;
+}
+
+/** Resolve a biome's bestiary entries into the full BestiaryEntry[] (used by
+ *  the BestiaryPanel "in this biome" filter). */
+export function getBiomeBestiaryEntries(biomeId: DungeonBiomeId): BestiaryEntry[] {
+  const ids = BIOME_MONSTER_IDS[biomeId] ?? [];
+  const out: BestiaryEntry[] = [];
+  for (const id of ids) {
+    const e = getBestiaryEntryById(id);
+    if (e) out.push(e);
+  }
+  return out;
+}
+
+/** All bestiary entries used by at least one biome (handy for the viewer). */
+export function getUsedBestiaryEntries(): BestiaryEntry[] {
+  const seen = new Set<string>();
+  const out: BestiaryEntry[] = [];
+  for (const biomeId of DUNGEON_BIOME_IDS) {
+    for (const e of getBiomeBestiaryEntries(biomeId)) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      out.push(e);
+    }
+  }
+  return out;
+}
+
+// Re-export so callers can import the catalogue + helpers from this module.
+export { BESTIARY, getBestiaryEntryById };
+export type { BestiaryEntry, MonsterCategory };
 
 /** A monster template spawned into combat / boss rooms. */
 export interface BiomeMonster {
@@ -99,13 +199,7 @@ export const DUNGEON_BIOMES: Record<DungeonBiomeId, DungeonBiome> = {
       boss: ["Чёрный алтарь", "Логово некроманта", "Трон из костей", "Сердце катакомб"],
       trap: ["Гнилой коридор", "Яма с шипами", "Камера пыток", "Зал ядовитых струй"],
     },
-    monsters: [
-      { name: "Скелет-воин", hp: 13, ac: 13, damage: "1d6+2", attackBonus: 4, color: "#e5e7eb", description: "Бессмертный костяной страж с ржавым мечом и тлеющими провалами глаз." },
-      { name: "Скелет-лучник", hp: 9, ac: 11, damage: "1d6+1", attackBonus: 3, color: "#d4d4d8", description: "Костлявый стрелок с луком из выбеленных костей." },
-      { name: "Восставший труп", hp: 16, ac: 12, damage: "1d8+2", attackBonus: 4, color: "#a3a3a3", description: "Разбухший от тлена покойник с мертвой хваткой." },
-      { name: "Тень усопшего", hp: 11, ac: 14, damage: "1d4+2", attackBonus: 5, color: "#52525b", description: "Полупрозрачный дух, чьё прикосновение вытягивает жизнь." },
-      { name: "Костяной голем", hp: 22, ac: 15, damage: "1d10+3", attackBonus: 5, color: "#f5f5f4", description: "Сшитый из костей многих мертвецов страж склепа." },
-    ],
+    monsters: resolveBiomeMonsters("catacombs"),
     bosses: [
       { name: "Некромант Морнгрим", hp: 60, ac: 15, damage: "2d6+3", attackBonus: 6, color: "#1e293b", description: "Сгорбленный маг в чёрном балахоне, глаза горят могильным огнём.", specialAbility: "Призыв костяных слуг: раз в 3 раунда поднимает 1d2 скелета-воина." },
       { name: "Костяной лорд Везер", hp: 80, ac: 17, damage: "2d8+4", attackBonus: 7, color: "#e5e7eb", description: "Огромный рыцарь-скелет в ржавых латах, на его черепе — корона из пальцев.", specialAbility: "Ужасающий клич: первый ход боя накладывает «испуг» на всех в радиусе 6 (СПАС WIS 14)." },
@@ -159,13 +253,7 @@ export const DUNGEON_BIOMES: Record<DungeonBiomeId, DungeonBiome> = {
       boss: ["Логово пещерного дракона", "Сердце пещер", "Чёрный провал", "Трон из кристаллов"],
       trap: ["Скользкий карниз", "Глубокий провал", "Гнездо скорпионов", "Болото пузырей"],
     },
-    monsters: [
-      { name: "Кобольд-копатель", hp: 11, ac: 12, damage: "1d4+2", attackBonus: 4, color: "#a16207", description: "Мелкий чешуйчатый гуманоид с киркой и злобными глазами-бусинами." },
-      { name: "Пещерный гоблин", hp: 12, ac: 13, damage: "1d6+2", attackBonus: 4, color: "#16a34a", description: "Бледный подземный гоблин с копьём из сталактита." },
-      { name: "Гигантская летучая мышь", hp: 14, ac: 12, damage: "1d6+2", attackBonus: 5, color: "#1f2937", description: "Размах крыльев три метра, острые клыки пропитаны ядом." },
-      { name: "Слизь пещерная", hp: 18, ac: 9, damage: "1d8+1", attackBonus: 3, color: "#22c55e", description: "Полупрозрачная желеобразная масса, переваривающая всё живое." },
-      { name: "Кристальный паук", hp: 10, ac: 14, damage: "1d4+3", attackBonus: 6, color: "#67e8f9", description: "Сколопендровый паук с кристаллическим панцирем и ядовитыми жвалами." },
-    ],
+    monsters: resolveBiomeMonsters("caves"),
     bosses: [
       { name: "Пещерный дракон Витракс", hp: 95, ac: 16, damage: "2d10+5", attackBonus: 7, color: "#7f1d1d", description: "Слепой подземный вайверн с бледной чешуёй и пастью, полной сталактитовых зубов.", specialAbility: "Кислотное дыхание: раз в 3 раунда — конус 6 клеток, 6d6 урона кислотой (СПАС DEX 15 половина)." },
       { name: "Кристальная мать Шорак", hp: 75, ac: 17, damage: "2d8+4", attackBonus: 6, color: "#06b6d4", description: "Огромный паук-матка из живых кристаллов, чьё гнездо сплетено из сталактитов.", specialAbility: "Паутинный захват: цель в радиусе 3 должна СПАС DEX 14 или опутана (помеха на атаки, нет движения) на 1d3 раунда." },
@@ -219,13 +307,7 @@ export const DUNGEON_BIOMES: Record<DungeonBiomeId, DungeonBiome> = {
       boss: ["Вершина башни", "Трон чародея", "Зал призывов", "Сердце башни"],
       trap: ["Рунная ловушка", "Пол-телепорт", "Ловушка голема", "Зал молний"],
     },
-    monsters: [
-      { name: "Каменный голем-страж", hp: 22, ac: 15, damage: "1d10+3", attackBonus: 5, color: "#78716c", description: "Гранитный истукан с горящими рунами на лбу." },
-      { name: "Маг-ученик", hp: 12, ac: 12, damage: "1d8+2", attackBonus: 4, color: "#7c3aed", description: "Молодой маг в синем балахоне, метает сгустки силы." },
-      { name: "Теневая тварь", hp: 14, ac: 14, damage: "1d6+3", attackBonus: 5, color: "#1e1b4b", description: "Сшитая из тьмы тварь, призванная охранять коридоры." },
-      { name: "Медный голем", hp: 26, ac: 16, damage: "1d8+4", attackBonus: 6, color: "#b45309", description: "Полированный автоматон с топором-секатором." },
-      { name: "Оживлённый доспех", hp: 18, ac: 17, damage: "1d8+3", attackBonus: 5, color: "#52525b", description: "Пустой доспех с двуручным мечом, управляемый духом." },
-    ],
+    monsters: resolveBiomeMonsters("tower"),
     bosses: [
       { name: "Архимаг Велдрин", hp: 70, ac: 16, damage: "2d6+4", attackBonus: 7, color: "#6d28d9", description: "Седой чародей в фиолетовом халате, окружённый кольцами летающих рун.", specialAbility: "Цепная молния: раз в 2 раунда — 3 цели в радиусе 8, каждая 4d6 урона (СПАС DEX 15 половина)." },
       { name: "Голем-Хозяин башни", hp: 110, ac: 18, damage: "2d10+5", attackBonus: 7, color: "#a16207", description: "Огромный бронзовый колосс, чьё тело — сплав механизмов и магии.", specialAbility: "Земной удар: оглушает всех в радиусе 4 (СПАС CON 16) на 1 раунд." },
@@ -279,13 +361,7 @@ export const DUNGEON_BIOMES: Record<DungeonBiomeId, DungeonBiome> = {
       boss: ["Сердце леса", "Древний луг", "Логово лешего", "Чёрный пень"],
       trap: ["Волчья яма", "Корни-путы", "Скрытая трясина", "Ядовитый терновник"],
     },
-    monsters: [
-      { name: "Волк-трупоед", hp: 11, ac: 13, damage: "1d6+2", attackBonus: 5, color: "#52525b", description: "Тощий зверь с красными глазами и окровавленной пастью." },
-      { name: "Болотная тварь", hp: 15, ac: 11, damage: "1d6+2", attackBonus: 4, color: "#3f6212", description: "Слизкая гуманоидная тварь из тины и костей." },
-      { name: "Лесной гоблин", hp: 12, ac: 13, damage: "1d6+2", attackBonus: 4, color: "#15803d", description: "Зелёный гоблин в маскировке из листьев." },
-      { name: "Берска-медведица", hp: 22, ac: 12, damage: "1d10+3", attackBonus: 5, color: "#78350f", description: "Разъярённая медведица-мать, защищающая логово." },
-      { name: "Корень-душитель", hp: 16, ac: 13, damage: "1d8+2", attackBonus: 4, color: "#451a03", description: "Ожившие древесные корни с шипами и хваткой удава." },
-    ],
+    monsters: resolveBiomeMonsters("forest"),
     bosses: [
       { name: "Леший Чернобор", hp: 75, ac: 15, damage: "2d8+4", attackBonus: 6, color: "#365314", description: "Древний дух леса в облике огромного человека с корой вместо кожи и рогами-ветвями.", specialAbility: "Корни-путы: раз в 2 раунда цель в радиусе 5 должна СПАС STR 15 или опутана корнями на 1d3 раунда." },
       { name: "Ведьма Моргана", hp: 65, ac: 14, damage: "2d6+3", attackBonus: 6, color: "#166534", description: "Сгорбленная старуха с длинными когтями и глазами, светящимися зелёным.", specialAbility: "Дыхание тлена: раз в 3 раунда — конус 5 клеток, 4d6 урона ядом (СПАС CON 14 половина) + отравление." },
@@ -339,13 +415,7 @@ export const DUNGEON_BIOMES: Record<DungeonBiomeId, DungeonBiome> = {
       boss: ["Тронный зал", "Логово", "Сердце подземелья", "Чёрный алтарь"],
       trap: ["Коварный коридор", "Зал лезвий", "Камера ловушек", "Гнилая ниша"],
     },
-    monsters: [
-      { name: "Гоблин-разведчик", hp: 12, ac: 13, damage: "1d6+2", attackBonus: 4, color: "#16a34a", description: "Кривоногий зеленошкурый гоблин с ржавым ножом." },
-      { name: "Разбойник-головорез", hp: 14, ac: 12, damage: "1d8+2", attackBonus: 4, color: "#9a3412", description: "Заросший бандит с тяжёлой булавой." },
-      { name: "Падший страж", hp: 18, ac: 14, damage: "1d8+3", attackBonus: 5, color: "#52525b", description: "Восставший рыцарь в ржавых доспехах." },
-      { name: "Теневой клон", hp: 10, ac: 13, damage: "1d6+1", attackBonus: 4, color: "#27272a", description: "Полупрозрачная тень, повторяющая движения." },
-      { name: "Кабан-вепрь", hp: 17, ac: 11, damage: "1d8+3", attackBonus: 5, color: "#78350f", description: "Огромный клыкастый вепрь с налитыми кровью глазами." },
-    ],
+    monsters: resolveBiomeMonsters("dungeon"),
     bosses: [
       { name: "Тёмный рыцарь Вейн", hp: 85, ac: 17, damage: "2d8+5", attackBonus: 7, color: "#1c1917", description: "Павший паладин в чёрных латах с почерневшим двуручным клинком и горящими красными глазами.", specialAbility: "Тёмная волна: раз в 3 раунда — все в радиусе 5 получают 4d6 некротического урона (СПАС WIS 15 половина)." },
       { name: "Демон Азмодей", hp: 100, ac: 16, damage: "2d10+4", attackBonus: 7, color: "#7f1d1d", description: "Огромный рогатый демон с пылающей кнутом-клинком и кожей, источающей серный дым.", specialAbility: "Адское пламя: раз в 2 раунда — конус 6 клеток, 5d6 урона огнём (СПАС DEX 15 половина)." },
