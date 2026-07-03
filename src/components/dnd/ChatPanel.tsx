@@ -5,8 +5,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp,
+  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, Volume2, Square,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { ChatMessageState } from "@/lib/game/types";
 import { sanitizeLLMOutput } from "@/lib/game/sanitize";
 import { useSettings } from "@/lib/game/settings";
@@ -37,6 +38,12 @@ interface ChatPanelProps {
   onRest?: (restType: "short" | "long") => void;
   /** Room code — required for the "Показать ещё" paginated loader. */
   roomCode?: string;
+  /**
+   * Whether TTS narration is enabled (task tts-voice-dm). When true, new DM
+   * messages auto-play once the streaming bubble resolves to a real id.
+   * Volume/voice are read from useSettings inside the panel.
+   */
+  ttsEnabled?: boolean;
 }
 
 /**
@@ -55,6 +62,7 @@ export const ChatPanel = memo(function ChatPanel({
   onSend,
   onRest,
   roomCode,
+  ttsEnabled = false,
 }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,7 +77,123 @@ export const ChatPanel = memo(function ChatPanel({
 
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
+  const ttsVoiceSetting = useSettings((s) => s.ttsVoice);
+  const ttsVolumeSetting = useSettings((s) => s.ttsVolume);
   const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
+
+  // ===== TTS playback state (task tts-voice-dm) =====
+  // Single <audio> element shared across all message bubbles — clicking a new
+  // message's TTS button stops the previous one. We track which message id is
+  // currently loading audio and which is currently playing so each bubble's
+  // 🔊 button can render its own spinner / playing state.
+  const [ttsLoadingId, setTtsLoadingId] = useState<string | null>(null);
+  const [ttsPlayingId, setTtsPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  /** Latest DM message id we've already auto-played — guards against re-triggering. */
+  const lastAutoPlayedIdRef = useRef<string | null>(null);
+
+  const stopTts = useCallback(() => {
+    if (audioRef.current) {
+      try { audioRef.current.pause(); } catch {}
+      audioRef.current = null;
+    }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setTtsPlayingId(null);
+  }, []);
+
+  const playTTS = useCallback(async (message: ChatMessageState) => {
+    if (message.role !== "dm" || !message.content.trim()) return;
+    // Stop any current playback before starting a new one.
+    stopTts();
+    setTtsLoadingId(message.id);
+    try {
+      const res = await fetch("/api/game/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: message.content,
+          lang,
+          voice: ttsVoiceSetting,
+        }),
+      });
+      if (!res.ok) throw new Error("tts-failed");
+      const blob = await res.blob();
+      if (blob.size === 0) throw new Error("tts-empty");
+      const url = URL.createObjectURL(blob);
+      objectUrlRef.current = url;
+      const audio = new Audio(url);
+      audio.volume = Math.max(0, Math.min(1, ttsVolumeSetting));
+      audio.onplay = () => setTtsPlayingId(message.id);
+      audio.onpause = () => {
+        setTtsPlayingId((cur) => (cur === message.id ? null : cur));
+      };
+      audio.onended = () => {
+        setTtsPlayingId(null);
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+          objectUrlRef.current = null;
+        }
+      };
+      audio.onerror = () => {
+        setTtsPlayingId(null);
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+          objectUrlRef.current = null;
+        }
+      };
+      audioRef.current = audio;
+      await audio.play();
+    } catch {
+      toast.error("Не удалось озвучить текст");
+      // Clean up any partial state.
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+      audioRef.current = null;
+    } finally {
+      setTtsLoadingId((cur) => (cur === message.id ? null : cur));
+    }
+  }, [lang, ttsVoiceSetting, ttsVolumeSetting, stopTts]);
+
+  // Auto-play: when ttsEnabled and a NEW non-streaming DM message arrives in
+  // the recent (live) snapshot, trigger TTS for it. The streaming bubble has
+  // id "streaming" — we wait until the persisted message replaces it after
+  // the SSE stream ends (page.tsx `done` event → fetchState → real DB id).
+  useEffect(() => {
+    if (!ttsEnabled) return;
+    if (messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    if (last.role !== "dm") return;
+    // Skip the streaming placeholder — auto-play only after stream ends.
+    if (last.id === "streaming") return;
+    // First time we see a DM message: seed the ref but don't auto-play
+    // (avoid blasting the seed intro on every page load).
+    if (lastAutoPlayedIdRef.current === null) {
+      lastAutoPlayedIdRef.current = last.id;
+      return;
+    }
+    if (lastAutoPlayedIdRef.current === last.id) return;
+    lastAutoPlayedIdRef.current = last.id;
+    void playTTS(last);
+  }, [messages, ttsEnabled, playTTS]);
+
+  // Stop TTS when the panel unmounts.
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        try { audioRef.current.pause(); } catch {}
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Reset pagination state when the room changes.
   useEffect(() => {
@@ -77,7 +201,11 @@ export const ChatPanel = memo(function ChatPanel({
     setHasMore(null);
     setShowLoadMore(false);
     offsetRef.current = 0;
-  }, [roomCode]);
+    // Reset TTS auto-play tracking — the new room's seed DM message shouldn't
+    // immediately blast audio on first load (Item 5 constraint).
+    lastAutoPlayedIdRef.current = null;
+    stopTts();
+  }, [roomCode, stopTts]);
 
   // Show "Показать ещё" only when the visible snapshot has at least VISIBLE_LIMIT
   // messages — a heuristic that there might be older ones worth fetching.
@@ -191,7 +319,17 @@ export const ChatPanel = memo(function ChatPanel({
           </div>
         )}
         {all.map((m) => (
-          <MessageBubble key={m.id} message={m} yourName={yourName} lang={lang} />
+          <MessageBubble
+            key={m.id}
+            message={m}
+            yourName={yourName}
+            lang={lang}
+            onPlayTTS={playTTS}
+            onStopTTS={stopTts}
+            isTtsLoading={ttsLoadingId === m.id}
+            isTtsPlaying={ttsPlayingId === m.id}
+            anyTtsActive={ttsLoadingId !== null || ttsPlayingId !== null}
+          />
         ))}
 
         {isThinking && (
@@ -286,7 +424,33 @@ export const ChatPanel = memo(function ChatPanel({
   );
 });
 
-function MessageBubble({ message, yourName, lang }: { message: ChatMessageState; yourName: string; lang: import("@/lib/game/i18n").Lang }) {
+interface MessageBubbleProps {
+  message: ChatMessageState;
+  yourName: string;
+  lang: import("@/lib/game/i18n").Lang;
+  /** Trigger TTS for this message. */
+  onPlayTTS?: (m: ChatMessageState) => void;
+  /** Stop any current TTS playback. */
+  onStopTTS?: () => void;
+  /** Whether TTS audio is currently being generated for THIS message. */
+  isTtsLoading?: boolean;
+  /** Whether TTS audio is currently playing for THIS message. */
+  isTtsPlaying?: boolean;
+  /** Whether ANY message is currently loading/playing TTS (used to disable
+   *  other buttons while a request is in flight). */
+  anyTtsActive?: boolean;
+}
+
+function MessageBubble({
+  message,
+  yourName,
+  lang,
+  onPlayTTS,
+  onStopTTS,
+  isTtsLoading = false,
+  isTtsPlaying = false,
+  anyTtsActive = false,
+}: MessageBubbleProps) {
   const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
   if (message.role === "player") {
     const isYou = message.speaker === yourName;
@@ -322,14 +486,53 @@ function MessageBubble({ message, yourName, lang }: { message: ChatMessageState;
   // sanitizer before rendering. The backend already sanitizes on persist, but
   // this catches any in-flight streaming tokens that bypassed that path.
   const safeContent = sanitizeLLMOutput(message.content);
+  // Don't render the TTS button for the in-flight streaming bubble — it has
+  // id "streaming" and partial content that's still changing.
+  const isStreamingBubble = message.id === "streaming";
+  const ttsDisabled = !onPlayTTS || isStreamingBubble || !message.content.trim();
+  const handleTtsClick = () => {
+    if (isTtsPlaying) {
+      onStopTTS?.();
+      return;
+    }
+    if (isTtsLoading) return;
+    onPlayTTS?.(message);
+  };
   return (
     <div className="flex items-start gap-2 animate-fade-up">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-700/60 bg-stone-950/80">
         <Skull className="h-4 w-4 text-amber-300" />
       </div>
       <div className="max-w-[88%] rounded-lg rounded-tl-none border border-border/60 bg-stone-900/60 px-3 py-2">
-        <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/80">
-          <Sparkles className="h-3 w-3" /> {tt("chat.master_title")}
+        <div className="mb-0.5 flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/80">
+            <Sparkles className="h-3 w-3" /> {tt("chat.master_title")}
+          </div>
+          {!isStreamingBubble && onPlayTTS && (
+            <button
+              type="button"
+              onClick={handleTtsClick}
+              disabled={ttsDisabled || (anyTtsActive && !isTtsLoading && !isTtsPlaying)}
+              title={isTtsPlaying ? "Остановить озвучку" : "Озвучить реплику Мастера"}
+              aria-label={isTtsPlaying ? "Остановить озвучку" : "Озвучить реплику Мастера"}
+              data-no-click-sfx
+              className={cn(
+                "flex h-5 w-5 items-center justify-center rounded-full border text-amber-300 transition-colors",
+                isTtsPlaying
+                  ? "border-amber-500/70 bg-amber-500/20 hover:bg-amber-500/30"
+                  : "border-amber-800/40 bg-amber-950/30 hover:bg-amber-950/50",
+                "disabled:cursor-not-allowed disabled:opacity-30"
+              )}
+            >
+              {isTtsLoading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : isTtsPlaying ? (
+                <Square className="h-2.5 w-2.5 fill-current" />
+              ) : (
+                <Volume2 className="h-3 w-3" />
+              )}
+            </button>
+          )}
         </div>
         <p className="whitespace-pre-wrap font-serif text-sm leading-relaxed text-foreground/90">
           {safeContent}
