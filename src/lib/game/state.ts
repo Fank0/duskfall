@@ -8,6 +8,7 @@ import { inferEquipProps } from "./item-props";
 import { findBestiaryEntryByName, formatCR } from "./bestiary";
 import { getClassIdByCharClass, isCasterClass } from "./presets";
 import { getSpellById, resolveKnownSpells } from "./spellbook";
+import { generateLoot, type ItemEntry, type ItemRarity } from "./item-database";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -675,6 +676,52 @@ export async function logDiceRoll(
   invalidateSnapshotCache(roomId);
 }
 
+/** Average level of alive players in a room (rounded; 1 if no alive players).
+ *  Used to scale loot rarity and biome-monster stats. */
+export async function averagePartyLevel(roomId: string): Promise<number> {
+  const players = await db.player.findMany({ where: { roomId, isAlive: true } });
+  const alive = players.filter((p) => p.hp > 0);
+  if (alive.length === 0) return 1;
+  return Math.round(alive.reduce((s, p) => s + p.level, 0) / alive.length);
+}
+
+/** Add an ItemEntry (from the item database) to a player's inventory (or to
+ *  the ground if playerName === "__ground__"). Uses the entry's explicit
+ *  equipSlot / acBonus / statBonus / damageNotation values rather than
+ *  re-inferring them from name/description — so catalog items keep their
+ *  authored stats. Stacks with existing items of the same name. */
+export async function addDatabaseItemToInventory(
+  roomId: string,
+  playerName: string,
+  entry: ItemEntry
+): Promise<void> {
+  const existing = await db.inventoryItem.findFirst({
+    where: { roomId, playerName, itemName: entry.name },
+  });
+  if (existing) {
+    await db.inventoryItem.update({
+      where: { id: existing.id },
+      data: { quantity: existing.quantity + 1 },
+    });
+  } else {
+    await db.inventoryItem.create({
+      data: {
+        roomId,
+        playerName,
+        itemName: entry.name,
+        itemType: entry.type,
+        quantity: 1,
+        description: entry.description,
+        equipSlot: entry.equipSlot ?? null,
+        acBonus: entry.acBonus ?? 0,
+        statBonus: serializeEquipStats(entry.statBonus ?? {}),
+        damageNotation: entry.damageNotation ?? "",
+      },
+    });
+  }
+  invalidateSnapshotCache(roomId);
+}
+
 export async function damageMonster(roomId: string, monsterId: string, amount: number) {
   const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
   if (!m) return { hp: 0, died: false };
@@ -689,41 +736,54 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
       where: { roomId, combatantName: m.name },
       data: { isAlive: false },
     });
+    // ===== Monster loot drop (item-db task, item 3) =====
+    // When a monster dies AND its bestiary entry has loot (gold > 0 OR
+    // items.length > 0), use generateLoot(partyLevel) to spawn 1–3 random
+    // items on the ground (playerName="__ground__"). Bosses bias toward
+    // higher rarity. This replaces the previous boss-loot-from-biome-pool
+    // logic — generateLoot is now the single source of truth for monster
+    // loot drops, and the bestiary's loot field is just a yes/no flag.
+    const bestiaryEntry = findBestiaryEntryByName(m.name);
+    const hasLoot =
+      bestiaryEntry?.loot &&
+      (bestiaryEntry.loot.gold > 0 || bestiaryEntry.loot.items.length > 0);
+    if (hasLoot) {
+      const partyLevel = await averagePartyLevel(roomId);
+      // Bosses bias toward "veryrare" so their loot feels rewarding; regular
+      // monsters use the level-scaled roll (no bias).
+      const rarityBias: ItemRarity | undefined = m.isBoss ? "veryrare" : undefined;
+      const lootEntries = generateLoot(partyLevel, rarityBias);
+      const spawnedNames: string[] = [];
+      for (const entry of lootEntries) {
+        await addDatabaseItemToInventory(roomId, "__ground__", entry);
+        spawnedNames.push(entry.name);
+      }
+      if (spawnedNames.length > 0) {
+        await db.chatMessage.create({
+          data: {
+            roomId,
+            role: "system",
+            speaker: "",
+            content: `С поверженного «${m.name}» выпадает добыча: ${spawnedNames.join(", ")}.`,
+            round: 0,
+          },
+        });
+      }
+    }
+
     // ===== Boss death reward (Пункт 36) =====
-    // When a boss dies: award 3× XP to ALL alive players, spawn treasure loot
-    // on the ground (playerName="__ground__"), and mark the dungeon cleared.
-    // The DM agent already awards 1× XP to the actor; this bonus is party-wide
-    // so the killer gets an effective 4× (1 from DM + 3 from boss reward) and
-    // every other party member gets 3× — matching the spec's "award 3× XP".
+    // When a boss dies: award 3× XP to ALL alive players and mark the dungeon
+    // cleared. The DM agent already awards 1× XP to the actor; this bonus is
+    // party-wide so the killer gets an effective 4× (1 from DM + 3 from boss
+    // reward) and every other party member gets 3× — matching the spec's
+    // "award 3× XP". Loot is now spawned by the bestiary-loot block above
+    // (via generateLoot, biased toward veryrare for bosses).
     if (m.isBoss) {
       const alivePlayers = await db.player.findMany({ where: { roomId, isAlive: true } });
       const baseXp = xpForMonster(m.maxHp);
       const bossXp = baseXp * 3;
       for (const p of alivePlayers) {
         if (p.hp > 0) await awardXP(roomId, p.name, bossXp);
-      }
-      // Spawn 3 treasure items on the ground (loot items).
-      const room = await db.room.findUnique({ where: { id: roomId }, select: { dungeonBiome: true } });
-      const biomeId = (room?.dungeonBiome ?? "dungeon") as
-        | "catacombs" | "caves" | "tower" | "forest" | "dungeon";
-      const { getBiome } = await import("./dungeon-biomes");
-      const biomeDef = getBiome(biomeId);
-      const lootCount = Math.min(3, biomeDef.loot.length);
-      // Pick distinct items from the biome loot pool.
-      const lootPool = [...biomeDef.loot];
-      for (let i = 0; i < lootCount && lootPool.length > 0; i++) {
-        const idx = Math.floor(Math.random() * lootPool.length);
-        const item = lootPool.splice(idx, 1)[0];
-        await db.inventoryItem.create({
-          data: {
-            roomId,
-            playerName: "__ground__",
-            itemName: item.name,
-            itemType: item.type,
-            quantity: 1,
-            description: item.description,
-          },
-        });
       }
       await db.room.update({
         where: { id: roomId },
@@ -734,7 +794,7 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
           roomId,
           role: "system",
           speaker: "",
-          content: `Босс «${m.name}» повержен! Подземелье зачищено! Партия получает ${bossXp} XP каждому. На полу появляется сокровище.`,
+          content: `Босс «${m.name}» повержен! Подземелье зачищено! Партия получает ${bossXp} XP каждому.`,
           round: 0,
         },
       });

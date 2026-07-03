@@ -16,9 +16,10 @@
 // new-dungeon flow can wipe and regenerate cleanly.
 
 import { db } from "@/lib/db";
-import { GRID_SIZE, invalidateSnapshotCache, upsertNpc, applyInventoryChanges } from "./state";
+import { GRID_SIZE, invalidateSnapshotCache, upsertNpc, addDatabaseItemToInventory } from "./state";
 import { getBiome, scaleBiomeMonster, scaleBiomeBoss, type DungeonBiomeId } from "./dungeon-biomes";
 import { markRoomPopulated } from "./world-map";
+import { generateLoot, type ItemEntry } from "./item-database";
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -98,22 +99,23 @@ async function spawnBoss(
 }
 
 /** Drop 1–3 loot items onto the ground (playerName="__ground__") so they show
- *  up as loot cells on the combat grid (item 20 loot shimmer overlay). */
+ *  up as loot cells on the combat grid (item 20 loot shimmer overlay).
+ *
+ *  Uses generateLoot(partyLevel) so the loot scales with the party's level
+ *  (higher level = higher rarity chance). Returns the spawned ItemEntry list
+ *  so the caller can include the count in the room-discovery summary. */
 async function spawnGroundLoot(
   roomId: string,
-  biomeId: DungeonBiomeId,
-  count: number
-): Promise<void> {
-  const biome = getBiome(biomeId);
-  if (biome.loot.length === 0) return;
-  for (let i = 0; i < count; i++) {
-    const item = pick(biome.loot);
-    // applyInventoryChanges takes a playerName — we use the reserved "__ground__"
-    // sentinel so the snapshot's lootCells derivation picks it up.
-    await applyInventoryChanges(roomId, "__ground__", [
-      { action: "add", item: item.name, type: item.type, description: item.description },
-    ]);
+  partyLevel: number
+): Promise<ItemEntry[]> {
+  const entries = generateLoot(partyLevel);
+  for (const entry of entries) {
+    // addDatabaseItemToInventory uses the entry's explicit equipSlot / AC /
+    // stat bonuses / damage notation — so catalog items keep their authored
+    // stats rather than being re-inferred from name/description.
+    await addDatabaseItemToInventory(roomId, "__ground__", entry);
   }
+  return entries;
 }
 
 /** Place 1–2 traps at random combat-grid cells inside this map room. Traps
@@ -206,8 +208,8 @@ export async function populateRoomContent(
       break;
     }
     case "loot": {
-      const count = 1 + rnd(3); // 1..3
-      await spawnGroundLoot(roomId, biomeId, count);
+      const entries = await spawnGroundLoot(roomId, partyLevel);
+      const count = entries.length;
       summary = `На полу что-то блестит — сокровища (${count}).`;
       break;
     }
