@@ -49,6 +49,13 @@ export interface OutcomeEffects {
   npc?: PlannedNpc | null;
   /** Optional crafting stations the DM grants (e.g. when the hero finds an alchemy lab or forge). */
   stations?: ("alchemy" | "forge" | "enchant")[];
+  /**
+   * Optional spell ID for the actor to learn from a found scroll ("scroll of
+   * <spell name>"). When set, the dm-agent resolves the spell ID and adds it
+   * to the actor's `spellbookSpells` list (extra spells beyond their class
+   * base set). The scroll inventory item is consumed separately.
+   */
+  learnSpell?: string;
 }
 
 /** A quest the DM planned to add/update in the room's journal. */

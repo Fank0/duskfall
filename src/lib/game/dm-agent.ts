@@ -41,6 +41,7 @@ import {
   createQuest,
   updateQuestStatus,
   upsertNpc,
+  learnSpell,
 } from "./state";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
 import { extractJson } from "./json";
@@ -59,6 +60,8 @@ import {
   effectiveAC,
   rollCounterattack,
 } from "./talents";
+import { getSpellById } from "./spellbook";
+import { knownSpellsForPlayer } from "./abilities";
 import type {
   DMResolution,
   ResolvedRoll,
@@ -226,6 +229,14 @@ NPC (неигровые персонажи):
 - "enchant" — стол зачарования (магические кольца, амулеты, плащи).
 Пример: герой разбивает старую лабораторию и находит алхимический стол — "stations": ["alchemy"]. Если верстаков нет — оставь пустой массив или не добавляй поле.
 
+ИЗУЧЕНИЕ ЗАКЛИНАНИЙ СО СВИТКА (learnSpell):
+Если герой-заклинатель находит и читает свиток заклинания (например "читаю свиток огненного шара", "изучаю свиток лечения") — заполни поле "learnSpell" внутри success идентификатором заклинания из книги заклинаний. Идентификаторы состоят из строчных латинских букв и знаков подчёркивания (например "fireball", "cure_wounds", "shield", "magic_missile", "lightning_bolt", "mass_cure_wounds"). Свиток при этом расходуется через inventory (action="remove", item="Свиток <название>"). Поле learnSpell имеет смысл ТОЛЬКО для заклинателей (волшебник, чародей, колдун, жрец, друид, бард, следопыт, паладин) — воинам/варварам/плутам/монахам свиток просто расходуется без эффекта.
+Пример: герой-маг читает свиток огненного шара — success.learnSpell = "fireball", success.inventory = [{"action":"remove","item":"Свиток огненного шара","type":"scroll"}].
+Не каждый свиток нужно изучать — только когда игрок явно просит это. Если идентификатор неизвестен — не добавляй поле.
+
+ЗАКЛИНАНИЯ ИЗ КНИГИ ЗАКЛИНАНИЙ (Spellbook Spells):
+В контексте под каждым заклинателем указан список известных ему заклинаний ("Книга заклинаний <имя>: Заговоры: ... | Заклинания: ..."). Если герой применяет заклинание из этого списка — используй механику из D&D 5e SRD (урон, спасбросок, AoE) и трать ячейку заклинания соответствующего круга (бэкенд проверит наличие ячейки автоматически). При ЗОНАЛЬНОМ заклинании обязательно задай aoeShape, aoeSize, aoeOrigin, aoeDirection, saveAbility, saveDC, aoeElement. Урон бери из success.monsterDamage.notation. Если герой пытается применить заклинание, которого НЕТ в его книге заклинаний — это invalid (невозможно).
+
 ПРЕИМУЩЕСТВО / ПОМЕХА (Advantage/Disadvantage):
 Поле "advantage" на верхнем уровне JSON задаёт режим броска атаки:
 - "advantage" — герой кидает 2d20 и берёт больший (атака из засады, со спины, по оглушённому/ослеплённому врагу, благоприятная позиция).
@@ -277,6 +288,7 @@ NPC (неигровые персонажи):
     "quest": null,
     "npc": null,
     "stations": [],
+    "learnSpell": "fireball",
     "monsterDies": false, "goldChange": 0, "sceneChange": false
   },
   "failure": {
@@ -287,6 +299,7 @@ NPC (неигровые персонажи):
     "quest": null,
     "npc": null,
     "stations": [],
+    "learnSpell": "",
     "monsterDies": false, "goldChange": 0, "sceneChange": false
   },
   "imagePrompt": "english dark fantasy scene description, detailed",
@@ -1127,6 +1140,29 @@ async function resolvePlayerAction(
     }
   }
 
+  // ===== Learn spell from scroll =====
+  // The DM may have planned for the actor to learn a spell from a found
+  // scroll ("scroll of <spell name>"). The plan carries `learnSpell` as a
+  // spell ID (e.g. "fireball"); we persist it on the actor's Player row.
+  // Only casters can learn spells; for non-casters the field is ignored.
+  const plannedLearnSpell = branch.learnSpell ?? "";
+  if (plannedLearnSpell && typeof plannedLearnSpell === "string") {
+    const spellId = plannedLearnSpell.trim().toLowerCase();
+    const spell = getSpellById(spellId);
+    const actorClassId = getClassIdByCharClass(actor.charClass);
+    if (spell && isCasterClass(actorClassId)) {
+      const learned = await learnSpell(roomId, actorName, spell.id);
+      if (learned) {
+        await db.chatMessage.create({
+          data: {
+            roomId, role: "system", speaker: "", round,
+            content: `📖 ${actorName} изучает заклинание «${spell.name}» (${spell.nameEn}) и вписывает его в книгу заклинаний.`,
+          },
+        });
+      }
+    }
+  }
+
   // Defensive cache invalidation — covers direct db mutations done above
   // (system chat messages, room station grants, monster visibility reveal)
   // that bypass the state.ts mutation helpers.
@@ -1398,6 +1434,13 @@ export async function resolvePlayerMechanics(
   if (!actor) throw new Error("Герой не найден в комнате.");
   if (!actor.isAlive || actor.hp <= 0) throw new Error("Павший герой не может действовать.");
 
+  // Fetch the actor's full PlayerState (used for known-spell detection below).
+  // The snapshot is cached so this is cheap.
+  const actorSnap = await getSnapshot(roomCode);
+  const actorState: PlayerState | undefined = actorSnap?.players.find(
+    (p) => p.name === actorName
+  );
+
   const wasCombatActive = room.combatActive;
   const round = room.round;
 
@@ -1425,17 +1468,34 @@ export async function resolvePlayerMechanics(
   const plan = await planResolution(roomCode, actorName, playerAction, lang);
 
   // Spell-slot detection: if the action text mentions a slot-consuming
-  // ability for the actor's class, try to spend a spell slot. If none remain,
+  // ability for the actor's class OR a known spellbook spell of level >= 1,
+  // try to spend a spell slot of the appropriate level. If none remain,
   // override the plan as invalid.
   if (plan.category !== "invalid") {
     const classId = getClassIdByCharClass(actor.charClass);
     const isCaster = isCasterClass(classId);
-    const slotAbilities = SLOT_CONSUMING_ABILITIES[classId] ?? [];
     const actionLower = playerAction.toLowerCase();
+    // (a) legacy slot-consuming ability keywords (e.g. "божественная кара")
+    const slotAbilities = SLOT_CONSUMING_ABILITIES[classId] ?? [];
     const usedSlotAbility =
       isCaster && slotAbilities.some((name) => actionLower.includes(name.toLowerCase()));
-    if (usedSlotAbility) {
-      const spend = await spendSpellSlot(roomId, actorName, 1);
+    // (b) spellbook spell by Russian/English name (only leveled spells cost slots).
+    // For each known leveled spell, if the action text mentions its name, we
+    // try to spend a slot of that spell's level (auto-upcasts to a higher slot
+    // if the exact-level one is exhausted — see spendSpellSlot).
+    let spellSlotLevel = 0;
+    if (isCaster && !usedSlotAbility && actorState) {
+      const knownSpells = knownSpellsForPlayer(actorState);
+      const matched = knownSpells.find(
+        (s) =>
+          s.level > 0 &&
+          (actionLower.includes(s.name.toLowerCase()) ||
+            actionLower.includes(s.nameEn.toLowerCase()))
+      );
+      if (matched) spellSlotLevel = matched.level;
+    }
+    if (usedSlotAbility || spellSlotLevel > 0) {
+      const spend = await spendSpellSlot(roomId, actorName, spellSlotLevel || 1);
       if (!spend.ok) {
         plan.category = "invalid";
         plan.invalidReason =

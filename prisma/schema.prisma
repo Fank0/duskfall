@@ -136,6 +136,12 @@ model Player {
   spellSlots       String   @default("") // JSON {"1":2,"2":0,...}
   maxSpellSlots    String   @default("") // JSON {"1":2,"2":0,...}
   hitDice          Int      @default(8)  // hit die size for short-rest healing
+  // ===== Spellbook (spellbook task) =====
+  // Comma-separated list of extra spell IDs the player has learned beyond
+  // their class base set (e.g. via reading a "scroll of <spell name>" the DM
+  // agent granted through the `learnSpell` plan field). Class base spells are
+  // derived in spellbook.ts; this column only stores the *extra* spells.
+  spellbookSpells  String   @default("")
   // Equipment slots (store InventoryItem ids). Null = empty.
   eqWeapon         String?
   eqShield         String?

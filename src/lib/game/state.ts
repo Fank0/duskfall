@@ -6,6 +6,8 @@ import { rollD20 } from "./dice";
 import { CONDITIONS, getCondition } from "./conditions";
 import { inferEquipProps } from "./item-props";
 import { findBestiaryEntryByName, formatCR } from "./bestiary";
+import { getClassIdByCharClass, isCasterClass } from "./presets";
+import { getSpellById, resolveKnownSpells } from "./spellbook";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -87,6 +89,9 @@ function toPlayer(p: any): PlayerState {
     spellSlots: parseSpellSlots(p.spellSlots),
     maxSpellSlots: parseSpellSlots(p.maxSpellSlots),
     hitDice: p.hitDice ?? 8,
+    spellbookSpells: p.spellbookSpells
+      ? String(p.spellbookSpells).split(",").map((s: string) => s.trim()).filter(Boolean)
+      : [],
     equipment: {
       weapon: p.eqWeapon ?? null,
       shield: p.eqShield ?? null,
@@ -449,6 +454,27 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     lines.push(
       `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo} | Позиция (${p.posX},${p.posY})`
     );
+    // Spellbook: list known spells for caster classes (so the DM agent can
+    // reference them when the player casts a known spell or finds a scroll).
+    const classId = getClassIdByCharClass(p.charClass);
+    if (isCasterClass(classId)) {
+      const knownIds = resolveKnownSpells(classId, p.level, p.spellbookSpells ?? []);
+      const knownSpells = knownIds
+        .map((id) => getSpellById(id))
+        .filter((s): s is NonNullable<typeof s> => Boolean(s));
+      if (knownSpells.length > 0) {
+        const cantrips = knownSpells.filter((s) => s.level === 0).map((s) => s.name);
+        const leveled = knownSpells
+          .filter((s) => s.level > 0)
+          .map((s) => `${s.name} (Круг ${s.level})`);
+        const parts: string[] = [];
+        if (cantrips.length > 0) parts.push(`Заговоры: ${cantrips.join(", ")}`);
+        if (leveled.length > 0) parts.push(`Заклинания: ${leveled.join(", ")}`);
+        if (parts.length > 0) {
+          lines.push(`  Книга заклинаний ${p.name}: ${parts.join(" | ")}`);
+        }
+      }
+    }
   }
 
   const items = snap.inventory;
@@ -1324,6 +1350,38 @@ export async function restoreSpellSlotsForShortRest(roomId: string, playerName: 
   const isWarlock = charClass.toLowerCase() === "warlock";
   if (!isWarlock) return;
   await restoreAllSpellSlots(roomId, playerName);
+}
+
+// ---------- Spellbook (spellbook task) ----------
+
+/**
+ * Add a spell ID to the player's known-spell list (extra spells beyond their
+ * class base set). Used by the DM agent when a player reads a "scroll of
+ * <spell name>" — the LLM's plan carries `success.learnSpell: <spellId>` and
+ * this helper persists it on the Player row.
+ *
+ * Returns true if the spell was newly added, false if the player already
+ * knew it (or the player wasn't found).
+ */
+export async function learnSpell(
+  roomId: string,
+  playerName: string,
+  spellId: string
+): Promise<boolean> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return false;
+  const current = (p.spellbookSpells ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (current.includes(spellId)) return false;
+  current.push(spellId);
+  await db.player.update({
+    where: { id: p.id },
+    data: { spellbookSpells: current.join(",") },
+  });
+  invalidateSnapshotCache(roomId);
+  return true;
 }
 
 /** Standard XP reward per monster CR (compressed). */
