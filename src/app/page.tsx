@@ -995,66 +995,18 @@ export default function Home() {
       </header>
 
       {/* ===== Main =====
-        Layout per user's hand-drawn plan (verified 4×):
-          TOP-LEFT   (~25%): PartyPanel → CombatGrid (square) → DiceLog (small)
-          TOP-CENTER (~50%): ChatPanel (dialogue — full height of top section)
-          TOP-RIGHT  (~25%): SceneViewer (16:9) → CharacterSheet (stats)
-          BOTTOM (full width): BottomPanel — inventory + abilities + spell slots
-        HTML order = visual order.
+        Layout (balanced, no scroll needed for core panels):
+          TOP-LEFT   (~22%): CharacterSheet (compact) + DiceLog
+          TOP-CENTER (~50%): ChatPanel (full height)
+          TOP-RIGHT  (~28%): SceneViewer (16:9) + CombatGrid (square) + PartyPanel (compact)
+          BOTTOM (full width): BottomPanel — equipment + inventory + abilities + spell slots
+        All columns fit without scrolling when content is not overflowing.
       */}
-      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-4">
+      <main className="flex min-h-0 flex-1 flex-col gap-2 p-2 sm:p-3">
         {/* ===== TOP: 3 columns ===== */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-          {/* ===== LEFT: Party → Grid → Dice ===== */}
-          <aside className="flex flex-col gap-3 lg:w-[25%] lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
-            <PartyPanel
-              players={snapshot.players}
-              youName={session.playerName}
-              currentTurnName={snapshot.currentTurnName}
-            />
-            <CombatGrid
-              players={snapshot.players}
-              monsters={snapshot.monsters}
-              combatActive={snapshot.combatActive}
-              round={snapshot.round}
-              currentTurnName={snapshot.currentTurnName}
-              conditions={snapshot.conditions}
-              aoe={lastAoe}
-              lastAnimEvent={lastAnimEvent}
-              gridExtras={{
-                lootCells: snapshot.lootCells,
-                traps: snapshot.traps,
-              }}
-            />
-            <DiceLog rolls={snapshot.diceLog} />
-          </aside>
-
-          {/* ===== CENTER: Chat (full height of top section) ===== */}
-          <section className="h-[55vh] min-h-0 shrink-0 lg:h-full lg:flex-1">
-            <ChatPanel
-              messages={snapshot.chat}
-              isThinking={isThinking}
-              isYourTurn={isYourTurn}
-              isDead={isDead}
-              combatActive={snapshot.combatActive}
-              yourName={session.playerName}
-              currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
-              onSend={sendAction}
-              onRest={handleRest}
-              roomCode={session.roomCode}
-              ttsEnabled={settings.ttsEnabled}
-            />
-          </section>
-
-          {/* ===== RIGHT: Scene → Character sheet (compact: name/HP/AC/conditions) ===== */}
-          <aside className="flex flex-col gap-3 lg:w-[25%] lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
-            <SceneViewer
-              scene={snapshot.scene}
-              isGenerating={isGeneratingImage}
-              location={snapshot.location}
-              timeOfDay={snapshot.timeOfDay}
-              weather={snapshot.weather}
-            />
+        <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
+          {/* ===== LEFT: Character sheet (compact) + Dice log ===== */}
+          <aside className="flex flex-col gap-2 lg:w-[22%] lg:shrink-0 lg:overflow-hidden">
             {you && (
               <CharacterSheet
                 player={you}
@@ -1072,6 +1024,56 @@ export default function Home() {
                 onQuickAction={sendAction}
               />
             )}
+            <div className="min-h-0 flex-1">
+              <DiceLog rolls={snapshot.diceLog} />
+            </div>
+          </aside>
+
+          {/* ===== CENTER: Chat (full height) ===== */}
+          <section className="h-[50vh] min-h-0 shrink-0 lg:h-full lg:flex-1">
+            <ChatPanel
+              messages={snapshot.chat}
+              isThinking={isThinking}
+              isYourTurn={isYourTurn}
+              isDead={isDead}
+              combatActive={snapshot.combatActive}
+              yourName={session.playerName}
+              currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
+              onSend={sendAction}
+              onRest={handleRest}
+              roomCode={session.roomCode}
+              ttsEnabled={settings.ttsEnabled}
+            />
+          </section>
+
+          {/* ===== RIGHT: Scene + Grid + Party ===== */}
+          <aside className="flex flex-col gap-2 lg:w-[28%] lg:shrink-0 lg:overflow-hidden">
+            <SceneViewer
+              scene={snapshot.scene}
+              isGenerating={isGeneratingImage}
+              location={snapshot.location}
+              timeOfDay={snapshot.timeOfDay}
+              weather={snapshot.weather}
+            />
+            <CombatGrid
+              players={snapshot.players}
+              monsters={snapshot.monsters}
+              combatActive={snapshot.combatActive}
+              round={snapshot.round}
+              currentTurnName={snapshot.currentTurnName}
+              conditions={snapshot.conditions}
+              aoe={lastAoe}
+              lastAnimEvent={lastAnimEvent}
+              gridExtras={{
+                lootCells: snapshot.lootCells,
+                traps: snapshot.traps,
+              }}
+            />
+            <PartyPanel
+              players={snapshot.players}
+              youName={session.playerName}
+              currentTurnName={snapshot.currentTurnName}
+            />
           </aside>
         </div>
 

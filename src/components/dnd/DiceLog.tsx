@@ -39,7 +39,7 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
                 Кости ещё не брошены…
               </p>
             ) : (
-              <ul className="max-h-44 space-y-1 overflow-y-auto fantasy-scroll pr-1">
+              <ul className="max-h-28 space-y-1 overflow-y-auto fantasy-scroll pr-1">
                 {rolls.map((r) => {
                   const success = r.success;
                   const isAdv = r.advantageMode === "advantage";
