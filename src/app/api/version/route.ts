@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const VERSION = "2.0-restart";
+const VERSION = "3.0";
 const BUILD_DATE = "2026-07-03";
-const COMMITS = 84;
+const COMMITS = 108;
 
 export async function GET() {
   return NextResponse.json({
