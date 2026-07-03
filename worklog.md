@@ -276,3 +276,34 @@ Stage Summary:
 - No new dependencies added. Used existing zustand, shadcn/ui Collapsible/Switch/Dialog, lucide-react icons.
 - All user-facing text in Russian.
 - Did NOT edit llm.ts, dm-agent.ts (except none), auth routes. state.ts touched only to add lootCells/traps to the snapshot (as permitted).
+
+---
+Task ID: opt-backend-restart
+Agent: opt-backend-agent
+Task: Optimize DB and LLM
+
+Work Log:
+- Read worklog.md (last 7 sections), EXECUTION-PLAN.md (Шаг 5: Пункты 22-23), and all required source files (prisma/schema.prisma, src/lib/game/state.ts, src/lib/game/dm-agent.ts, src/lib/game/llm.ts, src/app/api/game/action/route.ts, src/app/api/game/image/route.ts).
+- Item 22 (DB optimization):
+  - Verified existing indexes in schema.prisma: Condition(roomId,targetName), Quest(roomId,status), MapRoom(roomId,discovered)+unique(roomId,x,y), Npc(roomId,role)+unique(roomId,name). Missing: Monster(roomId,name) and Npc(roomId,isAlive). Added both @@index declarations. MapRoom(roomId,discovered) already present. Ran `bun run db:push` — schema synced.
+  - Snapshot in-memory cache: did not previously exist. Implemented in state.ts: `snapshotCache: Map<roomId, {snapshot, expiry}>` with `SNAPSHOT_CACHE_TTL_MS = 2000`. `getSnapshot(roomCode)` now looks up the room, checks the cache (keyed by room.id), and returns the cached snapshot if still valid; otherwise runs the existing Promise.all batch (already parallel — verified) and stores the result. Exported `invalidateSnapshotCache(roomId)` deletes the entry. Added invalidateSnapshotCache(roomId) calls to ALL listed mutations: logDiceRoll, damageMonster, damagePlayer, healPlayer, moveToken, applyInventoryChanges, adjustGold, saveChatMessage, setRoomState, moveMonsterTowardNearestPlayer, setActiveScene, rollInitiative, advanceExplorationTurn, awardXP, applyLevelUpTalent, applyLevelUpASI, spendSpellSlot, restoreAllSpellSlots, applyCondition, tickConditions, clearConditionsForTarget, createQuest, updateQuestStatus, upsertNpc, killNpc, equipItem, unequipItem, recomputePlayerAC. Also added invalidation in discoverRoom (world-map.ts) and in routes that bypass state.ts helpers: action/route.ts (DM narrative save), rest/route.ts (system messages + condition deletes), levelup/route.ts (system messages), and a defensive invalidate at the end of resolvePlayerAction in dm-agent.ts (covers system chat messages + room station grants).
+  - Batch queries: already parallel via Promise.all — verified, no change needed.
+  - Chat pagination: snapshot previously returned ALL chat messages (findMany asc, no take). Changed to `orderBy desc, take: 100` then reversed to keep asc order. Added new GET /api/game/chat-history?room=XXX&offset=0&limit=50 route that loads older messages: fetches latest (offset+limit) in desc order, slices [offset..offset+limit], reverses to asc. Returns {ok, messages, total, hasMore}. Limit clamped to [1,200], offset to [0,100000].
+  - Scene cleanup: added cleanupOldTmpScenes() in image/route.ts. Uses fs.readdirSync + fs.statSync + fs.unlinkSync on /tmp/duskfall-scenes/. Deletes files whose mtime is older than 1 hour. Wrapped in setImmediate (fire-and-forget) and double try/catch so it never breaks the request. Called after setActiveScene in the POST handler.
+  - lint: 0 errors, 0 warnings. tsc: 0 errors. Committed 2be8838.
+- Item 23 (LLM optimization):
+  - Context trimming in getDMContext (state.ts): chat slice changed from last 6 to last 15. If >15 messages, prepends a one-line "Ранее: <first 3 condensed>" summary (each older message: who + first 80 chars, joined by " / "). Inventory listing already minimal (itemName x quantity + scroll tag). Conditions listing trimmed from `${icon} ${nameRu} — ${duration} раундов. Источник: ${source}.` to just `${nameRu} — ${duration} раундов.` (no icon, no source). Net context length reduced significantly toward the ~2000-token target.
+  - Prompt cache in dm-agent.ts: added `planCache: Map<roomCode+actionText, {plan, ts}>` with `PLAN_CACHE_TTL_MS = 30_000`. planCacheKey uppercases roomCode, lowercases+trims actionText. getCachedPlan returns the cached plan if not expired (lazy delete on expiry). setCachedPlan only stores plans where category === "exploration" or "social" (combat/ability_check/invalid/other are NOT cached). planResolution checks the cache first; on cache hit, logs and returns without an LLM call. On miss, calls chatComplete, parses, and (if valid) stores in cache.
+  - Retry with backoff in llm.ts: chatCompleteProviderSingle and chatStreamProviderSingle now attach `err.httpStatus = res.status` to the thrown Error. callWithProviderChain tracks retriesInProvider (max 3). When a caught error has httpStatus === 429 AND retriesInProvider < 3, computes `delayMs = 2^retriesInProvider * 1000` (1s, 2s, 4s), increments retriesInProvider, logs a warning, awaits `new Promise(r => setTimeout(r, delayMs))`, then continues to the next model. Non-429 errors skip the backoff and continue immediately.
+  - Model routing: added `preferFast: boolean = false` parameter to chatComplete, chatStream, and callWithProviderChain. FAST_MODEL_BY_PROVIDER map: glm → "glm-4-flash", gemini → "gemini-1.5-flash-8b", openrouter → "qwen/qwen-turbo". When preferFast is set, the fast model is prepended to each provider's model list (if not already present). In dm-agent.ts planResolution, preferFast is computed via `isNonCombatAction(playerAction)` — true unless the lowercased action text contains any of ["атак", "бью", "стреляю", "кастую боевой"]. The preferFast flag is passed as the 3rd argument to chatComplete.
+  - lint: 0 errors, 0 warnings. tsc: 0 errors. Committed 2650431.
+
+Stage Summary:
+- 2 optimization features implemented across 2 commits (one per item):
+  1. DB optimization (Monster/Npc indexes + db:push, snapshot cache 2s TTL with full invalidation coverage, chat limited to 100 + new /api/game/chat-history route, /tmp/duskfall-scenes/ cleanup) — 2be8838
+  2. LLM optimization (context trimming: 15 chat + Ранее summary + minimal conditions; 30s prompt cache for exploration/social plans; 429 retry backoff 1s/2s/4s max 3 per provider; preferFast model routing for non-combat actions) — 2650431
+- bunx tsc --noEmit: 0 errors (clean).
+- bun run lint: 0 errors, 0 warnings (clean).
+- bun run db:push: ran successfully after schema index changes (Monster and Npc indexes added).
+- No new dependencies added. All user-facing text in Russian. Did NOT edit any .tsx components or page.tsx. Did NOT edit llm.ts beyond preferFast param + retry backoff (also added httpStatus to thrown errors as a required helper for the backoff logic).
+- Files touched: prisma/schema.prisma, src/lib/game/{state,dm-agent,llm,world-map}.ts, src/app/api/game/{action,rest,levelup,image}/route.ts, new src/app/api/game/chat-history/route.ts.
