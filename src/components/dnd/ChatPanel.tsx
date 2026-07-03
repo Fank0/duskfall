@@ -9,13 +9,15 @@ import {
 } from "lucide-react";
 import type { ChatMessageState } from "@/lib/game/types";
 import { sanitizeLLMOutput } from "@/lib/game/sanitize";
+import { useSettings } from "@/lib/game/settings";
+import { t } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 
 const QUICK_ACTIONS = [
-  { label: "Атаковать", icon: Swords, text: "Я обнажаю оружие и атакую ближайшего врага!" },
-  { label: "Осмотреться", icon: Eye, text: "Я внимательно осматриваю местность." },
-  { label: "Двигаться", icon: Footprints, text: "Я осторожно продвигаюсь вперёд." },
-  { label: "Говорить", icon: MessageSquareQuote, text: "Я обращаюсь словами." },
+  { labelKey: "actions.attack", icon: Swords, text: "Я обнажаю оружие и атакую ближайшего врага!" },
+  { labelKey: "actions.explore", icon: Eye, text: "Я внимательно осматриваю местность." },
+  { labelKey: "game.move", icon: Footprints, text: "Я осторожно продвигаюсь вперёд." },
+  { labelKey: "actions.talk", icon: MessageSquareQuote, text: "Я обращаюсь словами." },
 ];
 
 /** How many messages to render initially (item 24: chat virtualization). */
@@ -64,6 +66,10 @@ export const ChatPanel = memo(function ChatPanel({
   const offsetRef = useRef(0);
   /** Whether the user explicitly asked for older messages (gates the button). */
   const [showLoadMore, setShowLoadMore] = useState(false);
+
+  // UI language (i18n-restore)
+  const lang = useSettings((s) => s.lang);
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
 
   // Reset pagination state when the room changes.
   useEffect(() => {
@@ -150,15 +156,15 @@ export const ChatPanel = memo(function ChatPanel({
         >
           {isYourTurn ? (
             <span className="flex items-center justify-center gap-1.5 font-semibold">
-              <Sparkles className="h-3.5 w-3.5" /> Ваш ход! Действуйте.
+              <Sparkles className="h-3.5 w-3.5" /> {tt("game.your_turn")}
             </span>
           ) : currentTurnName ? (
             <span className="flex items-center justify-center gap-1.5">
-              <Lock className="h-3 w-3" /> Ход: <span className="font-semibold text-foreground">{currentTurnName}</span> — дождитесь своей очереди
+              <Lock className="h-3 w-3" /> {tt("game.turn")}: <span className="font-semibold text-foreground">{currentTurnName}</span> — {tt("game.wait_your_turn")}
             </span>
           ) : (
             <span className="flex items-center justify-center gap-1.5">
-              <Loader2 className="h-3 w-3 animate-spin" /> Ход монстров…
+              <Loader2 className="h-3 w-3 animate-spin" /> {tt("game.monster_turn")}
             </span>
           )}
         </div>
@@ -180,12 +186,12 @@ export const ChatPanel = memo(function ChatPanel({
               ) : (
                 <ChevronUp className="h-3 w-3" />
               )}
-              Показать ещё
+              {tt("chat.show_more")}
             </button>
           </div>
         )}
         {all.map((m) => (
-          <MessageBubble key={m.id} message={m} yourName={yourName} />
+          <MessageBubble key={m.id} message={m} yourName={yourName} lang={lang} />
         ))}
 
         {isThinking && (
@@ -196,7 +202,7 @@ export const ChatPanel = memo(function ChatPanel({
             <div className="rounded-lg rounded-tl-none border border-border/60 bg-stone-900/60 px-3 py-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-300" />
-                <span className="font-serif italic">Мастер вершит судьбу…</span>
+                <span className="font-serif italic">{tt("game.dm_thinking")}</span>
                 <span className="flex gap-1">
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.3s]" />
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.15s]" />
@@ -212,14 +218,14 @@ export const ChatPanel = memo(function ChatPanel({
       <div className="flex flex-wrap gap-1.5 border-t border-border/50 px-3 pt-2">
         {QUICK_ACTIONS.map((q) => (
           <button
-            key={q.label}
+            key={q.labelKey}
             type="button"
             disabled={!canAct}
             onClick={() => submit(q.text)}
             className="flex items-center gap-1 rounded-full border border-border/60 bg-stone-900/50 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
             <q.icon className="h-3 w-3" />
-            {q.label}
+            {tt(q.labelKey)}
           </button>
         ))}
         {onRest && (
@@ -228,21 +234,21 @@ export const ChatPanel = memo(function ChatPanel({
               type="button"
               disabled={combatActive || isThinking || isDead}
               onClick={() => onRest("short")}
-              title="Короткий отдых: бросок кости здоровья, восстановление половины. Колдуну возвращаются ячейки."
+              title={tt("rest.short_rest_hint")}
               className="flex items-center gap-1 rounded-full border border-sky-800/60 bg-sky-950/40 px-2.5 py-1 text-[11px] text-sky-200 transition-colors hover:bg-sky-950/60 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Bed className="h-3 w-3" />
-              Короткий отдых
+              {tt("rest.short_rest")}
             </button>
             <button
               type="button"
               disabled={combatActive || isThinking || isDead}
               onClick={() => onRest("long")}
-              title="Долгий отдых: полное восстановление HP, все ячейки заклинаний, снятие кратковременных состояний."
+              title={tt("rest.long_rest_hint")}
               className="flex items-center gap-1 rounded-full border border-indigo-800/60 bg-indigo-950/40 px-2.5 py-1 text-[11px] text-indigo-200 transition-colors hover:bg-indigo-950/60 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Moon className="h-3 w-3" />
-              Долгий отдых
+              {tt("rest.long_rest")}
             </button>
           </>
         )}
@@ -257,10 +263,10 @@ export const ChatPanel = memo(function ChatPanel({
           disabled={!canAct}
           placeholder={
             isDead
-              ? "Герой пал. Ожидайте новой игры."
+              ? tt("chat.dead_placeholder")
               : locked
-                ? `Ожидание хода (${currentTurnName} действует)…`
-                : "Опишите действие героя… (Enter — отправить)"
+                ? tt("chat.waiting_placeholder", { name: currentTurnName ?? "" })
+                : tt("chat.action_placeholder")
           }
           className="min-h-[44px] max-h-32 resize-none bg-stone-950/60 text-sm"
           rows={1}
@@ -271,7 +277,7 @@ export const ChatPanel = memo(function ChatPanel({
           onClick={() => submit()}
           disabled={!canAct || !input.trim()}
           className="h-11 w-11 shrink-0"
-          aria-label="Отправить действие"
+          aria-label={tt("chat.send_action")}
         >
           {isThinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
         </Button>
@@ -280,7 +286,8 @@ export const ChatPanel = memo(function ChatPanel({
   );
 });
 
-function MessageBubble({ message, yourName }: { message: ChatMessageState; yourName: string }) {
+function MessageBubble({ message, yourName, lang }: { message: ChatMessageState; yourName: string; lang: import("@/lib/game/i18n").Lang }) {
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
   if (message.role === "player") {
     const isYou = message.speaker === yourName;
     return (
@@ -292,7 +299,7 @@ function MessageBubble({ message, yourName }: { message: ChatMessageState; yourN
             : "rounded-tl-none border border-sky-800/40 bg-sky-950/30"
         )}>
           <div className={cn("mb-0.5 text-[10px] font-semibold uppercase tracking-wide", isYou ? "text-primary/80" : "text-sky-300/80")}>
-            {isYou ? "Вы" : message.speaker || "Игрок"}
+            {isYou ? tt("common.you") : message.speaker || tt("common.player")}
           </div>
           <p className="whitespace-pre-wrap leading-snug">{message.content}</p>
         </div>
@@ -322,7 +329,7 @@ function MessageBubble({ message, yourName }: { message: ChatMessageState; yourN
       </div>
       <div className="max-w-[88%] rounded-lg rounded-tl-none border border-border/60 bg-stone-900/60 px-3 py-2">
         <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/80">
-          <Sparkles className="h-3 w-3" /> Мастер Подземелий
+          <Sparkles className="h-3 w-3" /> {tt("chat.master_title")}
         </div>
         <p className="whitespace-pre-wrap font-serif text-sm leading-relaxed text-foreground/90">
           {safeContent}

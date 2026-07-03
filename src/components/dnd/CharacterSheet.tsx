@@ -14,6 +14,8 @@ import { CONDITIONS } from "@/lib/game/conditions";
 import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
 import { shallowEqual } from "@/lib/game/shallow";
+import { useSettings } from "@/lib/game/settings";
+import { t } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 
 // Lazy-load the heavy EquipmentPanel + CraftingPanel modals (item 24:
@@ -30,12 +32,12 @@ const CraftingPanel = dynamic(
 );
 
 const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
-  { key: "str", short: "СИЛ" },
-  { key: "dex", short: "ЛОВ" },
-  { key: "con", short: "ТЕЛ" },
-  { key: "int", short: "ИНТ" },
-  { key: "wis", short: "МУД" },
-  { key: "cha", short: "ХАР" },
+  { key: "str", short: "character.str" },
+  { key: "dex", short: "character.dex" },
+  { key: "con", short: "character.con" },
+  { key: "int", short: "character.int" },
+  { key: "wis", short: "character.wis" },
+  { key: "cha", short: "character.cha" },
 ];
 
 const TYPE_STYLES: Record<string, string> = {
@@ -75,6 +77,9 @@ export const CharacterSheet = memo(function CharacterSheet({
 }) {
   const [equipOpen, setEquipOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
+  // UI language (i18n-restore)
+  const lang = useSettings((s) => s.lang);
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
   const hasAnyStation = hasAlchemy || hasForge || hasEnchant;
   const hpPct = player.maxHp > 0 ? (player.hp / player.maxHp) * 100 : 0;
   const hpColor =
@@ -127,17 +132,17 @@ export const CharacterSheet = memo(function CharacterSheet({
             <h3 className="truncate font-serif text-sm font-bold gold-text">{player.name}</h3>
             {isYou && (
               <Badge variant="outline" className="shrink-0 border-primary/60 px-1 text-[8px] text-primary">
-                ВЫ
+                {tt("common.you").toUpperCase()}
               </Badge>
             )}
             {player.isHost && <Crown className="h-3 w-3 shrink-0 text-amber-300" />}
             {dead && <Skull className="h-3.5 w-3.5 shrink-0 text-red-400" />}
             {isTurn && (
-              <Badge className="ml-auto shrink-0 bg-primary px-1.5 text-[8px]">ВАШ ХОД</Badge>
+              <Badge className="ml-auto shrink-0 bg-primary px-1.5 text-[8px]">{tt("game.your_turn").split("!")[0].toUpperCase()}</Badge>
             )}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            {player.raceName} {player.charClass} · {player.backgroundName} · ур.{player.level}
+            {player.raceName} {player.charClass} · {player.backgroundName} · {tt("character.level_short")}{player.level}
           </p>
           <p className="text-[9px] text-muted-foreground/70">{player.weaponName}</p>
         </div>
@@ -148,7 +153,7 @@ export const CharacterSheet = memo(function CharacterSheet({
         <div className="grid grid-cols-3 gap-1.5">
           <Vital icon={<Heart className="h-3 w-3" />} label="HP" value={`${player.hp}/${player.maxHp}`} accent="text-red-400" />
           <Vital icon={<Shield className="h-3 w-3" />} label="AC" value={`${player.ac}`} accent="text-sky-300" />
-          <Vital icon={<Coins className="h-3 w-3" />} label="ЗЛТ" value={`${player.gold}`} accent="text-amber-300" />
+          <Vital icon={<Coins className="h-3 w-3" />} label={tt("character.gold_short")} value={`${player.gold}`} accent="text-amber-300" />
         </div>
 
         {/* HP bar */}
@@ -163,15 +168,15 @@ export const CharacterSheet = memo(function CharacterSheet({
           <div className="mt-2 rounded border border-border/40 bg-stone-900/40 px-2 py-1.5">
             <div className="mb-1 flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-purple-300" />
-              <span className="text-[10px] font-semibold gold-text">Ячейки заклинаний</span>
+              <span className="text-[10px] font-semibold gold-text">{tt("character.spell_slots")}</span>
             </div>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {slotLevels.map((lv) => {
                 const max = player.maxSpellSlots[String(lv)] ?? 0;
                 const cur = player.spellSlots[String(lv)] ?? 0;
                 return (
-                  <div key={lv} className="flex items-center gap-1" title={`Уровень ${lv}: ${cur}/${max} ячеек`}>
-                    <span className="text-[9px] font-mono text-muted-foreground">ур.{lv}</span>
+                  <div key={lv} className="flex items-center gap-1" title={`${tt("character.level_short")}${lv}: ${cur}/${max}`}>
+                    <span className="text-[9px] font-mono text-muted-foreground">{tt("character.level_short")}{lv}</span>
                     <div className="flex gap-0.5">
                       {Array.from({ length: max }).map((_, i) => (
                         <span
@@ -197,7 +202,7 @@ export const CharacterSheet = memo(function CharacterSheet({
           <div className="mt-2">
             <div className="flex items-center gap-1.5 pb-1">
               <Skull className="h-3 w-3 text-red-300" />
-              <span className="text-[11px] font-semibold gold-text">Состояния</span>
+              <span className="text-[11px] font-semibold gold-text">{tt("character.conditions")}</span>
               <Badge variant="secondary" className="ml-auto text-[8px]">{conditions.length}</Badge>
             </div>
             <ul className="flex flex-wrap gap-1">
@@ -232,7 +237,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                 const mod = abilityModifier(val);
                 return (
                   <div key={s.key} className="rounded border border-border/40 bg-stone-900/50 px-1 py-0.5 text-center">
-                    <div className="text-[8px] text-muted-foreground">{s.short}</div>
+                    <div className="text-[8px] text-muted-foreground">{tt(s.short)}</div>
                     <div className="text-xs font-bold leading-tight">{val}</div>
                     <div className={cn("text-[9px] font-mono", mod >= 0 ? "text-emerald-400" : "text-red-400")}>
                       {mod >= 0 ? "+" : ""}
@@ -249,7 +254,7 @@ export const CharacterSheet = memo(function CharacterSheet({
             <div className="flex items-center justify-between gap-2 pb-1">
               <div className="flex items-center gap-1.5">
                 <Shirt className="h-3 w-3 text-amber-300" />
-                <span className="text-[11px] font-semibold gold-text">Экипировка</span>
+                <span className="text-[11px] font-semibold gold-text">{tt("character.equipment")}</span>
                 <Badge variant="secondary" className="text-[8px]">{equippedCount}/8</Badge>
               </div>
               <div className="flex items-center gap-1">
@@ -258,9 +263,9 @@ export const CharacterSheet = memo(function CharacterSheet({
                     type="button"
                     onClick={() => setCraftOpen(true)}
                     className="rounded border border-purple-700/40 bg-purple-950/30 px-2 py-0.5 text-[10px] text-purple-200 transition-colors hover:bg-purple-950/50"
-                    title="Крафт"
+                    title={tt("character.crafting")}
                   >
-                    <Hammer className="inline h-3 w-3" /> Крафт
+                    <Hammer className="inline h-3 w-3" /> {tt("character.crafting")}
                   </button>
                 )}
                 {isYou && onEquip && onUnequip && (
@@ -269,7 +274,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                     onClick={() => setEquipOpen(true)}
                     className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-amber-950/50"
                   >
-                    Открыть
+                    {tt("ui.open")}
                   </button>
                 )}
               </div>
@@ -288,12 +293,12 @@ export const CharacterSheet = memo(function CharacterSheet({
             {/* Inventory */}
             <div className="flex items-center gap-1.5 pb-1">
               <Backpack className="h-3 w-3 text-amber-300" />
-              <span className="text-[11px] font-semibold gold-text">Снаряжение</span>
+              <span className="text-[11px] font-semibold gold-text">{tt("character.inventory")}</span>
               <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
             </div>
             <ScrollArea className="fantasy-scroll max-h-40 pr-1">
               {inventory.length === 0 ? (
-                <p className="py-2 text-center text-[10px] italic text-muted-foreground">Пусто…</p>
+                <p className="py-2 text-center text-[10px] italic text-muted-foreground">{tt("character.empty")}</p>
               ) : (
                 <ul className="space-y-1">
                   {inventory.map((item) => (
@@ -316,7 +321,7 @@ export const CharacterSheet = memo(function CharacterSheet({
             {/* Abilities */}
             <div className="flex items-center gap-1.5 pb-1">
               <Sparkles className="h-3 w-3 text-amber-300" />
-              <span className="text-[11px] font-semibold gold-text">Способности</span>
+              <span className="text-[11px] font-semibold gold-text">{tt("character.abilities")}</span>
               <Badge variant="secondary" className="ml-auto text-[8px]">
                 {computeAbilities(player, inventory).length}
               </Badge>

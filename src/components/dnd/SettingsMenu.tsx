@@ -10,7 +10,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Settings, Circle, Square, Type, Palette, ZoomIn, Volume2, Music, Speaker, Globe } from "lucide-react";
 import { useSettings, type Theme, type UiScale } from "@/lib/game/settings";
-import { LANGS, type Lang } from "@/lib/game/i18n";
+import { LANGS, type Lang, t } from "@/lib/game/i18n";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +43,8 @@ export function SettingsMenu({
   onOpenChange: (v: boolean) => void;
 }) {
   const settings = useSettings();
+  const lang = settings.lang;
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -50,10 +52,10 @@ export function SettingsMenu({
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <Settings className="h-5 w-5 text-amber-300" />
-            Настройки интерфейса
+            {tt("ui.interface_settings")}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Внешний вид, тема и масштаб. Настройки сохраняются в этом браузере.
+            {tt("ui.interface_settings_desc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -61,7 +63,7 @@ export function SettingsMenu({
           {/* ===== Language (i18n-restore) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
-              <Globe className="h-3.5 w-3.5" /> Язык / Language
+              <Globe className="h-3.5 w-3.5" /> {tt("ui.language")}
             </h3>
             <div className="grid grid-cols-3 gap-2">
               {LANGS.map((l) => (
@@ -87,7 +89,7 @@ export function SettingsMenu({
           {/* ===== Theme (item 21) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
-              <Palette className="h-3.5 w-3.5" /> Тема оформления
+              <Palette className="h-3.5 w-3.5" /> {tt("ui.theme")}
             </h3>
             <div className="grid grid-cols-4 gap-2">
               {THEMES.map((t) => (
@@ -116,7 +118,7 @@ export function SettingsMenu({
           {/* ===== UI scale (item 21) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
-              <ZoomIn className="h-3.5 w-3.5" /> Масштаб интерфейса
+              <ZoomIn className="h-3.5 w-3.5" /> {tt("ui.ui_scale")}
             </h3>
             <div className="grid grid-cols-3 gap-2">
               {SCALES.map((s) => (
@@ -140,20 +142,20 @@ export function SettingsMenu({
           {/* ===== Token shape (item 18) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
-              <Circle className="h-3.5 w-3.5" /> Форма токенов
+              <Circle className="h-3.5 w-3.5" /> {tt("ui.token_shape")}
             </h3>
             <div className="grid grid-cols-2 gap-2">
               <ShapeButton
                 active={settings.tokenShape === "round"}
                 onClick={() => settings.setTokenShape("round")}
                 icon={<Circle className="h-4 w-4" />}
-                label="Круглые"
+                label={tt("ui.round_tokens")}
               />
               <ShapeButton
                 active={settings.tokenShape === "square"}
                 onClick={() => settings.setTokenShape("square")}
                 icon={<Square className="h-4 w-4" />}
-                label="Квадратные"
+                label={tt("ui.square_tokens")}
               />
             </div>
           </section>
@@ -161,13 +163,13 @@ export function SettingsMenu({
           {/* ===== Token names (item 18) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
-              <Type className="h-3.5 w-3.5" /> Подписи токенов
+              <Type className="h-3.5 w-3.5" /> {tt("ui.token_names")}
             </h3>
             <label className="flex cursor-pointer items-center justify-between rounded-md border border-border/50 bg-stone-900/40 px-3 py-2">
               <div className="flex flex-col">
-                <span className="text-sm">Показывать имена</span>
+                <span className="text-sm">{tt("ui.show_token_names")}</span>
                 <span className="text-[10px] text-muted-foreground">
-                  Маленькая подпись под каждым токеном на сетке
+                  {tt("ui.show_token_names_hint")}
                 </span>
               </div>
               <Switch
@@ -180,15 +182,15 @@ export function SettingsMenu({
           {/* ===== Audio (item 6.2) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
-              <Volume2 className="h-3.5 w-3.5" /> Звук и музыка
+              <Volume2 className="h-3.5 w-3.5" /> {tt("ui.audio")}
             </h3>
             <label className="mb-3 flex cursor-pointer items-center justify-between rounded-md border border-border/50 bg-stone-900/40 px-3 py-2">
               <div className="flex flex-col">
                 <span className="flex items-center gap-1.5 text-sm">
-                  <Music className="h-3.5 w-3.5" /> Фоновая музыка
+                  <Music className="h-3.5 w-3.5" /> {tt("ui.music")}
                 </span>
                 <span className="text-[10px] text-muted-foreground">
-                  Атмосферная музыка по настроению (мир/бой/напряжение)
+                  {tt("ui.music_hint")}
                 </span>
               </div>
               <Switch
@@ -200,7 +202,7 @@ export function SettingsMenu({
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Music className="h-3 w-3" /> Громкость музыки
+                    <Music className="h-3 w-3" /> {tt("ui.music_volume")}
                   </span>
                   <span className="text-[10px] text-muted-foreground">{Math.round(settings.musicVolume * 100)}%</span>
                 </div>
@@ -215,7 +217,7 @@ export function SettingsMenu({
               <div>
                 <div className="mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Speaker className="h-3 w-3" /> Громкость эффектов
+                    <Speaker className="h-3 w-3" /> {tt("ui.sfx_volume")}
                   </span>
                   <span className="text-[10px] text-muted-foreground">{Math.round(settings.sfxVolume * 100)}%</span>
                 </div>

@@ -152,6 +152,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.square_tokens": "Квадратные",
     "ui.show_token_names": "Показывать имена",
     "ui.show_token_names_hint": "Маленькая подпись под каждым токеном на сетке",
+    "ui.music_hint": "Атмосферная музыка по настроению (мир/бой/напряжение)",
 
     // ===== rest =====
     "rest.short_rest": "Короткий отдых",
@@ -186,6 +187,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.my_saves": "Мои сохранения",
     "lobby.checking_session": "Проверка сессии…",
     "lobby.footer_hint": "Создайте комнату и поделитесь кодом с друзьями. Каждый игрок выбирает народ, класс и происхождение героя. В бою ходы определяются броском инициативы (d20 + Ловкость).",
+    "lobby.sign_out_toast": "Вы вышли из аккаунта.",
+    "lobby.save_no_hero": "Не удалось определить героя в этом сохранении.",
 
     // ===== page header =====
     "page.header_subtitle": "ИИ Мастер Подземелий · D&D 5e",
@@ -290,6 +293,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.square_tokens": "Square",
     "ui.show_token_names": "Show names",
     "ui.show_token_names_hint": "A small label under each token on the grid",
+    "ui.music_hint": "Atmospheric music by mood (world/combat/tension)",
 
     // ===== rest =====
     "rest.short_rest": "Short rest",
@@ -324,6 +328,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.my_saves": "My saves",
     "lobby.checking_session": "Checking session…",
     "lobby.footer_hint": "Create a room and share the code with your friends. Each player picks a race, class and background. In combat, turns are ordered by an initiative roll (d20 + Dexterity).",
+    "lobby.sign_out_toast": "You have signed out.",
+    "lobby.save_no_hero": "Could not identify the hero in this save.",
 
     // ===== page header =====
     "page.header_subtitle": "AI Dungeon Master · D&D 5e",
@@ -424,6 +430,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.square_tokens": "Cuadradas",
     "ui.show_token_names": "Mostrar nombres",
     "ui.show_token_names_hint": "Pequeña etiqueta bajo cada ficha en la cuadrícula",
+    "ui.music_hint": "Música atmosférica según el ambiente (mundo/combate/tensión)",
 
     "rest.short_rest": "Descanso corto",
     "rest.long_rest": "Descanso largo",
@@ -454,6 +461,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.my_saves": "Mis partidas",
     "lobby.checking_session": "Verificando sesión…",
     "lobby.footer_hint": "Crea una sala y comparte el código con tus amigos. Cada jugador elige raza, clase y trasfondo. En combate, los turnos se ordenan por iniciativa (d20 + Destreza).",
+    "lobby.sign_out_toast": "Has cerrado sesión.",
+    "lobby.save_no_hero": "No se pudo identificar al héroe en esta partida guardada.",
 
     "page.header_subtitle": "DM de IA · D&D 5e",
     "page.reset_busy": "Pensando…",
@@ -552,6 +561,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.square_tokens": "Eckig",
     "ui.show_token_names": "Namen anzeigen",
     "ui.show_token_names_hint": "Kleine Beschriftung unter jeder Figur im Raster",
+    "ui.music_hint": "Atmosphärische Musik nach Stimmung (Welt/Kampf/Spannung)",
 
     "rest.short_rest": "Kurze Rast",
     "rest.long_rest": "Lange Rast",
@@ -582,6 +592,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.my_saves": "Meine Speicherstände",
     "lobby.checking_session": "Sitzung wird geprüft…",
     "lobby.footer_hint": "Erstelle einen Raum und teile den Code mit Freunden. Jeder Spieler wählt Volk, Klasse und Hintergrund. Im Kampf werden Züge per Initiative (d20 + Geschicklichkeit) geordnet.",
+    "lobby.sign_out_toast": "Du wurdest abgemeldet.",
+    "lobby.save_no_hero": "Konnte den Helden in diesem Speicherstand nicht ermitteln.",
 
     "page.header_subtitle": "KI-Dungeon-Master · D&D 5e",
     "page.reset_busy": "Denke nach…",
@@ -680,6 +692,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.square_tokens": "Carrés",
     "ui.show_token_names": "Afficher les noms",
     "ui.show_token_names_hint": "Petite étiquette sous chaque jeton sur la grille",
+    "ui.music_hint": "Musique atmosphérique selon l'ambiance (monde/combat/tension)",
 
     "rest.short_rest": "Repos court",
     "rest.long_rest": "Repos long",
@@ -710,6 +723,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.my_saves": "Mes sauvegardes",
     "lobby.checking_session": "Vérification de la session…",
     "lobby.footer_hint": "Créez une salle et partagez le code avec vos amis. Chaque joueur choisit race, classe et historique. Au combat, les tours sont ordonnés par initiative (d20 + Dextérité).",
+    "lobby.sign_out_toast": "Vous êtes déconnecté.",
+    "lobby.save_no_hero": "Impossible d'identifier le héros dans cette sauvegarde.",
 
     "page.header_subtitle": "MD IA · D&D 5e",
     "page.reset_busy": "Réflexion…",
@@ -808,6 +823,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.square_tokens": "方形",
     "ui.show_token_names": "显示名字",
     "ui.show_token_names_hint": "网格上每个指示物下方的小标签",
+    "ui.music_hint": "按氛围生成的环境音乐（世界/战斗/紧张）",
 
     "rest.short_rest": "短休",
     "rest.long_rest": "长休",
@@ -838,6 +854,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.my_saves": "我的存档",
     "lobby.checking_session": "正在检查会话…",
     "lobby.footer_hint": "创建房间并与朋友分享代码。每位玩家选择种族、职业与背景。战斗中回合由先攻掷骰（d20 + 敏捷）排序。",
+    "lobby.sign_out_toast": "您已登出。",
+    "lobby.save_no_hero": "无法识别此存档中的英雄。",
 
     "page.header_subtitle": "AI 地下城主 · D&D 5e",
     "page.reset_busy": "思考中…",

@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
+import { t } from "@/lib/game/i18n";
 
 // ===== Lazy-loaded heavy modals (item 24: dynamic import with ssr:false) =====
 // These components are large (full talent tree, settings dialog, dialogue
@@ -134,6 +135,9 @@ export default function Home() {
 
   // UI customization settings (item 21) — read at the top so the hook order is stable.
   const settings = useSettings();
+  // i18n helper bound to the selected language.
+  const lang = settings.lang;
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
 
   // Restore session on mount.
   useEffect(() => {
@@ -766,10 +770,10 @@ export default function Home() {
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="font-serif text-base font-bold leading-tight gold-text text-glow sm:text-lg">
-              DUSKFALL
+              {tt("lobby.title")}
             </h1>
             <p className="truncate text-[10px] text-muted-foreground sm:text-xs">
-              ИИ Мастер Подземелий · D&D 5e
+              {tt("page.header_subtitle")}
             </p>
           </div>
 
@@ -777,7 +781,7 @@ export default function Home() {
           <button
             onClick={copyRoomCode}
             className="flex items-center gap-1.5 rounded-md border border-amber-700/40 bg-amber-950/30 px-2.5 py-1 text-xs transition-colors hover:bg-amber-950/50"
-            title="Кликните, чтобы скопировать код комнаты"
+            title={tt("ui.copy_room_code")}
           >
             <Users className="h-3.5 w-3.5 text-amber-300" />
             <span className="font-mono font-bold tracking-wider text-amber-200">{snapshot.roomCode}</span>
@@ -787,21 +791,17 @@ export default function Home() {
           <div className="hidden items-center gap-2 sm:flex">
             {snapshot.combatActive ? (
               <span className="flex items-center gap-1.5 rounded-full border border-red-800/60 bg-red-950/50 px-3 py-1 text-xs text-red-300 animate-pulse-glow">
-                <Swords className="h-3.5 w-3.5" /> Раунд {snapshot.round}
+                <Swords className="h-3.5 w-3.5" /> {tt("game.round")} {snapshot.round}
               </span>
             ) : (
               <span className="flex items-center gap-1.5 rounded-full border border-emerald-800/60 bg-emerald-950/40 px-3 py-1 text-xs text-emerald-300">
-                <ScrollText className="h-3.5 w-3.5" /> Мир
+                <ScrollText className="h-3.5 w-3.5" /> {tt("game.world")}
               </span>
             )}
             {/* Time-of-day indicator (item 9) */}
             <span
               className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/30 px-2.5 py-1 text-xs text-amber-200"
-              title={`Время суток: ${
-                snapshot.timeOfDay === "dawn" ? "Рассвет" :
-                snapshot.timeOfDay === "day" ? "День" :
-                snapshot.timeOfDay === "dusk" ? "Сумерки" : "Ночь"
-              }`}
+              title={`${tt("ui.time_of_day")}: ${tt(`time.${snapshot.timeOfDay ?? "day"}`)}`}
             >
               <span className="text-sm">
                 {snapshot.timeOfDay === "dawn" ? "🌅" :
@@ -809,26 +809,24 @@ export default function Home() {
                  snapshot.timeOfDay === "dusk" ? "🌇" : "🌙"}
               </span>
               <span className="font-medium">
-                {snapshot.timeOfDay === "dawn" ? "Рассвет" :
-                 snapshot.timeOfDay === "day" ? "День" :
-                 snapshot.timeOfDay === "dusk" ? "Сумерки" : "Ночь"}
+                {tt(`time.${snapshot.timeOfDay ?? "day"}`)}
               </span>
             </span>
           </div>
 
           <Button variant="outline" size="sm" onClick={resetGame} disabled={isThinking} className="gap-1.5 border-border/60">
             {isThinking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">Заново</span>
+            <span className="hidden sm:inline">{tt("ui.reset")}</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setQuestOpen(true)}
             className="gap-1.5 border-amber-800/50 bg-amber-950/20 text-amber-200 hover:bg-amber-950/40"
-            title="Журнал квестов"
+            title={tt("ui.journal")}
           >
             <BookOpen className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Журнал</span>
+            <span className="hidden sm:inline">{tt("ui.journal")}</span>
             {snapshot.quests.filter((q) => q.status === "active").length > 0 && (
               <span className="ml-0.5 rounded-full bg-amber-700 px-1.5 text-[9px] font-bold leading-4 text-amber-50">
                 {snapshot.quests.filter((q) => q.status === "active").length}
@@ -841,10 +839,10 @@ export default function Home() {
             onClick={() => setMapOpen(true)}
             disabled={snapshot.combatActive}
             className="gap-1.5 border-sky-800/50 bg-sky-950/20 text-sky-200 hover:bg-sky-950/40 disabled:opacity-40"
-            title="Карта мира"
+            title={tt("ui.map")}
           >
             <MapIcon className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Карта</span>
+            <span className="hidden sm:inline">{tt("ui.map")}</span>
           </Button>
           {/* Dialogue trigger: dropdown of NPCs in the room (hidden when none). */}
           {snapshot.npcs.length > 0 && (
@@ -855,10 +853,10 @@ export default function Home() {
                   size="sm"
                   disabled={snapshot.combatActive}
                   className="gap-1.5 border-emerald-800/50 bg-emerald-950/20 text-emerald-200 hover:bg-emerald-950/40 disabled:opacity-40"
-                  title="Поговорить с NPC"
+                  title={tt("actions.talk")}
                 >
                   <MessageCircle className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Поговорить</span>
+                  <span className="hidden sm:inline">{tt("actions.talk")}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -880,23 +878,23 @@ export default function Home() {
             size="sm"
             onClick={() => setCombatLogOpen(true)}
             className="gap-1.5 border-border/60"
-            title="Лог боя"
+            title={tt("ui.log")}
           >
             <LogIcon className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Лог боя</span>
+            <span className="hidden sm:inline">{tt("ui.log")}</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setSettingsOpen(true)}
             className="gap-1.5 border-border/60"
-            title="Настройки интерфейса"
+            title={tt("ui.interface_settings")}
           >
             <SettingsIcon className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Настройки</span>
+            <span className="hidden sm:inline">{tt("ui.settings")}</span>
           </Button>
           <Button variant="ghost" size="sm" onClick={leaveRoom} className="text-muted-foreground">
-            Выйти
+            {tt("ui.leave")}
           </Button>
         </div>
 
