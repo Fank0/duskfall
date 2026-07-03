@@ -114,6 +114,8 @@ function toMonster(m: any): MonsterState {
     color: m.color,
     description: m.description,
     isActive: m.isActive,
+    isBoss: Boolean(m.isBoss),
+    specialAbility: m.specialAbility ?? "",
   };
 }
 
@@ -254,6 +256,9 @@ function toMapRoom(m: any): MapRoomState {
     discovered: Boolean(m.discovered),
     connections: conns,
     description: m.description ?? "",
+    secret: Boolean(m.secret),
+    scenePrompt: m.scenePrompt ?? "",
+    populated: Boolean(m.populated),
   };
 }
 
@@ -399,6 +404,9 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     hasEnchant: Boolean(room.hasEnchant),
     lootCells,
     traps,
+    dungeonBiome: room.dungeonBiome ?? "dungeon",
+    dungeonDepth: room.dungeonDepth ?? 1,
+    dungeonCleared: Boolean(room.dungeonCleared),
   };
 
   // Populate the cache.

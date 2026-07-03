@@ -29,6 +29,13 @@ model Room {
   hasAlchemy   Boolean  @default(false)
   hasForge     Boolean  @default(false)
   hasEnchant   Boolean  @default(false)
+  // ===== Dungeon generator (Пункт 36) =====
+  // Which biome this dungeon uses (catacombs | caves | tower | forest | dungeon).
+  dungeonBiome     String   @default("dungeon")
+  // Current depth of the dungeon (deeper = more rooms + tougher monsters).
+  dungeonDepth     Int      @default(1)
+  // True once the boss of the current dungeon depth has been slain.
+  dungeonCleared   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -125,6 +132,9 @@ model Monster {
   color          String   @default("#16a34a")
   description    String   @default("")
   isActive       Boolean  @default(true)
+  // ===== Dungeon generator (Пункт 36) =====
+  isBoss         Boolean  @default(false)
+  specialAbility String   @default("")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -250,10 +260,19 @@ model MapRoom {
   x           Int
   y           Int
   label       String
-  roomType    String   // combat | loot | npc | puzzle | safe | boss | entrance
+  roomType    String   // combat | loot | npc | puzzle | safe | boss | entrance | trap
   discovered  Boolean  @default(false)
   connections String   @default("") // comma-separated "x,y" coords of neighbour rooms
   description String   @default("")
+  // ===== Dungeon generator (Пункт 36) =====
+  // Secret rooms are hidden until discovered via Perception; shown with a star
+  // in the WorldMap UI when revealed.
+  secret      Boolean  @default(false)
+  // Image-prompt fragment used by /api/game/image for the room's scene art.
+  scenePrompt String   @default("")
+  // True once populateRoomContent has filled this room (avoids re-spawning
+  // monsters / loot when the party revisits).
+  populated   Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   @@unique([roomId, x, y])

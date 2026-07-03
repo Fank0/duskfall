@@ -20,6 +20,7 @@ const TYPE_COLOR: Record<MapRoomType, string> = {
   puzzle: "#a855f7",
   safe: "#16a34a",
   boss: "#7f1d1d",
+  trap: "#ea580c",
 };
 
 const TYPE_LABEL: Record<MapRoomType, string> = {
@@ -30,6 +31,7 @@ const TYPE_LABEL: Record<MapRoomType, string> = {
   puzzle: "Загадка",
   safe: "Отдых",
   boss: "Босс",
+  trap: "Ловушка",
 };
 
 const TYPE_ICON: Record<MapRoomType, string> = {
@@ -40,6 +42,7 @@ const TYPE_ICON: Record<MapRoomType, string> = {
   puzzle: "❓",
   safe: "🔥",
   boss: "💀",
+  trap: "⚠️",
 };
 
 const CELL_SIZE = 90;

@@ -225,6 +225,10 @@ export interface MonsterState {
   color: string;
   description: string;
   isActive: boolean;
+  /** True for dungeon bosses (Пункт 36). Awards 3× XP + treasure on death. */
+  isBoss?: boolean;
+  /** Special-ability blurb shown in the monster's description (bosses). */
+  specialAbility?: string;
 }
 
 export interface InventoryItemState {
@@ -314,7 +318,7 @@ export interface QuestState {
 }
 
 /** A room node in the procedural world map. */
-export type MapRoomType = "combat" | "loot" | "npc" | "puzzle" | "safe" | "boss" | "entrance";
+export type MapRoomType = "combat" | "loot" | "npc" | "puzzle" | "safe" | "boss" | "entrance" | "trap";
 
 export interface MapRoomState {
   id: string;
@@ -325,6 +329,12 @@ export interface MapRoomState {
   discovered: boolean;
   connections: { x: number; y: number }[];
   description: string;
+  /** True for hidden secret rooms (Пункт 36). Shown with a star icon when discovered. */
+  secret?: boolean;
+  /** Image-prompt fragment for the scene art of this room. */
+  scenePrompt?: string;
+  /** True once populateRoomContent has filled this room with biome-themed content. */
+  populated?: boolean;
 }
 
 /** An NPC living in the room. */
@@ -382,6 +392,13 @@ export interface GameStateSnapshot {
   lootCells: { x: number; y: number; itemName: string }[];
   /** trap cells on the grid (DM-populated; empty for now) — item 20 */
   traps: { x: number; y: number; discovered: boolean }[];
+  /** ===== Dungeon generator (Пункт 36) ===== */
+  /** Active biome id (catacombs | caves | tower | forest | dungeon). */
+  dungeonBiome: string;
+  /** Current dungeon depth (1 = first level). */
+  dungeonDepth: number;
+  /** True once the boss of the current depth has been slain. */
+  dungeonCleared: boolean;
 }
 
 export interface Stats {
