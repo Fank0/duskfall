@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, BookMarked, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -62,6 +62,10 @@ const QuestJournal = dynamic(
 );
 const CombatLog = dynamic(
   () => import("@/components/dnd/CombatLog").then((m) => m.CombatLog),
+  { ssr: false }
+);
+const BestiaryPanel = dynamic(
+  () => import("@/components/dnd/BestiaryPanel").then((m) => m.BestiaryPanel),
   { ssr: false }
 );
 
@@ -132,6 +136,7 @@ export default function Home() {
   const [isDialogueBusy, setIsDialogueBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [combatLogOpen, setCombatLogOpen] = useState(false);
+  const [bestiaryOpen, setBestiaryOpen] = useState(false);
 
   // UI customization settings (item 21) — read at the top so the hook order is stable.
   const settings = useSettings();
@@ -871,6 +876,16 @@ export default function Home() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setBestiaryOpen(true)}
+            className="gap-1.5 border-rose-800/50 bg-rose-950/20 text-rose-200 hover:bg-rose-950/40"
+            title="Бестиарий"
+          >
+            <BookMarked className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Бестиарий</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setMapOpen(true)}
             disabled={snapshot.combatActive}
             className="gap-1.5 border-sky-800/50 bg-sky-950/20 text-sky-200 hover:bg-sky-950/40 disabled:opacity-40"
@@ -1085,6 +1100,8 @@ export default function Home() {
           rolls={snapshot.diceLog}
           chat={snapshot.chat}
         />
+      {/* ===== Bestiary modal (item 4) ===== */}
+      <BestiaryPanel open={bestiaryOpen} onOpenChange={setBestiaryOpen} />
       </div>
     </ErrorBoundary>
   );
