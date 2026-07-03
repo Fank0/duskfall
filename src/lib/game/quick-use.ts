@@ -134,6 +134,30 @@ function stripPrefix(name: string, prefix: string): string {
 }
 
 /**
+ * Classify how an ability should be targeted when quick-used.
+ *
+ *  - "self"     — heal/buff/utility: sent immediately, no targeting needed.
+ *  - "monster"  — single-target damage: enters ability-targeting mode (player
+ *                 clicks a monster token on the grid).
+ *  - "aoe"      — AoE damage spell (Fireball / Cone of Cold / etc.): enters
+ *                 AoE-targeting mode (player clicks a grid cell as origin).
+ *
+ * The caller (page.tsx) decides whether to enter targeting mode based on
+ * combatActive — outside combat, even damage abilities are sent immediately
+ * (no monster tokens to click).
+ */
+export type AbilityTargetingMode = "self" | "monster" | "aoe";
+
+export function classifyAbilityTargeting(a: Ability): AbilityTargetingMode {
+  // AoE shape on the spell takes priority over damage — Fireball is damage
+  // but should enter AoE-targeting mode, not single-monster targeting.
+  if (a.aoeShape) return "aoe";
+  if (a.castType === "damage") return "monster";
+  // heal / buff / utility — all self-targeted for now.
+  return "self";
+}
+
+/**
  * Compute the nearest active monster to the given player position.
  * Returns the monster's name, or undefined if there are no active monsters.
  *

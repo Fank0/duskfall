@@ -21,6 +21,7 @@ import type { PlayerState, InventoryItemState } from "@/lib/game/types";
 import {
   buildAbilityQuickText,
   buildItemQuickText,
+  classifyAbilityTargeting,
   type QuickActionContext,
 } from "@/lib/game/quick-use";
 
@@ -54,6 +55,7 @@ export const BottomPanel = memo(function BottomPanel({
   onCraft,
   combatActive = false,
   nearestMonsterName,
+  onRequestTargeting,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -65,6 +67,13 @@ export const BottomPanel = memo(function BottomPanel({
   combatActive?: boolean;
   /** Name of the nearest active monster — used as damage target in text. */
   nearestMonsterName?: string;
+  /**
+   * Targeting-mode request (Item 3): when supplied and combat is active,
+   * damage-dealing abilities and AoE spells call this instead of sending the
+   * action immediately. The parent enters a targeting mode and waits for the
+   * player to click a monster (ability) or grid cell (aoe) on the grid.
+   */
+  onRequestTargeting?: (ability: Ability, mode: "ability" | "aoe") => void;
 }) {
   const settings = useSettings();
   const lang = settings.lang;
@@ -165,6 +174,32 @@ export const BottomPanel = memo(function BottomPanel({
     }, 1500);
     const prev = feedbackTimers.current.get(id) ?? [];
     feedbackTimers.current.set(id, [...prev, t1, t2, t3]);
+  };
+
+  /**
+   * Item 3 — ability click dispatcher. While combat is active and a
+   * targeting callback is supplied, damage-dealing abilities enter ability
+   * targeting mode (player picks a monster on the grid) and AoE spells enter
+   * AoE targeting mode (player picks a cell on the grid). Self-cast abilities
+   * (heal/buff/utility) and any ability used outside combat are sent
+   * immediately via the standard quick-use flow.
+   */
+  const triggerAbility = (a: Ability) => {
+    if (!canQuickUse) return;
+    const chipId = `abil:${a.id}`;
+    if (disabledChips.has(chipId)) return;
+    if (combatActive && onRequestTargeting) {
+      const kind = classifyAbilityTargeting(a);
+      if (kind === "monster") {
+        onRequestTargeting(a, "ability");
+        return;
+      }
+      if (kind === "aoe") {
+        onRequestTargeting(a, "aoe");
+        return;
+      }
+    }
+    triggerQuick(chipId, buildAbilityQuickText(a, quickCtx));
   };
 
   return (
@@ -312,7 +347,7 @@ export const BottomPanel = memo(function BottomPanel({
                         <button
                           type="button"
                           disabled={isDisabled}
-                          onClick={() => triggerQuick(chipId, buildAbilityQuickText(a, quickCtx))}
+                          onClick={() => triggerAbility(a)}
                           className={cn(
                             "relative flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-all",
                             a.source === "race" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",

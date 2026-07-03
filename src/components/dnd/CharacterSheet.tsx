@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, Shirt, Hammer } from "lucide-react";
 import type { PlayerState, InventoryItemState, ConditionState, EquipmentSlot } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
-import { computeAbilities } from "@/lib/game/abilities";
+import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { CONDITIONS } from "@/lib/game/conditions";
 import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import {
   buildAbilityQuickText,
   buildItemQuickText,
+  classifyAbilityTargeting,
   type QuickActionContext,
 } from "@/lib/game/quick-use";
 
@@ -61,6 +62,7 @@ export const CharacterSheet = memo(function CharacterSheet({
   onQuickAction,
   combatActive = false,
   nearestMonsterName,
+  onRequestTargeting,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -85,6 +87,13 @@ export const CharacterSheet = memo(function CharacterSheet({
   combatActive?: boolean;
   /** Name of the nearest active monster — used as damage target in text. */
   nearestMonsterName?: string;
+  /**
+   * Targeting-mode request (Item 3). When supplied and combat is active,
+   * damage-dealing abilities and AoE spells call this instead of sending the
+   * action immediately. The parent enters a targeting mode and waits for the
+   * player to pick a monster (ability) or grid cell (aoe) on the grid.
+   */
+  onRequestTargeting?: (ability: Ability, mode: "ability" | "aoe") => void;
 }) {
   const [equipOpen, setEquipOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
@@ -375,9 +384,25 @@ export const CharacterSheet = memo(function CharacterSheet({
                   // Quick-use: clicking an ability sends a contextual action to
                   // the chat. Damage → "против врага", heal → "для лечения",
                   // buff → neutral, scroll → "читаю свиток".
+                  // Item 3: if combat is active and the parent supplies
+                  // onRequestTargeting, damage/AoE abilities request targeting
+                  // instead of sending immediately.
                   const canQuickUse = isYou && onQuickAction;
                   const handleQuickUse = canQuickUse
-                    ? () => onQuickAction(buildAbilityQuickText(a, quickCtx))
+                    ? () => {
+                        if (combatActive && onRequestTargeting) {
+                          const kind = classifyAbilityTargeting(a);
+                          if (kind === "monster") {
+                            onRequestTargeting(a, "ability");
+                            return;
+                          }
+                          if (kind === "aoe") {
+                            onRequestTargeting(a, "aoe");
+                            return;
+                          }
+                        }
+                        onQuickAction(buildAbilityQuickText(a, quickCtx));
+                      }
                     : undefined;
                   return (
                     <li
@@ -495,7 +520,8 @@ function characterSheetComparator(
     !Object.is(prev.onCraft, next.onCraft) ||
     !Object.is(prev.onQuickAction, next.onQuickAction) ||
     !Object.is(prev.combatActive, next.combatActive) ||
-    !Object.is(prev.nearestMonsterName, next.nearestMonsterName)
+    !Object.is(prev.nearestMonsterName, next.nearestMonsterName) ||
+    !Object.is(prev.onRequestTargeting, next.onRequestTargeting)
   ) {
     return false;
   }
@@ -523,6 +549,7 @@ type CharacterSheetProps = {
   onQuickAction?: (text: string) => void;
   combatActive?: boolean;
   nearestMonsterName?: string;
+  onRequestTargeting?: (ability: Ability, mode: "ability" | "aoe") => void;
 };
 
 // Note: quick-action text generation now lives in @/lib/game/quick-use

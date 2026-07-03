@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, BookMarked, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon, Sparkles as SpellbookIcon, Package as PackageIcon } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, BookMarked, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon, Sparkles as SpellbookIcon, Package as PackageIcon, Crosshair } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -34,7 +34,8 @@ import {
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
 import { t } from "@/lib/game/i18n";
-import { findNearestMonsterName } from "@/lib/game/quick-use";
+import { findNearestMonsterName, buildAbilityQuickText, type QuickActionContext } from "@/lib/game/quick-use";
+import type { Ability } from "@/lib/game/abilities";
 
 // ===== Lazy-loaded heavy modals (item 24: dynamic import with ssr:false) =====
 // These components are large (full talent tree, settings dialog, dialogue
@@ -149,6 +150,13 @@ export default function Home() {
   const [bestiaryOpen, setBestiaryOpen] = useState(false);
   const [spellbookOpen, setSpellbookOpen] = useState(false);
   const [itemDbOpen, setItemDbOpen] = useState(false);
+
+  // ===== Item 3: Targeting mode =====
+  // When the player clicks a damage-dealing ability in combat, we enter
+  // "ability" targeting mode and wait for them to click a monster on the grid.
+  // AoE spells enter "aoe" mode and wait for a cell click.
+  const [targetingMode, setTargetingMode] = useState<"none" | "ability" | "aoe">("none");
+  const [targetingAbility, setTargetingAbility] = useState<Ability | null>(null);
 
   // UI customization settings (item 21) — read at the top so the hook order is stable.
   const settings = useSettings();
@@ -788,6 +796,68 @@ export default function Home() {
     setDialogueOpen(true);
   }, []);
 
+  // ===== Item 3: Targeting mode callbacks =====
+  // BottomPanel / CharacterSheet call this when the player clicks a damage
+  // ability or AoE spell during combat. We store the ability + mode and wait
+  // for a monster / cell click on the grid.
+  const requestAbilityTargeting = useCallback((ability: Ability, mode: "ability" | "aoe") => {
+    setTargetingAbility(ability);
+    setTargetingMode(mode);
+  }, []);
+
+  const cancelTargeting = useCallback(() => {
+    setTargetingMode("none");
+    setTargetingAbility(null);
+  }, []);
+
+  // When the player clicks a monster token while in ability-targeting mode,
+  // build the action text with that monster as the explicit target and send
+  // it through the normal SSE pipeline.
+  const handleMonsterTargetClick = useCallback((monsterId: string) => {
+    if (!targetingAbility || targetingMode !== "ability" || !snapshot) return;
+    const monster = snapshot.monsters.find((m) => m.id === monsterId);
+    if (!monster) return;
+    const ctx: QuickActionContext = {
+      combatActive: true,
+      nearestMonsterName: monster.name,
+    };
+    sendAction(buildAbilityQuickText(targetingAbility, ctx));
+    cancelTargeting();
+  }, [targetingAbility, targetingMode, snapshot, sendAction, cancelTargeting]);
+
+  // When the player clicks a grid cell while in aoe-targeting mode, send an
+  // action naming that cell as the AoE origin. The DM agent resolves who is
+  // affected based on the spell's shape + size.
+  const handleCellTargetClick = useCallback((x: number, y: number) => {
+    if (!targetingAbility || targetingMode !== "aoe") return;
+    const name = targetingAbility.name;
+    const slotSuffix = targetingAbility.slotLevel && targetingAbility.slotLevel > 0
+      ? ` (круг ${targetingAbility.slotLevel})`
+      : "";
+    sendAction(`Я кастую «${name}»${slotSuffix} в клетку (${x}, ${y})!`);
+    cancelTargeting();
+  }, [targetingAbility, targetingMode, sendAction, cancelTargeting]);
+
+  // Escape cancels targeting mode. Also cancel when combat ends so the player
+  // is never stuck targeting on a peaceful grid.
+  useEffect(() => {
+    if (targetingMode === "none") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelTargeting();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [targetingMode, cancelTargeting]);
+
+  useEffect(() => {
+    if (snapshot && !snapshot.combatActive && targetingMode !== "none") {
+      cancelTargeting();
+    }
+  }, [snapshot, targetingMode, cancelTargeting]);
+
   // ===== Lobby =====
   if (!session) {
     return <Lobby onEntered={handleEntered} />;
@@ -1037,6 +1107,7 @@ export default function Home() {
                 onQuickAction={sendAction}
                 combatActive={snapshot.combatActive}
                 nearestMonsterName={nearestMonsterName}
+                onRequestTargeting={requestAbilityTargeting}
               />
             )}
             <div className="min-h-0 flex-1">
@@ -1070,6 +1141,26 @@ export default function Home() {
               timeOfDay={snapshot.timeOfDay}
               weather={snapshot.weather}
             />
+            {/* Item 3 — targeting banner. Shown above the grid while the
+                player is picking a monster / cell for an ability or AoE. */}
+            {targetingMode !== "none" && targetingAbility && (
+              <div className="flex items-center gap-2 rounded-md border border-amber-500/60 bg-amber-950/50 px-2.5 py-1.5 text-xs text-amber-200 shadow">
+                <Crosshair className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                <span className="min-w-0 flex-1 truncate">
+                  {targetingMode === "ability"
+                    ? `Выберите цель для «${targetingAbility.name}»`
+                    : `Выберите точку для «${targetingAbility.name}»`}
+                </span>
+                <button
+                  type="button"
+                  onClick={cancelTargeting}
+                  className="shrink-0 rounded border border-amber-700/60 bg-amber-950/60 px-1.5 py-px text-[10px] text-amber-200 transition-colors hover:bg-amber-900/60"
+                  title="Отменить (Esc)"
+                >
+                  Отмена
+                </button>
+              </div>
+            )}
             <CombatGrid
               players={snapshot.players}
               monsters={snapshot.monsters}
@@ -1083,6 +1174,9 @@ export default function Home() {
                 lootCells: snapshot.lootCells,
                 traps: snapshot.traps,
               }}
+              targetingMode={targetingMode}
+              onMonsterTargetClick={handleMonsterTargetClick}
+              onCellTargetClick={handleCellTargetClick}
             />
           </aside>
         </div>
@@ -1098,6 +1192,7 @@ export default function Home() {
             onCraft={() => {/* crafting opens via CharacterSheet — keep stub */}}
             combatActive={snapshot.combatActive}
             nearestMonsterName={nearestMonsterName}
+            onRequestTargeting={requestAbilityTargeting}
           />
         )}
       </main>

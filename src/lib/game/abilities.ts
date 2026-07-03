@@ -32,6 +32,14 @@ export interface Ability {
    * from a glance at the ability list.
    */
   spellbookSpells?: string[];
+  /**
+   * AoE shape — copied from the spellbook entry when the ability is a spell.
+   * Drives the targeting UX (ability-targeting vs AoE-cell-targeting) and
+   * the on-grid overlay after resolution.
+   */
+  aoeShape?: "circle" | "cone" | "line";
+  /** AoE size in cells (radius for circle, length for line/cone). */
+  aoeSize?: number;
 }
 
 // ---------- Racial (innate) abilities ----------
@@ -195,6 +203,8 @@ function spellToAbility(spell: Spell): Ability {
     castType: inferCastType(spell),
     slotLevel: spell.level > 0 ? spell.level : undefined,
     spellbookSpells: [spell.id],
+    aoeShape: spell.aoeShape,
+    aoeSize: spell.aoeSize,
   };
 }
 

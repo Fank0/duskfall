@@ -66,6 +66,19 @@ export interface CombatGridProps {
   aoe?: AoEOverlay | null;
   lastAnimEvent?: CombatAnimEvent | null;
   gridExtras?: GridExtras;
+  /**
+   * Item 3 — targeting mode:
+   *   - "none":    normal grid (no click handlers).
+   *   - "ability": monster tokens become clickable; clicking a cell with a
+   *               monster calls onMonsterTargetClick(monsterId).
+   *   - "aoe":     every cell becomes clickable; clicking a cell calls
+   *               onCellTargetClick(x, y).
+   */
+  targetingMode?: "none" | "ability" | "aoe";
+  /** Called when the player clicks a monster token in ability-targeting mode. */
+  onMonsterTargetClick?: (monsterId: string) => void;
+  /** Called when the player clicks a grid cell in aoe-targeting mode. */
+  onCellTargetClick?: (x: number, y: number) => void;
 }
 
 /**
@@ -84,6 +97,9 @@ export const CombatGrid = memo(function CombatGrid({
   aoe,
   lastAnimEvent,
   gridExtras,
+  targetingMode = "none",
+  onMonsterTargetClick,
+  onCellTargetClick,
 }: CombatGridProps) {
   const settings = useSettings();
   const tokenShape = settings.tokenShape;
@@ -307,6 +323,24 @@ export const CombatGrid = memo(function CombatGrid({
     return set;
   }, [activeMonsters]);
 
+  // ===== Item 3: targeting-mode helpers =====
+  // In ability-targeting mode, we need a fast lookup of "which monster lives
+  // in this cell". If multiple monsters stack on a cell, the first one wins
+  // (the player can attack any one of them — the DM agent resolves positioning).
+  const monsterByCell = useMemo(() => {
+    const m = new Map<string, MonsterState>();
+    for (const mon of activeMonsters) {
+      const k = `${mon.posX},${mon.posY}`;
+      if (!m.has(k)) m.set(k, mon);
+    }
+    return m;
+  }, [activeMonsters]);
+  const isTargetingActive = targetingMode !== "none";
+  const gridCursorClass =
+    targetingMode === "ability" || targetingMode === "aoe"
+      ? "cursor-crosshair"
+      : undefined;
+
   // ===== Flanking lines (unchanged from combat-v2) =====
   const flankingLines = useMemo(() => {
     if (!combatActive || !currentTurnName) return [];
@@ -342,7 +376,12 @@ export const CombatGrid = memo(function CombatGrid({
             <Crosshair className="h-4 w-4" /> Тактическая сетка
           </span>
           <div className="flex items-center gap-2 text-xs font-normal">
-            {combatActive ? (
+            {isTargetingActive ? (
+              <span className="flex items-center gap-1 rounded-full border border-amber-500/60 bg-amber-950/50 px-2 py-0.5 text-amber-300 animate-pulse-glow">
+                <Crosshair className="h-3 w-3" />
+                {targetingMode === "ability" ? "Выбор цели" : "Выбор области"}
+              </span>
+            ) : combatActive ? (
               <span className="flex items-center gap-1 rounded-full border border-red-800/60 bg-red-950/50 px-2 py-0.5 text-red-300 animate-pulse-glow">
                 <Swords className="h-3 w-3" /> Бой · Раунд {round}
               </span>
@@ -361,7 +400,11 @@ export const CombatGrid = memo(function CombatGrid({
         <div className="mx-auto aspect-square w-full max-w-[240px] sm:max-w-[280px] lg:max-w-[280px]">
           <div
             ref={gridRef}
-            className="relative grid h-full w-full rounded-md border border-border/70 bg-stone-950/60 p-1"
+            className={cn(
+              "relative grid h-full w-full rounded-md border border-border/70 bg-stone-950/60 p-1",
+              isTargetingActive && "ring-1 ring-amber-500/60",
+              gridCursorClass,
+            )}
             style={{
               gridTemplateColumns: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
               gridTemplateRows: `repeat(${GRID_SIZE}, minmax(0, 1fr))`,
@@ -406,11 +449,36 @@ export const CombatGrid = memo(function CombatGrid({
               const trapDiscovered = trapMap?.get(`${x},${y}`);
               const isTrap = trapMap?.has(`${x},${y}`);
               const isThreat = threatCells?.has(`${x},${y}`);
+              // Item 3 — targeting-mode cell flags:
+              const monsterInCell = targetingMode === "ability" ? monsterByCell.get(`${x},${y}`) : undefined;
+              const isAoeTargetCell = targetingMode === "aoe";
+              const cellClick =
+                monsterInCell && onMonsterTargetClick
+                  ? () => onMonsterTargetClick(monsterInCell.id)
+                  : isAoeTargetCell && onCellTargetClick
+                  ? () => onCellTargetClick(x, y)
+                  : undefined;
               return (
                 <div
                   key={idx}
-                  className={cn("relative rounded-[2px] border border-border/20", tint)}
-                  title={`(${x}, ${y})`}
+                  onClick={cellClick}
+                  className={cn(
+                    "relative rounded-[2px] border border-border/20",
+                    tint,
+                    // AoE-targeting: every cell is clickable + hover highlight.
+                    isAoeTargetCell &&
+                      "cursor-crosshair border-amber-400/40 hover:bg-amber-500/30 hover:border-amber-400/80",
+                    // Ability-targeting: only cells with a monster are clickable.
+                    monsterInCell &&
+                      "cursor-crosshair ring-2 ring-amber-400/70 animate-pulse-glow hover:bg-amber-500/25",
+                  )}
+                  title={
+                    monsterInCell
+                      ? `Выбрать цель: ${monsterInCell.name} (${monsterInCell.hp}/${monsterInCell.maxHp} HP)`
+                      : isAoeTargetCell
+                      ? `Кастовать в клетку (${x}, ${y})`
+                      : `(${x}, ${y})`
+                  }
                 >
                   {/* Threat-range overlay (faint red zone around ranged monsters) */}
                   {isThreat && (
@@ -543,7 +611,10 @@ function combatGridComparator(prev: CombatGridProps, next: CombatGridProps): boo
     !Object.is(prev.round, next.round) ||
     !Object.is(prev.currentTurnName, next.currentTurnName) ||
     !Object.is(prev.aoe, next.aoe) ||
-    !Object.is(prev.lastAnimEvent, next.lastAnimEvent)
+    !Object.is(prev.lastAnimEvent, next.lastAnimEvent) ||
+    !Object.is(prev.targetingMode, next.targetingMode) ||
+    !Object.is(prev.onMonsterTargetClick, next.onMonsterTargetClick) ||
+    !Object.is(prev.onCellTargetClick, next.onCellTargetClick)
   ) {
     return false;
   }
