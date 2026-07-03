@@ -22,6 +22,9 @@ export function DiceLog({ rolls }: { rolls: DiceRollState[] }) {
           <ul className="max-h-44 space-y-1 overflow-y-auto fantasy-scroll pr-1">
             {rolls.map((r) => {
               const success = r.success;
+              const isAdv = r.advantageMode === "advantage";
+              const isDisadv = r.advantageMode === "disadvantage";
+              const bothRolls = r.allRolls && r.allRolls.length > 1 ? r.allRolls : null;
               return (
                 <li
                   key={r.id}
@@ -29,10 +32,31 @@ export function DiceLog({ rolls }: { rolls: DiceRollState[] }) {
                 >
                   <Dices className="h-3.5 w-3.5 shrink-0 text-amber-300" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{r.label}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="truncate font-medium">{r.label}</span>
+                      {isAdv && <span title="Преимущество" className="shrink-0 text-emerald-400">⬆️</span>}
+                      {isDisadv && <span title="Помеха" className="shrink-0 text-red-400">⬇️</span>}
+                    </div>
                     <div className="font-mono text-[10px] text-muted-foreground">
                       {r.notation}
-                      {r.modifier ? ` ${r.modifier >= 0 ? "+" : ""}${r.modifier}` : ""} → выпало {r.result}
+                      {r.modifier ? ` ${r.modifier >= 0 ? "+" : ""}${r.modifier}` : ""} →{" "}
+                      {bothRolls ? (
+                        <span>
+                          {" "}
+                          {bothRolls.map((v, i) => {
+                            const kept = v === r.result;
+                            return (
+                              <span key={i}>
+                                {i > 0 && " / "}
+                                <span className={cn(kept && "font-bold text-amber-300")}>{v}</span>
+                                {!kept && <span className="text-muted-foreground/60 line-through"> {v}</span>}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      ) : (
+                        <span>выпало {r.result}</span>
+                      )}
                       {r.target ? ` (цель ${r.target})` : ""}
                     </div>
                   </div>

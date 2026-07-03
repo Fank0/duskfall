@@ -128,19 +128,21 @@ model ChatMessage {
 
 /// Persisted dice roll history per room.
 model DiceRoll {
-  id        String   @id @default(cuid())
-  roomId    String
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  round     Int      @default(0)
-  roller    String   @default("") // who rolled
-  label     String
-  notation  String
-  modifier  Int      @default(0)
-  result    Int      @default(0)
-  total     Int      @default(0)
-  target    Int?
-  success   Boolean?
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  roomId        String
+  room          Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  round         Int      @default(0)
+  roller        String   @default("") // who rolled
+  label         String
+  notation      String
+  modifier      Int      @default(0)
+  result        Int      @default(0)
+  total         Int      @default(0)
+  target        Int?
+  success       Boolean?
+  advantageMode String?  // "advantage" | "disadvantage" | null
+  allRolls      String?  // JSON array of all d20 rolls (e.g. "[18, 7]")
+  createdAt     DateTime @default(now())
 }
 
 /// The currently displayed scene illustration per room.

@@ -54,6 +54,32 @@ export function rollD20(modifier = 0): DiceResult {
   return rollDice("1d20", modifier);
 }
 
+/** Roll a d20 with advantage (keep higher) or disadvantage (keep lower).
+ *  Returns the full result with both rolls exposed. */
+export interface AdvantageResult {
+  rolls: number[]; // both d20 results
+  result: number; // the kept d20
+  modifier: number;
+  total: number; // kept + modifier
+  advantage: "advantage" | "disadvantage";
+}
+
+export function rollD20Advantage(
+  mode: "advantage" | "disadvantage",
+  modifier = 0
+): AdvantageResult {
+  const r1 = Math.floor(Math.random() * 20) + 1;
+  const r2 = Math.floor(Math.random() * 20) + 1;
+  const kept = mode === "advantage" ? Math.max(r1, r2) : Math.min(r1, r2);
+  return {
+    rolls: [r1, r2],
+    result: kept,
+    modifier,
+    total: kept + modifier,
+    advantage: mode,
+  };
+}
+
 /** Convenience: roll damage from a notation, never negative. */
 export function rollDamage(notation: string): number {
   return rollDice(notation).total;

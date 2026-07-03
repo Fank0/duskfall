@@ -61,6 +61,8 @@ export interface DMResolution {
   failure: OutcomeEffects;
   imagePrompt: string;
   imageNeeded: boolean;
+  /** DM-requested advantage on the attack roll (overridden by backend if conditions force a mode). */
+  advantage?: "advantage" | "disadvantage" | "none";
 }
 
 export interface ResolvedRoll {
@@ -72,6 +74,10 @@ export interface ResolvedRoll {
   target?: number;
   success?: boolean;
   purpose: string;
+  /** Advantage mode used for this roll (only meaningful for d20 attack rolls). */
+  advantageMode?: "advantage" | "disadvantage" | "none" | null;
+  /** All d20 rolls (e.g. both rolls for advantage/disadvantage). Single element for normal rolls. */
+  allRolls?: number[];
 }
 
 export interface ResolvedEvent {
@@ -183,6 +189,8 @@ export interface DiceRollState {
   total: number;
   target: number | null;
   success: boolean | null;
+  advantageMode: string | null; // "advantage" | "disadvantage" | null
+  allRolls: number[] | null; // all d20 rolls (for advantage/disadvantage)
   createdAt: string;
 }
 

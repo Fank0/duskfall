@@ -104,6 +104,15 @@ function toChat(c: any): ChatMessageState {
 }
 
 function toDice(d: any): DiceRollState {
+  let allRolls: number[] | null = null;
+  if (d.allRolls) {
+    try {
+      const parsed = JSON.parse(d.allRolls);
+      if (Array.isArray(parsed)) allRolls = parsed.map((n: any) => Number(n));
+    } catch {
+      allRolls = null;
+    }
+  }
   return {
     id: d.id,
     round: d.round,
@@ -115,6 +124,8 @@ function toDice(d: any): DiceRollState {
     total: d.total,
     target: d.target,
     success: d.success,
+    advantageMode: d.advantageMode ?? null,
+    allRolls,
     createdAt: d.createdAt.toISOString(),
   };
 }
@@ -319,6 +330,8 @@ export async function logDiceRoll(
       total: roll.total,
       target: roll.target ?? null,
       success: roll.success ?? null,
+      advantageMode: roll.advantageMode ?? null,
+      allRolls: roll.allRolls && roll.allRolls.length > 0 ? JSON.stringify(roll.allRolls) : null,
     },
   });
 }
