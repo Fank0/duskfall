@@ -1,16 +1,23 @@
-// Ability catalog: innate (racial), class features, and consumable scroll spells.
+// Ability catalog: innate (racial), class features, consumable scroll spells,
+// and spellbook spells known by caster classes.
 // Sources: D&D 5e SRD / dnd.su. Used both in the character creator preview
 // and the in-game character sheet.
 
 import type { PlayerState, InventoryItemState } from "./types";
 import { resolveTalents } from "./talents";
-import { getClassIdByCharClass } from "./presets";
+import { getClassIdByCharClass, isCasterClass } from "./presets";
+import {
+  SPELLBOOK,
+  getSpellById,
+  resolveKnownSpells,
+  type Spell,
+} from "./spellbook";
 
 export interface Ability {
   id: string;
   name: string;
   description: string;
-  source: "race" | "class" | "talent" | "scroll";
+  source: "race" | "class" | "talent" | "scroll" | "spell";
   sourceLabel: string;
   consumable?: boolean; // true for scrolls (consumed on use)
   castNotation?: string; // damage/heal roll when activated (e.g. "8d6")
@@ -18,6 +25,13 @@ export interface Ability {
   uses?: number; // remaining uses (scrolls = quantity in inventory)
   /** If set, using this ability consumes a spell slot of this level (1..5). */
   slotLevel?: number;
+  /**
+   * For `source: "spell"` abilities: the spellbook spell IDs this ability
+   * entry provides (a single-element array `[spellId]` for per-spell
+   * abilities). Useful for the DM agent to know which spell a caster knows
+   * from a glance at the ability list.
+   */
+  spellbookSpells?: string[];
 }
 
 // ---------- Racial (innate) abilities ----------
@@ -115,7 +129,13 @@ export const SCROLL_SPELLS: Record<string, { castNotation: string; castType: "da
   "Свиток массового лечения": { castNotation: "3d8", castType: "heal", description: "Лечит всех союзников в 30 футах на 3d8 HP." },
 };
 
-/** Compute the full ability list for a player: race + class + talents + scrolls. */
+/** Compute the full ability list for a player: race + class + talents + scrolls
+ *  + spellbook spells (for casters).
+ *
+ *  The player's `spellbookSpells` field (extra spells learned from scrolls)
+ *  is merged with the class base spell list to produce the final known set.
+ *  Each known spell becomes its own Ability entry with `slotLevel` set for
+ *  leveled spells (1..5); cantrips omit `slotLevel`. */
 export function computeAbilities(
   player: PlayerState,
   inventory: InventoryItemState[]
@@ -146,8 +166,74 @@ export function computeAbilities(
         uses: i.quantity,
       };
     });
-  return [...raceAbilities, ...classAbilities, ...talents, ...scrolls];
+  // Spellbook spells for casters: derive base spells from class + level, then
+  // merge any extra spells the player has learned (from scrolls via the DM
+  // agent's `learnSpell` plan field). Each known spell becomes its own Ability
+  // entry; cantrips omit `slotLevel`, leveled spells set it.
+  const spells: Ability[] = [];
+  if (isCasterClass(classId)) {
+    const extraKnown = player.spellbookSpells ?? [];
+    const knownIds = resolveKnownSpells(classId, player.level, extraKnown);
+    for (const spellId of knownIds) {
+      const spell = getSpellById(spellId);
+      if (!spell) continue;
+      spells.push(spellToAbility(spell));
+    }
+  }
+  return [...raceAbilities, ...classAbilities, ...talents, ...scrolls, ...spells];
 }
+
+/** Convert a Spell entry into an Ability entry shown on the character sheet. */
+function spellToAbility(spell: Spell): Ability {
+  return {
+    id: `spell_${spell.id}`,
+    name: spell.name,
+    description: spell.description,
+    source: "spell",
+    sourceLabel: "Заклинание",
+    castNotation: spell.damage,
+    castType: inferCastType(spell),
+    slotLevel: spell.level > 0 ? spell.level : undefined,
+    spellbookSpells: [spell.id],
+  };
+}
+
+/** Classify a spell into one of the four Ability.castType buckets. */
+function inferCastType(spell: Spell): "damage" | "heal" | "buff" | "utility" {
+  const HEAL_IDS = new Set(["cure_wounds", "mass_cure_wounds", "mass_cure_wounds_upcast"]);
+  const BUFF_IDS = new Set([
+    "shield",
+    "bless",
+    "mage_armor",
+    "invisibility",
+    "stoneskin",
+    "death_ward",
+    "fly",
+  ]);
+  if (HEAL_IDS.has(spell.id)) return "heal";
+  if (BUFF_IDS.has(spell.id)) return "buff";
+  if (spell.damage) return "damage";
+  return "utility";
+}
+
+/** Convenience export: list every spell ID the player currently knows.
+ *  Used by the DM context builder to enumerate a caster's options. */
+export function knownSpellIdsForPlayer(player: PlayerState): string[] {
+  const classId = getClassIdByCharClass(player.charClass);
+  if (!isCasterClass(classId)) return [];
+  const extraKnown = player.spellbookSpells ?? [];
+  return resolveKnownSpells(classId, player.level, extraKnown);
+}
+
+/** Convenience export: list Spell objects the player currently knows. */
+export function knownSpellsForPlayer(player: PlayerState): Spell[] {
+  return knownSpellIdsForPlayer(player)
+    .map((id) => getSpellById(id))
+    .filter((s): s is Spell => Boolean(s));
+}
+
+/** Total spell count in the catalogue (for UI display). */
+export const SPELLBOOK_SIZE = SPELLBOOK.length;
 
 /** Abilities shown in the character creator (race + class only, no talents/scrolls yet). */
 export function previewAbilities(raceId: string, classId: string): Ability[] {

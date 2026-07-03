@@ -341,11 +341,17 @@ export const CharacterSheet = memo(function CharacterSheet({
                     <div className="flex items-center justify-between gap-1">
                       <span className="flex items-center gap-1 truncate text-[11px] font-semibold">
                         {a.source === "scroll" && <ScrollIcon className="h-3 w-3 shrink-0 text-amber-300" />}
+                        {a.source === "spell" && <Sparkles className="h-3 w-3 shrink-0 text-purple-300" />}
                         {a.name}
                       </span>
                       <div className="flex shrink-0 items-center gap-1">
                         {a.consumable && (
                           <Badge className="bg-amber-900/60 text-[7px] text-amber-200">расходуемый</Badge>
+                        )}
+                        {a.slotLevel && a.slotLevel > 0 && (
+                          <Badge variant="outline" className="text-[7px] border-purple-700/50 text-purple-300">
+                            яч.{a.slotLevel}
+                          </Badge>
                         )}
                         {a.uses && a.uses > 1 && (
                           <Badge variant="outline" className="text-[8px]">x{a.uses}</Badge>
@@ -357,10 +363,11 @@ export const CharacterSheet = memo(function CharacterSheet({
                             a.source === "race" ? "border-emerald-700/50 text-emerald-300" :
                             a.source === "class" ? "border-sky-700/50 text-sky-300" :
                             a.source === "talent" ? "border-purple-700/50 text-purple-300" :
+                            a.source === "spell" ? "border-fuchsia-700/50 text-fuchsia-300" :
                             "border-amber-700/50 text-amber-300"
                           )}
                         >
-                          {a.source === "race" ? "народ" : a.source === "class" ? "класс" : a.source === "talent" ? "талант" : "свиток"}
+                          {a.source === "race" ? "народ" : a.source === "class" ? "класс" : a.source === "talent" ? "талант" : a.source === "spell" ? "закл." : "свиток"}
                         </Badge>
                       </div>
                     </div>

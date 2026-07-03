@@ -198,6 +198,13 @@ export interface PlayerState {
   maxSpellSlots: Record<string, number>;
   /** Hit die size (e.g. 8 for d8). */
   hitDice: number;
+  /**
+   * Extra spell IDs the player has learned beyond their class base set
+   * (e.g. by reading a scroll of <spell name> the DM agent granted via the
+   * `learnSpell` plan field). The class base spell list is derived from
+   * class + level in spellbook.ts; this list only stores the *extra* spells.
+   */
+  spellbookSpells?: string[];
   /** Equipped inventory-item ids per slot (null = empty). */
   equipment: {
     weapon: string | null;
