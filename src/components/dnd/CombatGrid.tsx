@@ -7,6 +7,7 @@ import type { PlayerState, MonsterState, ConditionState } from "@/lib/game/types
 import { CONDITIONS } from "@/lib/game/conditions";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE } from "@/lib/game/state";
+import { useSettings } from "@/lib/game/settings";
 
 /** AoE overlay info passed from the page (transient — lasts ~2s). */
 export interface AoEOverlay {
@@ -59,6 +60,10 @@ export function CombatGrid({
   aoe?: AoEOverlay | null;
   lastAnimEvent?: CombatAnimEvent | null;
 }) {
+  const settings = useSettings();
+  const tokenShape = settings.tokenShape;
+  const showTokenNames = settings.showTokenNames;
+
   const activeMonsters = monsters.filter((m) => m.isActive);
   const alivePlayers = players.filter((p) => p.isAlive || p.hp > 0);
 
@@ -380,6 +385,8 @@ export function CombatGrid({
                           players={entry.players}
                           currentTurnName={currentTurnName}
                           conditions={entry.conditions}
+                          tokenShape={tokenShape}
+                          showName={showTokenNames}
                           anim={activeAnim && activeAnim.name === entry.name ? activeAnim : null}
                           critFx={activeCrit && activeCrit.name === entry.name ? activeCrit : null}
                         />
@@ -388,6 +395,8 @@ export function CombatGrid({
                           monster={entry.monster}
                           isTurn={entry.isTurn}
                           conditions={entry.conditions}
+                          tokenShape={tokenShape}
+                          showName={showTokenNames}
                           anim={activeAnim && activeAnim.name === entry.name ? activeAnim : null}
                           critFx={activeCrit && activeCrit.name === entry.name ? activeCrit : null}
                         />
@@ -451,45 +460,102 @@ function ConditionIcons({ conditions }: { conditions: ConditionState[] }) {
   );
 }
 
+/** Buff aura — emerald glow for blessed/shielded, red/orange for poisoned/burning (item 18). */
+function BuffAura({ conditions }: { conditions: ConditionState[] }) {
+  const hasBless = conditions.some((c) => c.condition === "blessed" || c.condition === "shielded");
+  const hasHarm = conditions.some((c) => c.condition === "poisoned" || c.condition === "burning");
+  if (!hasBless && !hasHarm) return null;
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-0 rounded-full",
+        hasBless ? "aura-blessed" : "aura-harmed"
+      )}
+    />
+  );
+}
+
+/** Compute a continuous HP-color from percentage: 100%=green → 50%=yellow → 0%=red. */
+function hpGradientColor(pct: number): string {
+  const clamped = Math.max(0, Math.min(100, pct));
+  if (clamped >= 50) {
+    // green (#22c55e) → yellow (#eab308)
+    const t = (100 - clamped) / 50;
+    const r = Math.round(0x22 + (0xea - 0x22) * t);
+    const g = Math.round(0xc5 + (0xb3 - 0xc5) * t);
+    const b = Math.round(0x5e + (0x08 - 0x5e) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+  // yellow (#eab308) → red (#dc2626)
+  const t = (50 - clamped) / 50;
+  const r = Math.round(0xea + (0xdc - 0xea) * t);
+  const g = Math.round(0xb3 + (0x26 - 0xb3) * t);
+  const b = Math.round(0x08 + (0x26 - 0x08) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
 function PlayerToken({
   players,
   currentTurnName,
   conditions,
+  tokenShape,
+  showName,
   anim,
   critFx,
 }: {
   players: PlayerState[];
   currentTurnName: string | null;
   conditions: ConditionState[];
+  tokenShape: "round" | "square";
+  showName: boolean;
   anim: { kind: "hit" | "heal"; id: number } | null;
   critFx: { id: number } | null;
 }) {
   const p = players[0];
   const isTurn = currentTurnName === p.name;
   const hpPct = p.maxHp > 0 ? (p.hp / p.maxHp) * 100 : 0;
-  const hpColor = hpPct > 60 ? "bg-emerald-500" : hpPct > 30 ? "bg-amber-500" : "bg-red-600";
+  const hpColor = hpGradientColor(hpPct);
+  const shapeClass = tokenShape === "square" ? "rounded-md" : "rounded-full";
+  const hasPortrait = Boolean(p.portraitUrl);
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-0.5">
       <div
         className={cn(
-          "relative flex aspect-square w-[88%] items-center justify-center rounded-full border-2 text-[8px] font-bold leading-none text-white shadow-md",
+          "relative flex aspect-square w-[88%] items-center justify-center border-2 text-[8px] font-bold leading-none text-white shadow-md",
+          shapeClass,
           isTurn && "ring-2 ring-amber-300 animate-pulse-glow"
         )}
         style={{
-          background: `radial-gradient(circle at 30% 25%, ${p.color}, ${shade(p.color, -25)})`,
+          background: hasPortrait
+            ? undefined
+            : `radial-gradient(circle at 30% 25%, ${p.color}, ${shade(p.color, -25)})`,
           borderColor: shade(p.color, 30),
+          backgroundImage: hasPortrait ? `url(${p.portraitUrl})` : undefined,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
         }}
-        title={players.map((x) => x.name).join(", ")}
+        title={players.map((x) => `${x.name} (${x.hp}/${x.maxHp} HP)`).join(", ")}
       >
-        <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{p.name.slice(0, 2).toUpperCase()}</span>
+        {!hasPortrait && (
+          <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{p.name.slice(0, 2).toUpperCase()}</span>
+        )}
         {players.length > 1 && (
           <span className="absolute -left-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-stone-800 text-[7px] text-amber-300">
             {players.length}
           </span>
         )}
+        <BuffAura conditions={conditions} />
         <ConditionIcons conditions={conditions} />
-        <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
-          <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+
+        {/* HP bar — thin (3px), at bottom of token, color gradient green→yellow→red. */}
+        <div
+          className="absolute bottom-0 left-1/2 h-[3px] w-[80%] -translate-x-1/2 overflow-hidden rounded-full bg-black/60"
+          title={`${p.hp}/${p.maxHp} HP`}
+        >
+          <div
+            className="h-full transition-all duration-500"
+            style={{ width: `${Math.max(0, Math.min(100, hpPct))}%`, background: hpColor }}
+          />
         </div>
 
         {/* Hit/heal flash overlay (item 17) */}
@@ -508,6 +574,11 @@ function PlayerToken({
         )}
       </div>
       <span className="text-[7px] leading-none text-muted-foreground">{p.hp}/{p.maxHp}</span>
+      {showName && (
+        <span className="mt-0.5 max-w-full truncate rounded bg-black/60 px-1 text-[10px] leading-tight text-amber-100">
+          {p.name}
+        </span>
+      )}
     </div>
   );
 }
@@ -516,34 +587,49 @@ function MonsterToken({
   monster,
   isTurn,
   conditions,
+  tokenShape,
+  showName,
   anim,
   critFx,
 }: {
   monster: MonsterState;
   isTurn: boolean;
   conditions: ConditionState[];
+  tokenShape: "round" | "square";
+  showName: boolean;
   anim: { kind: "hit" | "heal"; id: number } | null;
   critFx: { id: number } | null;
 }) {
   const hpPct = monster.maxHp > 0 ? (monster.hp / monster.maxHp) * 100 : 0;
-  const hpColor = hpPct > 60 ? "bg-emerald-500" : hpPct > 30 ? "bg-amber-500" : "bg-red-600";
+  const hpColor = hpGradientColor(hpPct);
+  const shapeClass = tokenShape === "square" ? "rounded-md" : "rounded-full";
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-0.5">
       <div
         className={cn(
-          "relative flex aspect-square w-[88%] items-center justify-center rounded-full border-2 text-[8px] font-bold leading-none text-white shadow-md",
+          "relative flex aspect-square w-[88%] items-center justify-center border-2 text-[8px] font-bold leading-none text-white shadow-md",
+          shapeClass,
           isTurn && "ring-2 ring-amber-300 animate-pulse-glow"
         )}
         style={{
           background: `radial-gradient(circle at 30% 25%, ${monster.color}, ${shade(monster.color, -25)})`,
           borderColor: shade(monster.color, 30),
         }}
-        title={monster.name}
+        title={`${monster.name} (${monster.hp}/${monster.maxHp} HP)`}
       >
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{monster.label}</span>
+        <BuffAura conditions={conditions} />
         <ConditionIcons conditions={conditions} />
-        <div className="mt-0.5 h-[3px] w-[80%] overflow-hidden rounded-full bg-black/50">
-          <div className={cn("h-full transition-all duration-500", hpColor)} style={{ width: `${Math.max(0, Math.min(100, hpPct))}%` }} />
+
+        {/* HP bar — thin (3px), at bottom of token, color gradient green→yellow→red. */}
+        <div
+          className="absolute bottom-0 left-1/2 h-[3px] w-[80%] -translate-x-1/2 overflow-hidden rounded-full bg-black/60"
+          title={`${monster.hp}/${monster.maxHp} HP`}
+        >
+          <div
+            className="h-full transition-all duration-500"
+            style={{ width: `${Math.max(0, Math.min(100, hpPct))}%`, background: hpColor }}
+          />
         </div>
 
         {/* Hit/heal flash overlay (item 17) */}
@@ -562,6 +648,11 @@ function MonsterToken({
         )}
       </div>
       <span className="text-[7px] leading-none text-muted-foreground">{monster.hp}/{monster.maxHp}</span>
+      {showName && (
+        <span className="mt-0.5 max-w-full truncate rounded bg-black/60 px-1 text-[10px] leading-tight text-amber-100">
+          {monster.name}
+        </span>
+      )}
     </div>
   );
 }
