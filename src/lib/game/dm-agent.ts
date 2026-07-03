@@ -41,6 +41,7 @@ import {
   updateQuestStatus,
   upsertNpc,
   learnSpell,
+  parseSpellSlots,
 } from "./state";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
 import { extractJson } from "./json";
@@ -70,25 +71,6 @@ import type {
   PlannedCondition,
 } from "./types";
 import { llmLangName, type Lang, defaultLang } from "./i18n";
-
-
-/** Parse a JSON spell-slot string into a Record<string, number>. Defensive. */
-function parseSlotsSafe(raw: string | null | undefined): Record<string, number> {
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const out: Record<string, number> = {};
-      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        out[k] = Math.max(0, Math.floor(Number(v) || 0));
-      }
-      return out;
-    }
-  } catch {
-    /* ignore */
-  }
-  return {};
-}
 
 
 // ---------- Positional advantage: flanking & high ground ----------
@@ -1188,8 +1170,8 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     bonusInt: target.bonusInt, bonusWis: target.bonusWis, bonusCha: target.bonusCha,
     pendingLevelUp: target.pendingLevelUp,
     pendingASI: Boolean((target as any).pendingASI),
-    spellSlots: parseSlotsSafe(target.spellSlots),
-    maxSpellSlots: parseSlotsSafe(target.maxSpellSlots),
+    spellSlots: parseSpellSlots(target.spellSlots),
+    maxSpellSlots: parseSpellSlots(target.maxSpellSlots),
     hitDice: target.hitDice ?? 8,
     equipment: {
       weapon: (target as any).eqWeapon ?? null,
@@ -1407,7 +1389,9 @@ export async function resolvePlayerMechanics(
     }
   } else {
     // Exploration: must be the actor's exploration turn.
-    const players = await db.player.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } });
+    // Reuse the snapshot's players (already fetched above, same createdAt asc order)
+    // instead of issuing a redundant db.player.findMany query.
+    const players = actorSnap?.players ?? [];
     const alive = players.filter((p) => p.isAlive && p.hp > 0);
     if (alive.length > 1) {
       const current = alive[room.explorationActorIndex % alive.length];

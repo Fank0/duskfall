@@ -31,7 +31,8 @@ import type {
 export const GRID_SIZE = 10;
 
 // ---------- mappers ----------
-function parseSpellSlots(raw: string | null | undefined): Record<string, number> {
+/** Parse a JSON spell-slot string into a Record<string, number>. Defensive. */
+export function parseSpellSlots(raw: string | null | undefined): Record<string, number> {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw);
@@ -354,11 +355,13 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
   const discoveredKeys = new Set(mapRoomsAll.filter((r) => r.discovered).map((r) => `${r.x},${r.y}`));
   const discoveredRooms = mapRoomsAll
     .filter((r) => r.discovered)
-    .map(toMapRoom)
-    .map((r) => ({
-      ...r,
-      connections: r.connections.filter((c) => discoveredKeys.has(`${c.x},${c.y}`)),
-    }));
+    .map((r) => {
+      const mapped = toMapRoom(r);
+      return {
+        ...mapped,
+        connections: mapped.connections.filter((c) => discoveredKeys.has(`${c.x},${c.y}`)),
+      };
+    });
 
   // Time-of-day / weather come from the Room columns (added in items 9 & 10).
   const timeOfDay = (room.timeOfDay ?? "day") as "dawn" | "day" | "dusk" | "night";
@@ -390,6 +393,14 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     discovered: Boolean(t.discovered),
   }));
 
+  // Exploration turn: filter alive players once (was previously computed twice).
+  const alivePlayers = players.filter((p) => p.isAlive && p.hp > 0);
+  const currentExplorerName = room.combatActive
+    ? null
+    : (alivePlayers[room.explorationActorIndex % Math.max(1, alivePlayers.length)]?.name
+      ?? players[0]?.name
+      ?? null);
+
   const snapshot: GameStateSnapshot = {
     roomCode: room.code,
     hostName: room.hostName,
@@ -406,7 +417,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     turnIndex: room.turnIndex,
     currentTurnName: currentEntry?.combatantName ?? null,
     currentTurnType: (currentEntry?.combatantType as "player" | "monster") ?? null,
-    currentExplorerName: room.combatActive ? null : (players.filter((p) => p.isAlive && p.hp > 0)[room.explorationActorIndex % Math.max(1, players.filter((p) => p.isAlive && p.hp > 0).length)]?.name ?? players[0]?.name ?? null),
+    currentExplorerName,
     conditions: conditions.map(toCondition),
     quests: quests.map(toQuest),
     mapRooms: discoveredRooms,
@@ -530,8 +541,10 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     lines.push(...equippedLines);
   }
 
-  const activeMonsters = snap.monsters.filter((m) => m.isActive);
-  const hiddenMonsters = snap.monsters.filter((m) => !m.isActive);
+  // Single-pass partition into active/hidden monsters (was 2 filter calls).
+  const activeMonsters: typeof snap.monsters = [];
+  const hiddenMonsters: typeof snap.monsters = [];
+  for (const m of snap.monsters) (m.isActive ? activeMonsters : hiddenMonsters).push(m);
   if (activeMonsters.length > 0) {
     lines.push("=== Противники (на сетке) ===");
     for (const m of activeMonsters) {
