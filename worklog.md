@@ -204,3 +204,23 @@ Stage Summary:
 - bun run lint: 0 errors, 0 warnings (clean).
 - 5 commits made (one per item).
 - Files touched: prisma/schema.prisma (already had Condition + spellSlots + advantageMode), src/lib/game/{conditions,dice,types,state,dm-agent,presets,seed,abilities}.ts, src/app/api/game/rest/route.ts, src/components/dnd/{CombatGrid,CharacterSheet,ChatPanel,DiceLog}.tsx, src/app/page.tsx, src/app/globals.css.
+
+---
+Task ID: world-v2-restart
+Agent: world-v2-agent
+Task: Implement game world 2.0 (quest journal, world map, NPC/dialogue, day/night, weather, random encounters)
+
+Work Log:
+- Item 6: Quest model + createQuest/updateQuestStatus/getQuests in state.ts + QuestJournal.tsx UI + DM plan success.quest — commit 8027a62
+- Item 7: MapRoom model + BSP generator in world-map.ts + WorldMap.tsx SVG UI + move-room API — commit 076526e
+- Item 8: Npc model + upsertNpc/killNpc + dialogue API + DialoguePanel.tsx — commit 806d7a3
+- Item 9: Room.timeOfDay + turnCount + advance every 5 turns + SceneViewer tints + indicator — commit bfcbb3e
+- Item 10: Room.weather + 20% random change + CSS overlays (rain/fog/storm/snow) in globals.css — commit 2029b30
+- Item 11: encounters.ts with 6 types + integrated into move-room API — commit 87edd94
+
+Stage Summary:
+- 6 commits made (one per item): 8027a62, 076526e, 806d7a3, bfcbb3e, 2029b30, 87edd94
+- bunx tsc --noEmit: 0 errors (clean)
+- bun run lint: 0 errors, 0 warnings (clean)
+- New models: Quest, MapRoom, Npc. New fields on Room: timeOfDay, turnCount, weather.
+- New files: world-map.ts, encounters.ts, QuestJournal.tsx, WorldMap.tsx, DialoguePanel.tsx, move-room/route.ts, dialogue/route.ts
