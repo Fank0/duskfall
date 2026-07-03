@@ -114,6 +114,37 @@
   --ring: oklch(0.56 0.19 25);
 }
 
+/* ===== Themes (item 21) — override --primary / --accent per data-theme ===== */
+[data-theme="forest"] {
+  --primary: oklch(0.55 0.18 145);
+  --primary-foreground: oklch(0.97 0.01 145);
+  --accent: oklch(0.45 0.10 145);
+  --accent-foreground: oklch(0.92 0.13 145);
+  --ring: oklch(0.55 0.18 145);
+  --chart-1: oklch(0.55 0.18 145);
+}
+[data-theme="ember"] {
+  --primary: oklch(0.60 0.22 25);
+  --primary-foreground: oklch(0.97 0.01 25);
+  --accent: oklch(0.50 0.13 35);
+  --accent-foreground: oklch(0.92 0.13 35);
+  --ring: oklch(0.60 0.22 25);
+  --chart-1: oklch(0.60 0.22 25);
+}
+[data-theme="ocean"] {
+  --primary: oklch(0.60 0.13 220);
+  --primary-foreground: oklch(0.97 0.01 220);
+  --accent: oklch(0.45 0.10 220);
+  --accent-foreground: oklch(0.92 0.13 220);
+  --ring: oklch(0.60 0.13 220);
+  --chart-1: oklch(0.60 0.13 220);
+}
+
+/* ===== UI scale (item 21) — base font-size on the root wrapper ===== */
+.ui-scale-100 { font-size: 16px; }
+.ui-scale-125 { font-size: 20px; }
+.ui-scale-150 { font-size: 24px; }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

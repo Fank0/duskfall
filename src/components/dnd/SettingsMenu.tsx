@@ -8,15 +8,30 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Circle, Square, Type } from "lucide-react";
-import { useSettings } from "@/lib/game/settings";
+import { Settings, Circle, Square, Type, Palette, ZoomIn } from "lucide-react";
+import { useSettings, type Theme, type UiScale } from "@/lib/game/settings";
 import { cn } from "@/lib/utils";
 
+const THEMES: { key: Theme; label: string; swatch: string; ring: string }[] = [
+  { key: "default", label: "Янтарь", swatch: "oklch(0.56 0.19 25)", ring: "ring-amber-700/60" },
+  { key: "forest", label: "Лес", swatch: "oklch(0.55 0.18 145)", ring: "ring-emerald-700/60" },
+  { key: "ember", label: "Угли", swatch: "oklch(0.60 0.22 25)", ring: "ring-red-700/60" },
+  { key: "ocean", label: "Океан", swatch: "oklch(0.60 0.13 220)", ring: "ring-sky-700/60" },
+];
+
+const SCALES: { key: UiScale; label: string }[] = [
+  { key: 100, label: "100%" },
+  { key: 125, label: "125%" },
+  { key: 150, label: "150%" },
+];
+
 /**
- * SettingsMenu — UI customization dialog.
+ * SettingsMenu — UI customization dialog (items 18 + 21).
  *
- * Item 18: token shape (round/square), token names toggle.
- * Item 21 will extend this with theme picker, UI scale, and panel-collapse hints.
+ * - Token shape (round/square) — item 18
+ * - Token names toggle — item 18
+ * - Theme picker (4 swatches) — item 21
+ * - UI scale (100/125/150%) — item 21
  */
 export function SettingsMenu({
   open,
@@ -36,12 +51,65 @@ export function SettingsMenu({
             Настройки интерфейса
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Внешний вид сетки и токенов. Настройки сохраняются в этом браузере.
+            Внешний вид, тема и масштаб. Настройки сохраняются в этом браузере.
           </DialogDescription>
         </DialogHeader>
 
         <div className="fantasy-scroll flex-1 overflow-y-auto px-5 pb-5 pt-1 space-y-5">
-          {/* ===== Token shape ===== */}
+          {/* ===== Theme (item 21) ===== */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
+              <Palette className="h-3.5 w-3.5" /> Тема оформления
+            </h3>
+            <div className="grid grid-cols-4 gap-2">
+              {THEMES.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => settings.setTheme(t.key)}
+                  title={t.label}
+                  className={cn(
+                    "flex flex-col items-center gap-1 rounded-md border p-2 text-[10px] transition-all",
+                    settings.theme === t.key
+                      ? cn("border-primary bg-primary/10 text-primary ring-2", t.ring)
+                      : "border-border/50 bg-stone-900/40 text-muted-foreground hover:bg-stone-900/70"
+                  )}
+                >
+                  <span
+                    className="h-5 w-5 rounded-full border border-black/40 shadow-sm"
+                    style={{ background: t.swatch }}
+                  />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* ===== UI scale (item 21) ===== */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
+              <ZoomIn className="h-3.5 w-3.5" /> Масштаб интерфейса
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              {SCALES.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => settings.setUiScale(s.key)}
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-sm transition-colors",
+                    settings.uiScale === s.key
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border/50 bg-stone-900/40 text-muted-foreground hover:bg-stone-900/70"
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          {/* ===== Token shape (item 18) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
               <Circle className="h-3.5 w-3.5" /> Форма токенов
@@ -62,7 +130,7 @@ export function SettingsMenu({
             </div>
           </section>
 
-          {/* ===== Token names ===== */}
+          {/* ===== Token names (item 18) ===== */}
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
               <Type className="h-3.5 w-3.5" /> Подписи токенов

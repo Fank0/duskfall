@@ -20,6 +20,8 @@ import { WorldMap } from "@/components/dnd/WorldMap";
 import { DialoguePanel } from "@/components/dnd/DialoguePanel";
 import { SettingsMenu } from "@/components/dnd/SettingsMenu";
 import { CombatLog } from "@/components/dnd/CombatLog";
+import { useSettings } from "@/lib/game/settings";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,6 +97,9 @@ export default function Home() {
   const [isDialogueBusy, setIsDialogueBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [combatLogOpen, setCombatLogOpen] = useState(false);
+
+  // UI customization settings (item 21) — read at the top so the hook order is stable.
+  const settings = useSettings();
 
   // Restore session on mount.
   useEffect(() => {
@@ -605,8 +610,15 @@ export default function Home() {
     : snapshot.currentExplorerName === session.playerName;
   const yourInventory = snapshot.inventory.filter((i) => i.playerName === session.playerName);
 
+  // UI customization (item 21): theme + scale, read from the settings store above.
+  const themeAttr = settings.theme === "default" ? undefined : settings.theme;
+  const scaleClass = `ui-scale-${settings.uiScale}`;
+
   return (
-    <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
+    <div
+      className={cn("flex min-h-screen flex-col lg:h-screen lg:overflow-hidden", scaleClass)}
+      data-theme={themeAttr}
+    >
       {/* ===== Header ===== */}
       <header className="shrink-0 border-b border-border/60 bg-stone-950/60 backdrop-blur">
         <div className="flex items-center gap-3 px-3 py-2.5 sm:px-4">

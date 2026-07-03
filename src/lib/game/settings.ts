@@ -26,6 +26,8 @@ export interface SettingsState {
   setShowTokenNames: (v: boolean) => void;
   setTheme: (v: Theme) => void;
   setUiScale: (v: UiScale) => void;
+  setCollapsedParty: (v: boolean) => void;
+  setCollapsedDiceLog: (v: boolean) => void;
   toggleParty: () => void;
   toggleDiceLog: () => void;
 }
@@ -47,6 +49,8 @@ export const useSettings = create<SettingsState>()(
       setShowTokenNames: (v) => set({ showTokenNames: v }),
       setTheme: (v) => set({ theme: v }),
       setUiScale: (v) => set({ uiScale: v }),
+      setCollapsedParty: (v) => set({ collapsedParty: v }),
+      setCollapsedDiceLog: (v) => set({ collapsedDiceLog: v }),
       toggleParty: () => set((s) => ({ collapsedParty: !s.collapsedParty })),
       toggleDiceLog: () => set((s) => ({ collapsedDiceLog: !s.collapsedDiceLog })),
     }),
