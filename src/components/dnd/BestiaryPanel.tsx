@@ -175,7 +175,7 @@ export function BestiaryPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col gap-0 p-0">
+      <DialogContent className="sm:max-w-4xl xl:max-w-6xl max-h-[90vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <BookOpen className="h-5 w-5 text-amber-300" />
@@ -239,7 +239,7 @@ export function BestiaryPanel({
                   Ничего не найдено по запросу «{query}».
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-2 pb-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 pb-4 sm:grid-cols-2 xl:grid-cols-3">
                   {(activeCategory === "all"
                     ? MONSTER_CATEGORIES.flatMap((c) => grouped.get(c) ?? [])
                     : grouped.get(activeCategory) ?? []
