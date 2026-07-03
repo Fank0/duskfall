@@ -5,6 +5,7 @@ import { abilityModifier } from "./dice";
 import { rollD20 } from "./dice";
 import { CONDITIONS, getCondition } from "./conditions";
 import { inferEquipProps } from "./item-props";
+import { findBestiaryEntryByName, formatCR } from "./bestiary";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -492,16 +493,31 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
   if (activeMonsters.length > 0) {
     lines.push("=== Противники (на сетке) ===");
     for (const m of activeMonsters) {
+      // Look up the bestiary entry by name so the DM agent can narrate the
+      // monster's CR + any unique special ability (item 5 of the bestiary
+      // task). The biome monster pool sets the on-grid name to the bestiary
+      // entry's Russian name, so a direct match works; if not found, we
+      // silently skip the bestiary blurb.
+      const entry = findBestiaryEntryByName(m.name);
+      const crTag = entry ? ` | CR ${formatCR(entry.cr)}` : "";
+      const abilityTag = entry?.specialAbility
+        ? ` | ⚡ Способность: ${entry.specialAbility}`
+        : "";
       lines.push(
-        `${m.name} (${m.label}): HP ${m.hp}/${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY})`
+        `${m.name} (${m.label}): HP ${m.hp}/${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY})${crTag}${abilityTag}`
       );
     }
   }
   if (hiddenMonsters.length > 0) {
     lines.push("=== Скрытые угрозы (появятся, если начнётся бой) ===");
     for (const m of hiddenMonsters) {
+      const entry = findBestiaryEntryByName(m.name);
+      const crTag = entry ? ` | CR ${formatCR(entry.cr)}` : "";
+      const abilityTag = entry?.specialAbility
+        ? ` | ⚡ Способность: ${entry.specialAbility}`
+        : "";
       lines.push(
-        `${m.name} (${m.label}): HP ${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY}) | ${m.description}`
+        `${m.name} (${m.label}): HP ${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY}) | ${m.description}${crTag}${abilityTag}`
       );
     }
   }
