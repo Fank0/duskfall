@@ -31,6 +31,20 @@ export interface CombatAnimEvent {
   isHeal: boolean;
 }
 
+/** Loot / trap cell overlay info (item 20). */
+export interface GridExtras {
+  lootCells: { x: number; y: number; itemName: string }[];
+  traps: { x: number; y: number; discovered: boolean }[];
+}
+
+/** Keywords that mark a monster as ranged (used for threat-range overlay, item 20). */
+const RANGED_KEYWORDS = ["лук", "bow", "арбалет", "cross", "праща", "sling", "starb", "star"];
+
+function isRangedMonster(m: MonsterState): boolean {
+  const name = `${m.name} ${m.label} ${m.damageNotation}`.toLowerCase();
+  return RANGED_KEYWORDS.some((kw) => name.includes(kw));
+}
+
 const AOE_ELEMENT_COLORS: Record<string, { core: string; edge: string; label: string }> = {
   fire: { core: "rgba(249,115,22,0.85)", edge: "rgba(234,88,12,0.0)", label: "Огонь" },
   cold: { core: "rgba(59,130,246,0.85)", edge: "rgba(29,78,216,0.0)", label: "Холод" },
@@ -50,6 +64,7 @@ export function CombatGrid({
   conditions,
   aoe,
   lastAnimEvent,
+  gridExtras,
 }: {
   players: PlayerState[];
   monsters: MonsterState[];
@@ -59,6 +74,7 @@ export function CombatGrid({
   conditions: ConditionState[];
   aoe?: AoEOverlay | null;
   lastAnimEvent?: CombatAnimEvent | null;
+  gridExtras?: GridExtras;
 }) {
   const settings = useSettings();
   const tokenShape = settings.tokenShape;
@@ -241,6 +257,47 @@ export function CombatGrid({
   }, [aoe]);
   const aoeColor = aoe ? AOE_ELEMENT_COLORS[aoe.element] ?? AOE_ELEMENT_COLORS.force : null;
 
+  // ===== Loot cells + traps (item 20) =====
+  const lootCells = gridExtras?.lootCells;
+  const traps = gridExtras?.traps;
+  const lootCellMap = useMemo(() => {
+    if (!lootCells?.length) return null;
+    const m = new Map<string, string[]>();
+    for (const c of lootCells) {
+      const k = `${c.x},${c.y}`;
+      const arr = m.get(k) ?? [];
+      arr.push(c.itemName);
+      m.set(k, arr);
+    }
+    return m;
+  }, [lootCells]);
+  const trapMap = useMemo(() => {
+    if (!traps?.length) return null;
+    const m = new Map<string, boolean>();
+    for (const t of traps) m.set(`${t.x},${t.y}`, t.discovered);
+    return m;
+  }, [traps]);
+
+  // ===== Threat range: faint red zone around ranged monsters (item 20) =====
+  const threatCells = useMemo(() => {
+    const ranged = activeMonsters.filter(isRangedMonster);
+    if (ranged.length === 0) return null;
+    const set = new Set<string>();
+    const RADIUS = 5;
+    for (const m of ranged) {
+      for (let dx = -RADIUS; dx <= RADIUS; dx++) {
+        for (let dy = -RADIUS; dy <= RADIUS; dy++) {
+          const x = m.posX + dx;
+          const y = m.posY + dy;
+          if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
+          if (Math.hypot(dx, dy) > RADIUS) continue;
+          set.add(`${x},${y}`);
+        }
+      }
+    }
+    return set;
+  }, [activeMonsters]);
+
   // ===== Flanking lines (unchanged from combat-v2) =====
   const flankingLines = useMemo(() => {
     if (!combatActive || !currentTurnName) return [];
@@ -333,12 +390,39 @@ export function CombatGrid({
               const y = Math.floor(idx / GRID_SIZE);
               const tint = (x + y) % 2 === 0 ? "bg-stone-900/40" : "bg-stone-900/70";
               const isAoeCell = aoeCellSet?.has(`${x},${y}`);
+              const lootItems = lootCellMap?.get(`${x},${y}`);
+              const trapDiscovered = trapMap?.get(`${x},${y}`);
+              const isTrap = trapMap?.has(`${x},${y}`);
+              const isThreat = threatCells?.has(`${x},${y}`);
               return (
                 <div
                   key={idx}
                   className={cn("relative rounded-[2px] border border-border/20", tint)}
                   title={`(${x}, ${y})`}
                 >
+                  {/* Threat-range overlay (faint red zone around ranged monsters) */}
+                  {isThreat && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-10 rounded-[2px] bg-red-700/15"
+                      title="Зона угрозы (дальний бой)"
+                    />
+                  )}
+                  {/* Loot cell shimmer (item 20) */}
+                  {lootItems && lootItems.length > 0 && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-10 rounded-[2px] loot-shimmer"
+                      title={`Здесь лежит: ${lootItems.join(", ")}`}
+                    />
+                  )}
+                  {/* Discovered trap (item 20) */}
+                  {isTrap && trapDiscovered && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[2px] bg-red-900/55 text-[10px]"
+                      title="Ловушка!"
+                    >
+                      <span>⚠️</span>
+                    </div>
+                  )}
                   {/* AoE overlay — radial gradient fade-out over 2s. */}
                   {isAoeCell && aoeColor && (
                     <div

@@ -330,6 +330,23 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
       ? { x: room.currentMapX, y: room.currentMapY }
       : null;
 
+  // ===== Ground loot cells (item 20) =====
+  // Items with playerName === "__ground__" are spread across grid cells via a
+  // deterministic hash so each item stays in a stable cell across renders.
+  const lootCells = inventory
+    .filter((it) => it.playerName === "__ground__")
+    .map((it) => {
+      let h = 0;
+      for (let i = 0; i < it.id.length; i++) h = (h * 31 + it.id.charCodeAt(i)) | 0;
+      const x = Math.abs(h) % GRID_SIZE;
+      const y = Math.abs(h >> 8) % GRID_SIZE;
+      return { x, y, itemName: it.itemName };
+    });
+
+  // ===== Traps (item 20) =====
+  // No Trap model exists yet — DM can populate later. Return empty array for now.
+  const traps: { x: number; y: number; discovered: boolean }[] = [];
+
   return {
     roomCode: room.code,
     hostName: room.hostName,
@@ -357,6 +374,8 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     hasAlchemy: Boolean(room.hasAlchemy),
     hasForge: Boolean(room.hasForge),
     hasEnchant: Boolean(room.hasEnchant),
+    lootCells,
+    traps,
   };
 }
 

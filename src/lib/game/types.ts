@@ -378,6 +378,10 @@ export interface GameStateSnapshot {
   hasAlchemy: boolean;
   hasForge: boolean;
   hasEnchant: boolean;
+  /** ground loot cells (items with playerName="__ground__" spread across grid cells) — item 20 */
+  lootCells: { x: number; y: number; itemName: string }[];
+  /** trap cells on the grid (DM-populated; empty for now) — item 20 */
+  traps: { x: number; y: number; discovered: boolean }[];
 }
 
 export interface Stats {

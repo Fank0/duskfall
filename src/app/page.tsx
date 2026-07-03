@@ -809,6 +809,10 @@ export default function Home() {
             conditions={snapshot.conditions}
             aoe={lastAoe}
             lastAnimEvent={lastAnimEvent}
+            gridExtras={{
+              lootCells: snapshot.lootCells,
+              traps: snapshot.traps,
+            }}
           />
         </section>
 

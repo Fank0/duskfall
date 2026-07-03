@@ -303,6 +303,25 @@
   animation: auraHarmed 1.4s ease-in-out infinite;
 }
 
+/* ===== Loot cell shimmer (item 20) ===== */
+@keyframes lootShimmer {
+  0% { background-position: -150% 0; opacity: 0.45; }
+  50% { opacity: 0.85; }
+  100% { background-position: 150% 0; opacity: 0.45; }
+}
+.loot-shimmer {
+  background: linear-gradient(
+    110deg,
+    rgba(245, 158, 11, 0.12) 0%,
+    rgba(253, 224, 71, 0.32) 45%,
+    rgba(245, 158, 11, 0.5) 50%,
+    rgba(253, 224, 71, 0.32) 55%,
+    rgba(245, 158, 11, 0.12) 100%
+  );
+  background-size: 250% 100%;
+  animation: lootShimmer 2.6s ease-in-out infinite;
+}
+
 /* ===== Weather overlays (item 10) ===== */
 /* Rain: diagonal animated stripes */
 .weather-rain {
