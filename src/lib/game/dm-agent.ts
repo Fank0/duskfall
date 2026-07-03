@@ -330,6 +330,8 @@ function buildCombinedPrompt(lang: Lang = defaultLang()): string {
 // Prompt cache for trivial (non-combat) actions. Keyed by roomCode + action
 // text. 30s TTL. Only stores plans with category="exploration" or "social".
 const PLAN_CACHE_TTL_MS = 30_000;
+// Hard cap on plan cache size (audit-v2 — bounds memory for abandoned rooms).
+const PLAN_CACHE_MAX_ENTRIES = 500;
 const planCache = new Map<string, { plan: DMResolution; ts: number }>();
 
 function planCacheKey(roomCode: string, actionText: string): string {
@@ -351,6 +353,22 @@ function setCachedPlan(roomCode: string, actionText: string, plan: DMResolution)
   // Only cache trivial (non-combat) plans — combat plans involve live state
   // (HP, initiative, monster positions) that changes every round.
   if (plan.category !== "exploration" && plan.category !== "social") return;
+  // Lazy prune: if the cache has grown large, drop expired + oldest entries.
+  if (planCache.size >= PLAN_CACHE_MAX_ENTRIES) {
+    const now = Date.now();
+    for (const [k, v] of planCache) {
+      if (now - v.ts > PLAN_CACHE_TTL_MS) planCache.delete(k);
+    }
+    // If still over the cap, drop the oldest (Map preserves insertion order).
+    if (planCache.size >= PLAN_CACHE_MAX_ENTRIES) {
+      const excess = planCache.size - PLAN_CACHE_MAX_ENTRIES + 1;
+      let i = 0;
+      for (const k of planCache.keys()) {
+        if (i++ >= excess) break;
+        planCache.delete(k);
+      }
+    }
+  }
   const key = planCacheKey(roomCode, actionText);
   planCache.set(key, { plan, ts: Date.now() });
 }
