@@ -6,6 +6,8 @@ import {
 } from "@/lib/game/dm-agent";
 import { getSnapshot, invalidateSnapshotCache } from "@/lib/game/state";
 import { rateLimit, rateLimitedResponse } from "@/lib/game/rate-limit";
+import { validateActionText, validatePlayerName, validateRoomCode } from "@/lib/game/validate";
+import { sanitizeLLMOutput } from "@/lib/game/sanitize";
 import { logger } from "@/lib/game/logger";
 import { metrics } from "@/lib/game/metrics";
 
@@ -23,16 +25,39 @@ const actionLimiter = rateLimit({ windowMs: 60_000, max: 10, label: "actions" })
 //   data: {"type":"done"}\n\n                                  (stream end)
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
-  const playerName = (body?.playerName ?? "").toString().trim();
-  const action = (body?.action ?? "").toString().trim();
-  if (!roomCode || !playerName || !action) {
+  const roomCodeRaw = (body?.roomCode ?? "").toString();
+  const playerNameRaw = (body?.playerName ?? "").toString();
+  const actionRaw = (body?.action ?? "").toString();
+
+  // ===== Validation (item 26) =====
+  const roomCodeError = validateRoomCode(roomCodeRaw);
+  if (roomCodeError) {
     metrics.recordApiRequest(false);
     return new Response(
-      JSON.stringify({ ok: false, error: "Укажите комнату, героя и действие." }),
+      JSON.stringify({ ok: false, error: roomCodeError }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
+  const playerNameError = validatePlayerName(playerNameRaw);
+  if (playerNameError) {
+    metrics.recordApiRequest(false);
+    return new Response(
+      JSON.stringify({ ok: false, error: playerNameError }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  const actionError = validateActionText(actionRaw);
+  if (actionError) {
+    metrics.recordApiRequest(false);
+    return new Response(
+      JSON.stringify({ ok: false, error: actionError }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const roomCode = roomCodeRaw.toUpperCase().trim();
+  const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, 20);
+  const action = actionRaw.trim().slice(0, 500);
 
   // ===== Rate limit (item 25): 10 actions / minute / player. =====
   const rlKey = `action:${roomCode}:${playerName}`;
@@ -74,15 +99,17 @@ export async function POST(req: NextRequest) {
         }
 
         // 3. Persist the DM narrative, then signal done.
+        // Sanitize LLM output before storing (defense-in-depth, item 26).
         const room = await db.room.findUnique({ where: { code: roomCode } });
         if (room) {
+          const persistedContent = sanitizeLLMOutput(full || mech.branchNarrative);
           await db.chatMessage.create({
             data: {
               roomId: room.id,
               role: "dm",
               speaker: "",
               round: mech.round,
-              content: full || mech.branchNarrative,
+              content: persistedContent,
             },
           });
           invalidateSnapshotCache(room.id);

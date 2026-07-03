@@ -7,6 +7,7 @@ import {
   restoreSpellSlotsForShortRest,
 } from "@/lib/game/state";
 import { rollDice } from "@/lib/game/dice";
+import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -17,15 +18,20 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
-    const playerName = (body?.playerName ?? "").toString().trim();
-    const restType = (body?.restType ?? "short").toString().trim() === "long" ? "long" : "short";
-    if (!roomCode || !playerName) {
-      return NextResponse.json(
-        { ok: false, error: "Укажите комнату и героя." },
-        { status: 400 }
-      );
-    }
+    const roomCodeRaw = (body?.roomCode ?? "").toString();
+    const playerNameRaw = (body?.playerName ?? "").toString();
+    const restTypeRaw = (body?.restType ?? "short").toString().trim();
+
+    // ===== Validation (item 26) =====
+    const roomCodeError = validateRoomCode(roomCodeRaw);
+    if (roomCodeError) return NextResponse.json({ ok: false, error: roomCodeError }, { status: 400 });
+    const playerNameError = validatePlayerName(playerNameRaw);
+    if (playerNameError) return NextResponse.json({ ok: false, error: playerNameError }, { status: 400 });
+
+    const roomCode = roomCodeRaw.toUpperCase().trim();
+    const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, 20);
+    const restType = restTypeRaw.toLowerCase() === "long" ? "long" : "short";
+
     const room = await db.room.findUnique({ where: { code: roomCode } });
     if (!room) {
       return NextResponse.json({ ok: false, error: "Комната не найдена." }, { status: 404 });

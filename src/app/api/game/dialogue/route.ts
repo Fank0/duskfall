@@ -8,6 +8,8 @@ import {
   upsertNpc,
 } from "@/lib/game/state";
 import { chatComplete } from "@/lib/game/llm";
+import { validatePlayerName, validateRoomCode, validateShortString, sanitizeString, LIMITS } from "@/lib/game/validate";
+import { sanitizeLLMOutput } from "@/lib/game/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -66,11 +68,30 @@ const SYSTEM_PROMPT_DIALOGUE = `Ты играешь роль NPC (неигров
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
-    const playerName = (body?.playerName ?? "").toString().trim();
-    const npcName = (body?.npcName ?? "").toString().trim();
-    const action = (body?.action ?? "intro").toString().trim();
-    const itemName = (body?.item ?? "").toString().trim();
+    const roomCodeRaw = (body?.roomCode ?? "").toString();
+    const playerNameRaw = (body?.playerName ?? "").toString();
+    const npcNameRaw = (body?.npcName ?? "").toString();
+    const actionRaw = (body?.action ?? "intro").toString().trim();
+    const itemNameRaw = (body?.item ?? "").toString();
+
+    // ===== Validation (item 26) =====
+    const roomCodeError = validateRoomCode(roomCodeRaw);
+    if (roomCodeError) return NextResponse.json({ ok: false, error: roomCodeError }, { status: 400 });
+    const playerNameError = validatePlayerName(playerNameRaw);
+    if (playerNameError) return NextResponse.json({ ok: false, error: playerNameError }, { status: 400 });
+    const npcNameError = validateShortString(npcNameRaw, "Имя NPC");
+    if (npcNameError) return NextResponse.json({ ok: false, error: npcNameError }, { status: 400 });
+
+    const roomCode = roomCodeRaw.toUpperCase().trim();
+    const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, LIMITS.PLAYER_NAME_MAX);
+    const npcName = sanitizeString(npcNameRaw).slice(0, LIMITS.SHORT_STRING_MAX);
+    const action = actionRaw.slice(0, 30);
+    const itemName = sanitizeString(itemNameRaw).slice(0, LIMITS.SHORT_STRING_MAX);
+
+    const validActions = ["intro", "about", "business", "leave", "buy", "sell"];
+    if (!validActions.includes(action)) {
+      return NextResponse.json({ ok: false, error: "Недопустимое действие диалога." }, { status: 400 });
+    }
     if (!roomCode || !playerName || !npcName) {
       return NextResponse.json(
         { ok: false, error: "Укажите комнату, героя и NPC." },
@@ -111,7 +132,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Non-merchant NPCs don't trade — return a flavour message instead.
-        narrative = await runLlmDialogue(npc, player, "business_unavailable", "");
+        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "business_unavailable", ""));
         await saveChatMessage(room.id, "dm", "", `${npcName} не торгует: ${narrative}`, round);
         const snapshot = await getSnapshot(roomCode);
         return NextResponse.json({ ok: true, snapshot, narrative, stock: [], tradeOutcome: null });
@@ -133,7 +154,7 @@ export async function POST(req: NextRequest) {
           { action: "add", item: item.name, type: item.type, description: item.description },
         ]);
         tradeOutcome = { kind: "buy", item: item.name, goldChange: -item.price, success: true };
-        narrative = await runLlmDialogue(npc, player, "buy", item.name);
+        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "buy", item.name));
       }
       await saveChatMessage(room.id, "dm", "", `${npcName}: ${narrative}`, round);
       const snapshot = await getSnapshot(roomCode);
@@ -175,7 +196,7 @@ export async function POST(req: NextRequest) {
     }
 
     // intro / about / leave — call the LLM in-character.
-    narrative = await runLlmDialogue(npc, player, action, "");
+    narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, action, ""));
     await saveChatMessage(room.id, "dm", "", `${npcName}: ${narrative}`, round);
 
     if (action === "leave") {

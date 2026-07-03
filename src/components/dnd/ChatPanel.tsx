@@ -8,6 +8,7 @@ import {
   Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp,
 } from "lucide-react";
 import type { ChatMessageState } from "@/lib/game/types";
+import { sanitizeLLMOutput } from "@/lib/game/sanitize";
 import { cn } from "@/lib/utils";
 
 const QUICK_ACTIONS = [
@@ -310,6 +311,10 @@ function MessageBubble({ message, yourName }: { message: ChatMessageState; yourN
   }
 
   // DM
+  // Defense-in-depth (item 26): run the DM narrative through the LLM-output
+  // sanitizer before rendering. The backend already sanitizes on persist, but
+  // this catches any in-flight streaming tokens that bypassed that path.
+  const safeContent = sanitizeLLMOutput(message.content);
   return (
     <div className="flex items-start gap-2 animate-fade-up">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-700/60 bg-stone-950/80">
@@ -320,7 +325,7 @@ function MessageBubble({ message, yourName }: { message: ChatMessageState; yourN
           <Sparkles className="h-3 w-3" /> Мастер Подземелий
         </div>
         <p className="whitespace-pre-wrap font-serif text-sm leading-relaxed text-foreground/90">
-          {message.content}
+          {safeContent}
         </p>
       </div>
     </div>

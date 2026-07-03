@@ -10,6 +10,7 @@ import {
   abilityLabelRu,
 } from "@/lib/game/crafting";
 import { inferEquipProps } from "@/lib/game/item-props";
+import { validatePlayerName, validateRoomCode, validateShortString } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -29,12 +30,22 @@ function serializeStatBonus(stats: Partial<Record<"str" | "dex" | "con" | "int" 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
-    const playerName = (body?.playerName ?? "").toString().trim();
-    const recipeId = (body?.recipeId ?? "").toString().trim();
-    if (!roomCode || !playerName || !recipeId) {
-      return NextResponse.json({ ok: false, error: "Укажите комнату, героя и рецепт." }, { status: 400 });
-    }
+    const roomCodeRaw = (body?.roomCode ?? "").toString();
+    const playerNameRaw = (body?.playerName ?? "").toString();
+    const recipeIdRaw = (body?.recipeId ?? "").toString();
+
+    // ===== Validation (item 26) =====
+    const roomCodeError = validateRoomCode(roomCodeRaw);
+    if (roomCodeError) return NextResponse.json({ ok: false, error: roomCodeError }, { status: 400 });
+    const playerNameError = validatePlayerName(playerNameRaw);
+    if (playerNameError) return NextResponse.json({ ok: false, error: playerNameError }, { status: 400 });
+    const recipeIdError = validateShortString(recipeIdRaw, "Рецепт");
+    if (recipeIdError) return NextResponse.json({ ok: false, error: recipeIdError }, { status: 400 });
+
+    const roomCode = roomCodeRaw.toUpperCase().trim();
+    const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, 20);
+    const recipeId = recipeIdRaw.trim().slice(0, 80);
+
     const room = await db.room.findUnique({ where: { code: roomCode } });
     if (!room) return NextResponse.json({ ok: false, error: "Комната не найдена." }, { status: 404 });
 

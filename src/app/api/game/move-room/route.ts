@@ -12,6 +12,7 @@ import {
   getCurrentMapPos,
 } from "@/lib/game/world-map";
 import { rollEncounter, logEncounter } from "@/lib/game/encounters";
+import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -41,13 +42,27 @@ const TYPE_PROMPT: Record<string, string> = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
+    const roomCodeRaw = (body?.roomCode ?? "").toString();
     const x = Number(body?.x);
     const y = Number(body?.y);
-    const playerName = (body?.playerName ?? "").toString().trim();
-    if (!roomCode || !Number.isInteger(x) || !Number.isInteger(y)) {
+    const playerNameRaw = (body?.playerName ?? "").toString();
+
+    // ===== Validation (item 26) =====
+    const roomCodeError = validateRoomCode(roomCodeRaw);
+    if (roomCodeError) {
+      return NextResponse.json({ ok: false, error: roomCodeError }, { status: 400 });
+    }
+    const playerNameError = validatePlayerName(playerNameRaw);
+    if (playerNameError) {
+      return NextResponse.json({ ok: false, error: playerNameError }, { status: 400 });
+    }
+
+    const roomCode = roomCodeRaw.toUpperCase().trim();
+    const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, 20);
+
+    if (!Number.isInteger(x) || !Number.isInteger(y)) {
       return NextResponse.json(
-        { ok: false, error: "Укажите комнату и координаты." },
+        { ok: false, error: "Укажите координаты." },
         { status: 400 }
       );
     }

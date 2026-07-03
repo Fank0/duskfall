@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { equipItem, unequipItem, getSnapshot } from "@/lib/game/state";
 import type { EquipmentSlot } from "@/lib/game/types";
+import { validatePlayerName, validateRoomCode, validateShortString } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +13,18 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
-    const playerName = (body?.playerName ?? "").toString().trim();
-    if (!roomCode || !playerName) {
-      return NextResponse.json({ ok: false, error: "Укажите комнату и героя." }, { status: 400 });
-    }
+    const roomCodeRaw = (body?.roomCode ?? "").toString();
+    const playerNameRaw = (body?.playerName ?? "").toString();
+
+    // ===== Validation (item 26) =====
+    const roomCodeError = validateRoomCode(roomCodeRaw);
+    if (roomCodeError) return NextResponse.json({ ok: false, error: roomCodeError }, { status: 400 });
+    const playerNameError = validatePlayerName(playerNameRaw);
+    if (playerNameError) return NextResponse.json({ ok: false, error: playerNameError }, { status: 400 });
+
+    const roomCode = roomCodeRaw.toUpperCase().trim();
+    const playerName = playerNameRaw.trim().replace(/\s+/g, " ").slice(0, 20);
+
     const room = await db.room.findUnique({ where: { code: roomCode } });
     if (!room) return NextResponse.json({ ok: false, error: "Комната не найдена." }, { status: 404 });
 
@@ -42,11 +50,11 @@ export async function POST(req: NextRequest) {
     }
 
     // === Equip branch ===
-    const itemId = (body?.itemId ?? "").toString().trim();
+    const itemIdRaw = (body?.itemId ?? "").toString();
+    const itemIdError = validateShortString(itemIdRaw, "itemId");
+    if (itemIdError) return NextResponse.json({ ok: false, error: itemIdError }, { status: 400 });
+    const itemId = itemIdRaw.trim().slice(0, 80);
     const slot = body?.slot ? (body.slot as string).toString().trim() as EquipmentSlot : undefined;
-    if (!itemId) {
-      return NextResponse.json({ ok: false, error: "Укажите itemId." }, { status: 400 });
-    }
     if (slot) {
       const valid: EquipmentSlot[] = ["weapon", "shield", "head", "chest", "legs", "hands", "accessory"];
       if (!valid.includes(slot)) {
