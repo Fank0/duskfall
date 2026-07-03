@@ -1,8 +1,7 @@
 // Database helpers: fetch / mutate the room-scoped D&D game state.
 
 import { db } from "@/lib/db";
-import { abilityModifier } from "./dice";
-import { rollD20 } from "./dice";
+import { abilityModifier, rollD20 } from "./dice";
 import { CONDITIONS, getCondition } from "./conditions";
 import { inferEquipProps } from "./item-props";
 import { findBestiaryEntryByName, formatCR } from "./bestiary";
