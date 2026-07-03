@@ -171,7 +171,12 @@ export interface PopulateResult {
 }
 
 /** Populate a single map room with biome-themed content based on its type.
- *  Idempotent: if the room is already populated, returns early. */
+ *  Idempotent: if the room is already populated, returns early.
+ *
+ *  Side effect: also sweeps dead monsters (hp<=0) from previous rooms so they
+ *  don't get re-activated by the DM agent's "reveal all inactive monsters"
+ *  step on the next combat trigger (which would clutter the grid + initiative
+ *  list with hp=0 tokens). Live monsters are left alone. */
 export async function populateRoomContent(
   roomId: string,
   mapRoomKey: string,
@@ -187,6 +192,10 @@ export async function populateRoomContent(
   if (room.populated) {
     return { populated: false, summary: "" };
   }
+
+  // Sweep dead monsters from previous rooms so they don't get re-activated
+  // when the DM agent flips `isActive` on the next combat trigger.
+  await db.monster.deleteMany({ where: { roomId, hp: { lte: 0 } } });
 
   let summary = "";
   switch (room.roomType as any) {
