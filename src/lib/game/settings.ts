@@ -32,6 +32,13 @@ export interface SettingsState {
   ttsVoice: "male" | "female" | "narrator";
   /** UI language (i18n-restore). Russian by default. */
   lang: Lang;
+  /**
+   * Pinned favorite ability ids (quick-use Item 5). Players star abilities in
+   * the BottomPanel to surface them in a dedicated "Избранное" section so
+   * they don't have to hunt for them in a long list. Persisted to localStorage
+   * alongside the rest of the settings.
+   */
+  favoriteAbilities: string[];
   // setters
   setTokenShape: (v: "round" | "square") => void;
   setShowTokenNames: (v: boolean) => void;
@@ -48,6 +55,8 @@ export interface SettingsState {
   setTtsVolume: (v: number) => void;
   setTtsVoice: (v: "male" | "female" | "narrator") => void;
   setLang: (v: Lang) => void;
+  /** Toggle an ability id in the favorites list (add if absent, remove if present). */
+  toggleFavoriteAbility: (id: string) => void;
 }
 
 /**
@@ -71,6 +80,7 @@ export const useSettings = create<SettingsState>()(
       ttsVolume: 0.8,
       ttsVoice: "male",
       lang: "ru",
+      favoriteAbilities: [],
       setTokenShape: (v) => set({ tokenShape: v }),
       setShowTokenNames: (v) => set({ showTokenNames: v }),
       setTheme: (v) => set({ theme: v }),
@@ -86,6 +96,12 @@ export const useSettings = create<SettingsState>()(
       setTtsVolume: (v) => set({ ttsVolume: Math.max(0, Math.min(1, v)) }),
       setTtsVoice: (v) => set({ ttsVoice: v }),
       setLang: (v) => set({ lang: v }),
+      toggleFavoriteAbility: (id) =>
+        set((s) => ({
+          favoriteAbilities: s.favoriteAbilities.includes(id)
+            ? s.favoriteAbilities.filter((x) => x !== id)
+            : [...s.favoriteAbilities, id],
+        })),
     }),
     { name: "duskfall-settings" }
   )

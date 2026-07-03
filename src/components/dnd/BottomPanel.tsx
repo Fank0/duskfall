@@ -1,9 +1,10 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipTrigger,
@@ -11,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
-  Shirt, Hammer,
+  Shirt, Hammer, Star, Search,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -24,6 +25,28 @@ import {
   classifyAbilityTargeting,
   type QuickActionContext,
 } from "@/lib/game/quick-use";
+
+/**
+ * Cast-type sort priority (Item 5 — most-used abilities first).
+ * damage > heal > buff > utility/undefined. Within the same priority bucket,
+ * the original order is preserved (stable sort).
+ */
+const CAST_TYPE_PRIORITY: Record<string, number> = {
+  damage: 0,
+  heal: 1,
+  buff: 2,
+  utility: 3,
+};
+
+function sortAbilitiesByPriority(list: Ability[]): Ability[] {
+  // Stable sort: Array.prototype.sort is stable in modern V8 / Node.
+  return [...list].sort((a, b) => {
+    const pa = CAST_TYPE_PRIORITY[a.castType ?? "utility"] ?? 3;
+    const pb = CAST_TYPE_PRIORITY[b.castType ?? "utility"] ?? 3;
+    if (pa !== pb) return pa - pb;
+    return 0;
+  });
+}
 
 /**
  * BottomPanel — full-width horizontal bar at the bottom of the game screen.
@@ -77,8 +100,38 @@ export const BottomPanel = memo(function BottomPanel({
 }) {
   const settings = useSettings();
   const lang = settings.lang;
+  const favoriteAbilities = settings.favoriteAbilities;
+  const toggleFavoriteAbility = settings.toggleFavoriteAbility;
   const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
-  const abilities = computeAbilities(player, inventory);
+
+  // Item 5 — sort abilities by cast-type priority (damage > heal > buff > utility).
+  // Stable sort preserves source order within the same bucket. Memoized so the
+  // reference is stable across re-renders unless the input array identity changes.
+  const allAbilities = useMemo(
+    () => sortAbilitiesByPriority(computeAbilities(player, inventory)),
+    [player, inventory],
+  );
+
+  // Item 5 — favorites: surface starred abilities in a dedicated left-of-bar
+  // section. Only abilities the player currently has show up here (stale
+  // favorites for sold scrolls / unlearned spells are filtered out).
+  const favoritedAbilities = useMemo(
+    () => allAbilities.filter((a) => favoriteAbilities.includes(a.id)),
+    [allAbilities, favoriteAbilities],
+  );
+
+  // Item 5 — search filter for the main abilities section. Only shown when
+  // the player has more than 8 abilities.
+  const [abilitySearch, setAbilitySearch] = useState("");
+  const showAbilitySearch = allAbilities.length > 8;
+  const filteredAbilities = useMemo(() => {
+    if (!showAbilitySearch || abilitySearch.trim() === "") return allAbilities;
+    const q = abilitySearch.trim().toLowerCase();
+    return allAbilities.filter((a) => a.name.toLowerCase().includes(q));
+  }, [allAbilities, abilitySearch, showAbilitySearch]);
+
+  // Use filteredAbilities for the main section, allAbilities for everything else.
+  const abilities = filteredAbilities;
   const canQuickUse = Boolean(onQuickAction);
 
   // Equipment — find equipped items by id from inventory
@@ -320,6 +373,43 @@ export const BottomPanel = memo(function BottomPanel({
         {/* Divider */}
         <div className="hidden lg:block w-px bg-border/40" />
 
+        {/* ===== Favorites (избранное) — Item 5 ===== */}
+        {/* Pinned abilities the player starred in the main section. Rendered
+            between inventory and abilities so they're always one glance away. */}
+        {favoritedAbilities.length > 0 && (
+          <div className="flex flex-col gap-1 lg:w-auto lg:max-w-[18%]">
+            <div className="flex items-center gap-1.5">
+              <Star className="h-3.5 w-3.5 text-amber-300" />
+              <span className="text-[11px] font-semibold gold-text">Избранное</span>
+              <Badge variant="secondary" className="ml-auto text-[8px]">{favoritedAbilities.length}</Badge>
+            </div>
+            <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
+              <div className="flex flex-wrap gap-1.5">
+                {favoritedAbilities.map((a) => {
+                  const chipId = `abil:${a.id}`;
+                  return (
+                    <AbilityChip
+                      key={a.id}
+                      a={a}
+                      isFavorited
+                      hotkey={null}
+                      isDisabled={!canQuickUse || disabledChips.has(chipId)}
+                      isPulsing={pulsing.has(chipId)}
+                      isSent={sentChips.has(chipId)}
+                      canQuickUse={canQuickUse}
+                      onTrigger={triggerAbility}
+                      onToggleFavorite={toggleFavoriteAbility}
+                    />
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+
+        {/* Divider */}
+        {favoritedAbilities.length > 0 && <div className="hidden lg:block w-px bg-border/40" />}
+
         {/* ===== Abilities (способности) ===== */}
         <div className="flex flex-col gap-1 lg:flex-1">
           <div className="flex items-center gap-1.5">
@@ -328,93 +418,51 @@ export const BottomPanel = memo(function BottomPanel({
             {canQuickUse && (
               <span className="text-[9px] italic text-muted-foreground/60">клик — применить</span>
             )}
-            <Badge variant="secondary" className="ml-auto text-[8px]">{abilities.length}</Badge>
+            <Badge variant="secondary" className="ml-auto text-[8px]">
+              {showAbilitySearch && abilitySearch.trim() !== ""
+                ? `${abilities.length}/${allAbilities.length}`
+                : `${allAbilities.length}`}
+            </Badge>
           </div>
+          {/* Item 5 — search filter box, only when the player has >8 abilities. */}
+          {showAbilitySearch && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-1.5 top-1/2 h-2.5 w-2.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={abilitySearch}
+                onChange={(e) => setAbilitySearch(e.target.value)}
+                placeholder="Поиск способности…"
+                className="h-6 rounded border-border/50 bg-stone-900/60 pl-6 pr-2 text-[10px] placeholder:text-muted-foreground/60"
+                data-no-click-sfx
+              />
+            </div>
+          )}
           <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {abilities.length === 0 ? (
-                <span className="text-[10px] italic text-muted-foreground">Нет способностей</span>
+                <span className="text-[10px] italic text-muted-foreground">
+                  {showAbilitySearch && abilitySearch.trim() !== ""
+                    ? "Ничего не найдено"
+                    : "Нет способностей"}
+                </span>
               ) : (
                 abilities.map((a, idx) => {
                   const chipId = `abil:${a.id}`;
-                  const isDisabled = !canQuickUse || disabledChips.has(chipId);
-                  const isPulsing = pulsing.has(chipId);
-                  const isSent = sentChips.has(chipId);
-                  const tooltip = buildAbilityTooltip(a);
                   // Item 4 — hotkey number for the first 8 abilities.
                   const hotkey = idx < 8 ? idx + 1 : null;
                   return (
-                    <Tooltip key={a.id}>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          disabled={isDisabled}
-                          onClick={() => triggerAbility(a)}
-                          className={cn(
-                            "relative flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-all",
-                            a.source === "race" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",
-                            a.source === "class" && "border-sky-700/40 bg-sky-950/20 text-sky-200",
-                            a.source === "talent" && "border-purple-700/40 bg-purple-950/20 text-purple-200",
-                            a.source === "scroll" && "border-amber-700/40 bg-amber-950/20 text-amber-200",
-                            a.source === "spell" && "border-fuchsia-700/40 bg-fuchsia-950/20 text-fuchsia-200",
-                            !["race", "class", "talent", "scroll", "spell"].includes(a.source) && "border-border/40 bg-stone-900/40 text-stone-200",
-                            a.consumable && "ring-1 ring-amber-700/30",
-                            canQuickUse && !disabledChips.has(chipId) && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
-                            (!canQuickUse || disabledChips.has(chipId)) && "cursor-default",
-                            isPulsing && "ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.55)]",
-                          )}
-                        >
-                          {a.source === "spell" && <Wand2 className="h-2.5 w-2.5" />}
-                          {a.source === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
-                          {a.source === "class" && <Zap className="h-2.5 w-2.5" />}
-                          {a.source === "race" && <Shield className="h-2.5 w-2.5" />}
-                          <span className="truncate max-w-[90px]">{a.name}</span>
-                          {/* Item 2 — prominent slot-level badge: colored circle "КN". */}
-                          {a.slotLevel && a.slotLevel > 0 && (
-                            <span
-                              className="ml-0.5 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full border border-fuchsia-400/70 bg-fuchsia-900/70 px-1 text-[8px] font-bold leading-none text-fuchsia-100"
-                              title={`Тратит ячейку ${a.slotLevel}-го круга`}
-                            >
-                              К{a.slotLevel}
-                            </span>
-                          )}
-                          {/* Item 2 — consumable badge for scrolls. */}
-                          {a.consumable && (
-                            <span className="ml-0.5 inline-flex items-center rounded border border-amber-700/50 bg-amber-950/60 px-1 text-[7px] font-medium leading-none text-amber-200">
-                              расходуемый
-                            </span>
-                          )}
-                          {/* Item 4 — hotkey number badge (1..8) in the corner. */}
-                          {hotkey !== null && (
-                            <span
-                              className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-sm border border-stone-500/60 bg-stone-800/80 text-[7px] font-bold leading-none text-stone-200"
-                              title={`Горячая клавиша: ${hotkey}`}
-                            >
-                              {hotkey}
-                            </span>
-                          )}
-                          {isSent && (
-                            <span className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-emerald-500 bg-emerald-950 px-1.5 py-px text-[8px] font-medium text-emerald-300 shadow">
-                              отправлено ✓
-                            </span>
-                          )}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[260px] text-left text-[10px] leading-tight">
-                        <div className="space-y-0.5">
-                          <div className="font-semibold text-amber-200">
-                            {a.name}
-                            {a.source === "spell" && a.slotLevel && a.slotLevel > 0 && (
-                              <span className="ml-1 text-fuchsia-300">· круг {a.slotLevel}</span>
-                            )}
-                            {hotkey !== null && (
-                              <span className="ml-1 text-stone-300">· [{hotkey}]</span>
-                            )}
-                          </div>
-                          <div className="text-[9px] text-muted-foreground">{tooltip}</div>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
+                    <AbilityChip
+                      key={a.id}
+                      a={a}
+                      isFavorited={favoriteAbilities.includes(a.id)}
+                      hotkey={hotkey}
+                      isDisabled={!canQuickUse || disabledChips.has(chipId)}
+                      isPulsing={pulsing.has(chipId)}
+                      isSent={sentChips.has(chipId)}
+                      canQuickUse={canQuickUse}
+                      onTrigger={triggerAbility}
+                      onToggleFavorite={toggleFavoriteAbility}
+                    />
                   );
                 })
               )}
@@ -433,24 +481,40 @@ export const BottomPanel = memo(function BottomPanel({
               <span className="text-[11px] font-semibold gold-text">Слоты</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {slots.map((s) => (
-                <div key={s.level} className="flex flex-col items-center gap-0.5">
-                  <span className="text-[8px] text-muted-foreground">К{s.level}</span>
-                  <div className="flex gap-0.5">
-                    {Array.from({ length: s.max }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={cn(
-                          "h-2.5 w-2.5 rounded-full border",
-                          i < s.current
-                            ? "border-fuchsia-500 bg-fuchsia-600"
-                            : "border-border/50 bg-stone-900/60"
-                        )}
-                      />
-                    ))}
+              {slots.map((s) => {
+                // Item 5 — low-slots warning: red pulse when <25% remaining.
+                const ratio = s.max > 0 ? s.current / s.max : 1;
+                const isLow = s.max > 0 && ratio < 0.25;
+                return (
+                  <div
+                    key={s.level}
+                    className={cn(
+                      "flex flex-col items-center gap-0.5 rounded px-1",
+                      isLow && "animate-pulse-glow ring-1 ring-red-500/60",
+                    )}
+                    title={isLow ? `Мало слотов ${s.level}-го круга: ${s.current}/${s.max}` : `${s.current}/${s.max}`}
+                  >
+                    <span className={cn("text-[8px]", isLow ? "font-bold text-red-400" : "text-muted-foreground")}>
+                      К{s.level}
+                    </span>
+                    <div className="flex gap-0.5">
+                      {Array.from({ length: s.max }).map((_, i) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            "h-2.5 w-2.5 rounded-full border",
+                            i < s.current
+                              ? isLow
+                                ? "border-red-500 bg-red-600"
+                                : "border-fuchsia-500 bg-fuchsia-600"
+                              : "border-border/50 bg-stone-900/60"
+                          )}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -489,4 +553,141 @@ function buildAbilityTooltip(a: Ability): string {
   if (a.uses && a.uses > 1) parts.push(`Осталось: ${a.uses}`);
   if (a.description) parts.push(a.description);
   return parts.join(" · ");
+}
+
+/**
+ * AbilityChip — a single ability chip rendered in the BottomPanel. Shared
+ * between the main "Способности" section and the "Избранное" section so the
+ * visual treatment stays consistent. The star toggle button is rendered as a
+ * sibling of the chip button inside a relative wrapper so clicking the star
+ * doesn't trigger the chip's onClick (and nested-button HTML validity is
+ * preserved — the star is a sibling <button>, not a descendant).
+ */
+interface AbilityChipProps {
+  a: Ability;
+  isFavorited: boolean;
+  hotkey: number | null;
+  isDisabled: boolean;
+  isPulsing: boolean;
+  isSent: boolean;
+  canQuickUse: boolean;
+  onTrigger: (a: Ability) => void;
+  onToggleFavorite: (id: string) => void;
+}
+
+function AbilityChip({
+  a,
+  isFavorited,
+  hotkey,
+  isDisabled,
+  isPulsing,
+  isSent,
+  canQuickUse,
+  onTrigger,
+  onToggleFavorite,
+}: AbilityChipProps) {
+  const tooltip = buildAbilityTooltip(a);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="relative inline-flex">
+          <button
+            type="button"
+            disabled={isDisabled}
+            onClick={() => onTrigger(a)}
+            className={cn(
+              "relative flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-all",
+              a.source === "race" && "border-emerald-700/40 bg-emerald-950/20 text-emerald-200",
+              a.source === "class" && "border-sky-700/40 bg-sky-950/20 text-sky-200",
+              a.source === "talent" && "border-purple-700/40 bg-purple-950/20 text-purple-200",
+              a.source === "scroll" && "border-amber-700/40 bg-amber-950/20 text-amber-200",
+              a.source === "spell" && "border-fuchsia-700/40 bg-fuchsia-950/20 text-fuchsia-200",
+              !["race", "class", "talent", "scroll", "spell"].includes(a.source) && "border-border/40 bg-stone-900/40 text-stone-200",
+              a.consumable && "ring-1 ring-amber-700/30",
+              canQuickUse && !isDisabled && "cursor-pointer hover:border-amber-500 hover:bg-amber-950/30",
+              (!canQuickUse || isDisabled) && "cursor-default",
+              isPulsing && "ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.55)]",
+              // Favorited chips get a subtle amber accent border so they stand
+              // out at a glance even when scrolled out of the favorites section.
+              isFavorited && "border-amber-500/60",
+            )}
+          >
+            {a.source === "spell" && <Wand2 className="h-2.5 w-2.5" />}
+            {a.source === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
+            {a.source === "class" && <Zap className="h-2.5 w-2.5" />}
+            {a.source === "race" && <Shield className="h-2.5 w-2.5" />}
+            <span className="truncate max-w-[90px]">{a.name}</span>
+            {/* Item 2 — prominent slot-level badge: colored circle "КN". */}
+            {a.slotLevel && a.slotLevel > 0 && (
+              <span
+                className="ml-0.5 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full border border-fuchsia-400/70 bg-fuchsia-900/70 px-1 text-[8px] font-bold leading-none text-fuchsia-100"
+                title={`Тратит ячейку ${a.slotLevel}-го круга`}
+              >
+                К{a.slotLevel}
+              </span>
+            )}
+            {/* Item 2 — consumable badge for scrolls. */}
+            {a.consumable && (
+              <span className="ml-0.5 inline-flex items-center rounded border border-amber-700/50 bg-amber-950/60 px-1 text-[7px] font-medium leading-none text-amber-200">
+                расходуемый
+              </span>
+            )}
+            {/* Item 4 — hotkey number badge (1..8) in the corner. */}
+            {hotkey !== null && (
+              <span
+                className="ml-0.5 inline-flex h-3 w-3 items-center justify-center rounded-sm border border-stone-500/60 bg-stone-800/80 text-[7px] font-bold leading-none text-stone-200"
+                title={`Горячая клавиша: ${hotkey}`}
+              >
+                {hotkey}
+              </span>
+            )}
+            {isSent && (
+              <span className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-emerald-500 bg-emerald-950 px-1.5 py-px text-[8px] font-medium text-emerald-300 shadow">
+                отправлено ✓
+              </span>
+            )}
+          </button>
+          {/* Item 5 — star toggle (favorites). Sibling button (not nested)
+              absolutely positioned in the top-right corner. */}
+          {canQuickUse && (
+            <button
+              type="button"
+              onClick={() => onToggleFavorite(a.id)}
+              className={cn(
+                "absolute -right-1.5 -top-1.5 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-colors",
+                isFavorited
+                  ? "border-amber-400 bg-amber-900/80 hover:bg-amber-800"
+                  : "border-stone-500/70 bg-stone-900/90 hover:bg-stone-800",
+              )}
+              title={isFavorited ? "Убрать из избранного" : "Добавить в избранное"}
+            >
+              <Star
+                className={cn(
+                  "h-2 w-2",
+                  isFavorited ? "fill-amber-400 text-amber-400" : "text-amber-500/70",
+                )}
+              />
+            </button>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[260px] text-left text-[10px] leading-tight">
+        <div className="space-y-0.5">
+          <div className="font-semibold text-amber-200">
+            {a.name}
+            {a.source === "spell" && a.slotLevel && a.slotLevel > 0 && (
+              <span className="ml-1 text-fuchsia-300">· круг {a.slotLevel}</span>
+            )}
+            {hotkey !== null && (
+              <span className="ml-1 text-stone-300">· [{hotkey}]</span>
+            )}
+            {isFavorited && (
+              <span className="ml-1 text-amber-300">★</span>
+            )}
+          </div>
+          <div className="text-[9px] text-muted-foreground">{tooltip}</div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
