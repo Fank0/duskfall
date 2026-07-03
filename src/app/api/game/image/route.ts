@@ -3,6 +3,8 @@ import ZAI from "z-ai-web-dev-sdk";
 import fs from "fs";
 import path from "path";
 import { setActiveScene, getRoomByCode } from "@/lib/game/state";
+import { rateLimit, rateLimitedResponse, getClientIp } from "@/lib/game/rate-limit";
+import { validateShortString } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -12,6 +14,9 @@ const SCENES_DIR = path.join(process.cwd(), "public", "scenes");
 // pruned after each new generation so the disk doesn't fill up.
 const TMP_SCENES_DIR = "/tmp/duskfall-scenes";
 const SCENE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+
+// 5 image generations per 10 minutes per IP (audit-v2: image gen is expensive).
+const imageLimiter = rateLimit({ windowMs: 10 * 60_000, max: 5, label: "image-gen" });
 
 let zaiPromise: Promise<any> | null = null;
 async function getZAI() {
@@ -53,12 +58,23 @@ function cleanupOldTmpScenes(): void {
 // Body: { roomCode: string, prompt: string, title?: string }
 export async function POST(req: NextRequest) {
   try {
+    // ===== Rate limit (audit-v2): 5 / 10 min / IP. =====
+    const ip = getClientIp(req);
+    const rl = imageLimiter.check(`image-gen:${ip}`);
+    if (!rl.ok) {
+      return rateLimitedResponse("image-gen", rl.retryAfterMs) as unknown as NextResponse;
+    }
+
     const body = await req.json().catch(() => ({}));
     const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
     const prompt = (body?.prompt ?? "").toString().trim();
     const title = (body?.title ?? "Сцена").toString();
-    if (!roomCode || !prompt) {
-      return NextResponse.json({ ok: false, error: "Укажите комнату и запрос." }, { status: 400 });
+    if (!roomCode) {
+      return NextResponse.json({ ok: false, error: "Укажите комнату." }, { status: 400 });
+    }
+    const promptError = validateShortString(prompt, "Запрос сцены");
+    if (promptError) {
+      return NextResponse.json({ ok: false, error: promptError }, { status: 400 });
     }
     const room = await getRoomByCode(roomCode);
     if (!room) {
@@ -71,15 +87,22 @@ export async function POST(req: NextRequest) {
 
     let imageUrl = "";
     try {
-      const response = await zai.images.generations.create({ prompt: fullPrompt, size: "1024x1024" });
+      // Pass the request AbortSignal so a client disconnect cancels the SDK call.
+      const response = await zai.images.generations.create(
+        { prompt: fullPrompt, size: "1024x1024" },
+        { signal: req.signal }
+      );
       const base64 = response.data?.[0]?.base64;
       if (base64) {
         const filename = `scene_${Date.now()}.png`;
         fs.writeFileSync(path.join(SCENES_DIR, filename), Buffer.from(base64, "base64"));
         imageUrl = `/scenes/${filename}`;
       }
-    } catch (e) {
-      console.error("[api/game/image] generation failed:", e);
+    } catch (e: any) {
+      // AbortError is expected when the client disconnects — don't log it as an error.
+      if (e?.name !== "AbortError") {
+        console.error("[api/game/image] generation failed:", e);
+      }
     }
     if (!imageUrl) {
       return NextResponse.json({ ok: false, error: "Не удалось сгенерировать изображение." }, { status: 500 });

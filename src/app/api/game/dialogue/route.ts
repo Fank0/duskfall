@@ -10,8 +10,12 @@ import {
 import { chatComplete } from "@/lib/game/llm";
 import { validatePlayerName, validateRoomCode, validateShortString, sanitizeString, LIMITS } from "@/lib/game/validate";
 import { sanitizeLLMOutput } from "@/lib/game/sanitize";
+import { rateLimit, rateLimitedResponse, getClientIp } from "@/lib/game/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+// 30 dialogue actions per 10 minutes per IP (audit-v2: each action may call the LLM).
+const dialogueLimiter = rateLimit({ windowMs: 10 * 60_000, max: 30, label: "dialogue" });
 
 // Deterministic merchant catalogue (one per room session — selected once and
 // persisted as the NPC's "notes" field so the same merchant always sells the
@@ -67,6 +71,13 @@ const SYSTEM_PROMPT_DIALOGUE = `Ты играешь роль NPC (неигров
  * action: "intro" | "about" | "business" | "leave" | "buy" | "sell" */
 export async function POST(req: NextRequest) {
   try {
+    // ===== Rate limit (audit-v2): 30 / 10 min / IP. =====
+    const ip = getClientIp(req);
+    const rl = dialogueLimiter.check(`dialogue:${ip}`);
+    if (!rl.ok) {
+      return rateLimitedResponse("dialogue", rl.retryAfterMs) as unknown as NextResponse;
+    }
+
     const body = await req.json().catch(() => ({}));
     const roomCodeRaw = (body?.roomCode ?? "").toString();
     const playerNameRaw = (body?.playerName ?? "").toString();
@@ -132,7 +143,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Non-merchant NPCs don't trade — return a flavour message instead.
-        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "business_unavailable", ""));
+        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "business_unavailable", "", req.signal));
         await saveChatMessage(room.id, "dm", "", `${npcName} не торгует: ${narrative}`, round);
         const snapshot = await getSnapshot(roomCode);
         return NextResponse.json({ ok: true, snapshot, narrative, stock: [], tradeOutcome: null });
@@ -154,7 +165,7 @@ export async function POST(req: NextRequest) {
           { action: "add", item: item.name, type: item.type, description: item.description },
         ]);
         tradeOutcome = { kind: "buy", item: item.name, goldChange: -item.price, success: true };
-        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "buy", item.name));
+        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "buy", item.name, req.signal));
       }
       await saveChatMessage(room.id, "dm", "", `${npcName}: ${narrative}`, round);
       const snapshot = await getSnapshot(roomCode);
@@ -196,7 +207,7 @@ export async function POST(req: NextRequest) {
     }
 
     // intro / about / leave — call the LLM in-character.
-    narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, action, ""));
+    narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, action, "", req.signal));
     await saveChatMessage(room.id, "dm", "", `${npcName}: ${narrative}`, round);
 
     if (action === "leave") {
@@ -220,7 +231,8 @@ async function runLlmDialogue(
   npc: { name: string; role: string; disposition: string; notes: string; location: string },
   player: { name: string; charClass: string; raceName: string; level: number; gold: number },
   action: string,
-  itemName: string
+  itemName: string,
+  signal?: AbortSignal
 ): Promise<string> {
   const dispositionRu =
     npc.disposition === "friendly" ? "дружелюбный" :
@@ -259,10 +271,13 @@ async function runLlmDialogue(
     const text = await chatComplete([
       { role: "system", content: sysMsg },
       { role: "user", content: userMsg },
-    ]);
+    ], signal);
     if (text && text.trim().length > 10) return text.trim();
-  } catch (e) {
-    console.error("[dialogue] LLM error:", e);
+  } catch (e: any) {
+    // AbortError is expected when the client disconnects — don't log it.
+    if (e?.name !== "AbortError") {
+      console.error("[dialogue] LLM error:", e);
+    }
   }
   // Fallback lines per action.
   switch (action) {

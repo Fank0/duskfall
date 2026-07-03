@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import ZAI from "z-ai-web-dev-sdk";
+import { rateLimit, rateLimitedResponse, getClientIp } from "@/lib/game/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+// 20 TTS requests per 10 minutes per IP (audit-v2: TTS is expensive).
+const ttsLimiter = rateLimit({ windowMs: 10 * 60_000, max: 20, label: "tts" });
 
 /**
  * TTS voice narration for the AI Dungeon Master (task tts-voice-dm).
@@ -64,6 +68,13 @@ function prepareText(raw: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    // ===== Rate limit (audit-v2): 20 / 10 min / IP. =====
+    const ip = getClientIp(req);
+    const rl = ttsLimiter.check(`tts:${ip}`);
+    if (!rl.ok) {
+      return rateLimitedResponse("tts", rl.retryAfterMs) as unknown as NextResponse;
+    }
+
     const body = await req.json().catch(() => ({}));
     const text = (body?.text ?? "").toString();
     const langRaw = (body?.lang ?? "ru").toString().toLowerCase().trim();
@@ -90,17 +101,23 @@ export async function POST(req: NextRequest) {
 
     let audioBuffer: Buffer | null = null;
     try {
-      const response = await zai.audio.tts.create({
-        input: prepared,
-        voice,
-        speed: 1.0,
-        response_format: "mp3",
-        stream: false,
-      });
+      // Pass the request AbortSignal so a client disconnect cancels the TTS call.
+      const response = await zai.audio.tts.create(
+        {
+          input: prepared,
+          voice,
+          speed: 1.0,
+          response_format: "mp3",
+          stream: false,
+        },
+        { signal: req.signal }
+      );
       const arrayBuffer = await response.arrayBuffer();
       audioBuffer = Buffer.from(new Uint8Array(arrayBuffer));
-    } catch (e) {
-      console.error("[api/game/tts] synthesis failed:", e);
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        console.error("[api/game/tts] synthesis failed:", e);
+      }
     }
 
     if (!audioBuffer || audioBuffer.length === 0) {

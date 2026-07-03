@@ -3,10 +3,15 @@ import { db } from "@/lib/db";
 import { chatComplete, type ChatMessage as LLMChatMessage } from "@/lib/game/llm";
 import { sanitizeLLMOutput } from "@/lib/game/sanitize";
 import { logger } from "@/lib/game/logger";
+import { rateLimit, rateLimitedResponse, getClientIp } from "@/lib/game/rate-limit";
+import { validateRoomCode } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
 const MAX_MESSAGES_PER_BATCH = 50;
+
+// 5 translations per hour per IP (audit-v2: each translation spawns up to 50 LLM calls).
+const translateLimiter = rateLimit({ windowMs: 60 * 60_000, max: 5, label: "translate" });
 
 // POST /api/game/translate
 // Body: { roomCode, lang }
@@ -17,15 +22,20 @@ const MAX_MESSAGES_PER_BATCH = 50;
 // retries beyond what chatComplete already does.
 export async function POST(req: NextRequest) {
   try {
+    // ===== Rate limit (audit-v2): 5 / hour / IP. =====
+    const ip = getClientIp(req);
+    const rl = translateLimiter.check(`translate:${ip}`);
+    if (!rl.ok) {
+      return rateLimitedResponse("translate", rl.retryAfterMs) as unknown as NextResponse;
+    }
+
     const body = await req.json().catch(() => ({}));
-    const roomCode = (body?.roomCode ?? "").toString().toUpperCase().trim();
+    const roomCodeRaw = (body?.roomCode ?? "").toString();
     const lang = (body?.lang ?? "").toString().trim();
 
-    if (!roomCode) {
-      return NextResponse.json(
-        { ok: false, error: "Укажите код комнаты." },
-        { status: 400 }
-      );
+    const roomCodeError = validateRoomCode(roomCodeRaw);
+    if (roomCodeError) {
+      return NextResponse.json({ ok: false, error: roomCodeError }, { status: 400 });
     }
     if (!lang) {
       return NextResponse.json(
@@ -34,6 +44,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const roomCode = roomCodeRaw.toUpperCase().trim();
     const room = await db.room.findUnique({ where: { code: roomCode } });
     if (!room) {
       return NextResponse.json(
@@ -72,7 +83,7 @@ export async function POST(req: NextRequest) {
         },
       ];
       try {
-        const translatedText = await chatComplete(llmMessages, undefined, true);
+        const translatedText = await chatComplete(llmMessages, req.signal, true);
         const clean = sanitizeLLMOutput(translatedText ?? "").trim();
         if (clean && clean !== msg.content) {
           await db.chatMessage.update({
@@ -84,6 +95,8 @@ export async function POST(req: NextRequest) {
           skipped++;
         }
       } catch (e: any) {
+        // AbortError is expected on client disconnect — break out of the loop.
+        if (e?.name === "AbortError") break;
         logger.warn("translate: message LLM call failed", {
           messageId: msg.id,
           err: (e as Error)?.message?.slice(0, 80),
