@@ -307,3 +307,53 @@ Stage Summary:
 - bun run db:push: ran successfully after schema index changes (Monster and Npc indexes added).
 - No new dependencies added. All user-facing text in Russian. Did NOT edit any .tsx components or page.tsx. Did NOT edit llm.ts beyond preferFast param + retry backoff (also added httpStatus to thrown errors as a required helper for the backoff logic).
 - Files touched: prisma/schema.prisma, src/lib/game/{state,dm-agent,llm,world-map}.ts, src/app/api/game/{action,rest,levelup,image}/route.ts, new src/app/api/game/chat-history/route.ts.
+
+---
+Task ID: opt-frontend-restart
+Agent: opt-frontend-agent
+Task: Optimize rendering, debugging, security, CI (Пункты 24-27)
+
+Work Log:
+- Read worklog.md (last 7 sections: combat-v2, world-v2, progression-v2, visual-v2, opt-backend), EXECUTION-PLAN.md (Шаг 6: Пункты 24-27), and all required source files (page.tsx, CombatGrid/PartyPanel/CharacterSheet/ChatPanel/DiceLog/CombatLog.tsx, socket.ts, settings.ts, all API routes for room/create+join, action, dialogue, craft, equip, rest, move-room, chat-history).
+- Item 24 (Render optimization):
+  - Created src/lib/game/shallow.ts with shallowEqual + makeShallowComparator helpers (top-level + array element-wise identity).
+  - Wrapped CombatGrid, PartyPanel, CharacterSheet, DiceLog, CombatLog in React.memo with custom shallow comparison functions. CombatGrid + CharacterSheet got field-by-field comparators (positions, HP, AC, equipment, conditions list) so a brand-new snapshot with identical grid data does NOT trigger a re-render. DiceLog + PartyPanel + CombatLog use the generic shallow comparator (array element-wise identity).
+  - ChatPanel virtualization: capped rendered messages at the 50 most recent (VISIBLE_LIMIT). Added a "Показать ещё" button above the list that fetches 50 older messages (LOAD_MORE_STEP) from /api/game/chat-history and prepends them. Tracks offset + hasMore + loadingMore state, resets when roomCode changes.
+  - Adaptive polling in page.tsx: 5s during exploration, 1.5s during combat, paused while isThinking (streaming). If the socket is connected AND we received a room:refresh ping within the last 5s, the next poll tick is skipped — socket-driven refresh is fresher.
+  - Lazy loading via next/dynamic { ssr: false }: LevelUpModal, SettingsMenu, DialoguePanel, WorldMap, QuestJournal, CombatLog (page.tsx level), plus SkillTreeModal (lazy inside LevelUpModal) and EquipmentPanel + CraftingPanel (lazy inside CharacterSheet). All 8 heavy modals are now deferred.
+  - ErrorBoundary created at src/components/dnd/ErrorBoundary.tsx (class component, dark-fantasy Russian fallback screen with "Попробовать снова" + "Перезагрузить страницу"). Wraps the main game view in page.tsx.
+  - bunx tsc --noEmit: 0 errors. bun run lint: 0 errors, 0 warnings. Commit f254c39.
+- Item 25 (Debug + monitoring):
+  - Created src/lib/game/logger.ts: structured JSON logger with log(level, message, meta?) + logger.debug/info/warn/error facade. Filtered by LOG_LEVEL env var (default "info"). Single-line JSON output to stdout/stderr for log aggregators. Includes a withLogging async wrapper helper.
+  - Created src/lib/game/metrics.ts: in-memory MetricsCollector tracking llmCalls, llmErrors, llmTotalMs (for llmAvgMs), llmLastMs, apiRequests, apiErrors, errors, activeRooms, memoryHeapMb. Exposes snapshot() + recordLlmCall + recordApiRequest + recordError + trackLlmCall wrapper.
+  - Created /api/health (GET) — returns { ok, status:"ok"|"degraded", ts, uptimeSec, metrics:{...}, db:"ok"|"error" }. Pings db.room.count() as a readiness check; returns 503 if DB unreachable. Updates metrics.activeRooms on each call.
+  - Created /api/admin/rooms (GET) — lists all rooms (id, code, hostName, combatActive, round, location, createdAt, updatedAt, playerCount, monsterCount, chatMessageCount). Protected by X-Admin-Key header matching ADMIN_KEY env var. Supports ?limit=100&offset=0 (capped 1..500).
+  - Created /api/admin/cleanup (POST) — deletes rooms whose updatedAt is older than 24h (configurable via body.maxAgeHours in 1..720). Cascade deletes purge all related records (players, monsters, chat, dice, scenes, initiatives, inventory, conditions, quests, mapRooms, npcs). Protected by X-Admin-Key.
+  - Created src/lib/game/rate-limit.ts: in-memory sliding-window rate limiter (RateLimiter class + rateLimit() factory singleton-per-label + getClientIp helper + rateLimitedResponse 429 builder with Retry-After header).
+  - Rate limit on actions: action/route.ts now creates an actionLimiter (10/min/player, keyed by `action:<roomCode>:<playerName>`). Returns 429 + Russian "Слишком много запросов" message + Retry-After when exceeded. Also records metrics on every request (success/failure) and logs errors with logger.error.
+  - ErrorBoundary verified to wrap the game view in page.tsx (added in item 24).
+  - bunx tsc --noEmit: 0 errors. bun run lint: 0 errors, 0 warnings. Commit 85a6454.
+- Item 26 (Security):
+  - Created src/lib/game/validate.ts: manual validators (no zod) — validateUsername, validatePassword, validateRoomCode (exactly 6 uppercase ASCII alphanumeric), validatePlayerName (1..20 chars, Unicode letters + digits + space + .'_-), validateActionText (1..500 chars), validateDialogueText (1..300 chars), validateShortString (1..80), sanitizeString (strips control chars + trims). LIMITS constant collects every length cap.
+  - Created src/lib/game/sanitize.ts: sanitizeLLMOutput(text) that strips <script>/<iframe>/<object>/<embed>/<svg>/<math>/<link>/<meta>/<base>/<applet>/<form>/<input>/<textarea>/<button>/<style> tags, javascript: URLs (in href/src/xlink:href/formaction/action/data attrs + standalone), on* event-handler attributes, and SQL DML patterns (DROP TABLE / TRUNCATE / DELETE FROM / INSERT INTO / UPDATE…SET…). sanitizeAndTruncate helper too.
+  - Wired validation into API routes: room/create (validatePlayerName + 3/hour/IP rate limit), room/join (validateRoomCode + validatePlayerName + 10/hour/IP rate limit), action (validateRoomCode + validatePlayerName + validateActionText + 10/min/player rate limit + sanitizeLLMOutput on persisted narrative), dialogue (validateRoomCode + validatePlayerName + validateShortString for npcName + action enum check + sanitizeLLMOutput on LLM narratives), craft (validateRoomCode + validatePlayerName + validateShortString for recipeId), equip (validateRoomCode + validatePlayerName + validateShortString for itemId), rest (validateRoomCode + validatePlayerName), move-room (validateRoomCode + validatePlayerName + integer-coordinate check).
+  - Applied sanitizeLLMOutput in ChatPanel before rendering DM messages (defense-in-depth — the backend already sanitizes on persist, this catches in-flight streaming tokens).
+  - Security headers in next.config.ts: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin. Applied to every path via the `source: "/:path*"` route.
+  - Input length limits enforced via LIMITS: action 500, player name 20, dialogue 300, room code 6, NPC name 80, recipe id 80, item id 80.
+  - bunx tsc --noEmit: 0 errors. bun run lint: 0 errors, 0 warnings. Commit 5315aea.
+- Item 27 (CI):
+  - Created .github/workflows/ci.yml. Triggers on push to main + PR to main. Concurrency group cancels in-progress runs on the same ref. Job 1 (lint-typecheck, always runs): checkout, setup Node 20 + Bun, bun install --frozen-lockfile, bun run lint, bunx tsc --noEmit. Job 2 (build, only on pushes to main, depends on Job 1): same setup, bun run build with DATABASE_URL=file:/tmp/duskfall-ci.db.
+  - No test files written (project rule: no test code).
+  - bunx tsc --noEmit: 0 errors. bun run lint: 0 errors, 0 warnings. Commit f9db561.
+
+Stage Summary:
+- 4 features implemented across 4 commits (one per item):
+  1. Render optimization (React.memo + custom shallow comparators on 5 components, ChatPanel 50-msg virtualization + "Показать ещё" loader, adaptive polling 5s/1.5s/paused, lazy-load 8 modals via next/dynamic {ssr:false}, ErrorBoundary) — f254c39
+  2. Debug/monitoring (structured JSON logger + LOG_LEVEL filter, in-memory metrics, /api/health with DB readiness, /api/admin/rooms + /api/admin/cleanup with X-Admin-Key, in-memory rate-limit util, 10/min/player on action route) — 85a6454
+  3. Security (manual validators: room code / player name / action / dialogue / short string, sanitizeLLMOutput for scripts/JS-URLs/SQL-DML, wired validation into 8 API routes, 3/hour/IP room-create + 10/hour/IP room-join rate limits, 3 security headers in next.config.ts, defense-in-depth sanitize in ChatPanel) — 5315aea
+  4. CI (GitHub Actions: lint+tsc on every push+PR, build only on main pushes, Node 20 + Bun, frozen-lockfile install) — f9db561
+- bunx tsc --noEmit: 0 errors (clean).
+- bun run lint: 0 errors, 0 warnings (clean).
+- No new dependencies added (used only what was already in package.json). All user-facing text in Russian. Did NOT edit state.ts, dm-agent.ts, llm.ts, seed.ts, schema.prisma, image/route.ts — only action/route.ts (allowed for rate-limit + validation calls) and next.config.ts (allowed for security headers).
+- New files: src/lib/game/{shallow,logger,metrics,rate-limit,validate,sanitize}.ts, src/app/api/health/route.ts, src/app/api/admin/{rooms,cleanup}/route.ts, src/components/dnd/ErrorBoundary.tsx, .github/workflows/ci.yml.
+- Updated files: src/app/page.tsx, src/components/dnd/{CombatGrid,PartyPanel,CharacterSheet,ChatPanel,DiceLog,CombatLog,LevelUpModal}.tsx, src/app/api/game/{action,room/create,room/join,dialogue,craft,equip,rest,move-room}/route.ts, next.config.ts.
