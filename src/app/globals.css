@@ -207,3 +207,71 @@
   60% { opacity: 0.85; }
   100% { opacity: 0; transform: scale(1.15); }
 }
+
+/* ===== Weather overlays (item 10) ===== */
+/* Rain: diagonal animated stripes */
+.weather-rain {
+  background-image: repeating-linear-gradient(
+    105deg,
+    transparent 0,
+    transparent 6px,
+    rgba(170, 200, 230, 0.18) 6px,
+    rgba(170, 200, 230, 0.18) 8px
+  );
+  background-size: 24px 24px;
+  animation: weather-rain-scroll 0.6s linear infinite;
+  opacity: 0.85;
+}
+@keyframes weather-rain-scroll {
+  from { background-position: 0 0; }
+  to { background-position: -24px 24px; }
+}
+
+/* Fog: slow-drifting semi-transparent white blobs */
+.weather-fog {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(220, 220, 220, 0.32), transparent 35%),
+    radial-gradient(circle at 70% 60%, rgba(200, 200, 200, 0.28), transparent 40%),
+    radial-gradient(circle at 40% 80%, rgba(230, 230, 230, 0.22), transparent 35%);
+  animation: weather-fog-drift 14s ease-in-out infinite;
+  opacity: 0.55;
+}
+@keyframes weather-fog-drift {
+  0%, 100% { background-position: 0% 0%, 0% 0%, 0% 0%; }
+  50% { background-position: 12% 8%, -10% 5%, 8% -6%; }
+}
+
+/* Storm: dark overlay + occasional flash via separate element */
+.weather-storm {
+  background: linear-gradient(rgba(15, 18, 35, 0.55), rgba(8, 10, 25, 0.65));
+  backdrop-filter: blur(0.5px);
+}
+.weather-storm-flash {
+  background: rgba(255, 255, 240, 0.85);
+  opacity: 0;
+  animation: weather-storm-flash 7s ease-out infinite;
+}
+@keyframes weather-storm-flash {
+  0%, 88%, 100% { opacity: 0; }
+  90% { opacity: 0.7; }
+  91% { opacity: 0.1; }
+  92% { opacity: 0.9; }
+  94% { opacity: 0; }
+}
+
+/* Snow: falling white dots */
+.weather-snow {
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.85) 1.5px, transparent 2px),
+    radial-gradient(circle at 70% 40%, rgba(255, 255, 255, 0.75) 1.5px, transparent 2px),
+    radial-gradient(circle at 40% 70%, rgba(255, 255, 255, 0.8) 1.5px, transparent 2px),
+    radial-gradient(circle at 85% 80%, rgba(255, 255, 255, 0.7) 1.5px, transparent 2px),
+    radial-gradient(circle at 10% 90%, rgba(255, 255, 255, 0.75) 1.5px, transparent 2px);
+  background-size: 200px 200px;
+  animation: weather-snow-fall 6s linear infinite;
+  opacity: 0.7;
+}
+@keyframes weather-snow-fall {
+  from { background-position: 0 -200px, 0 -200px, 0 -200px, 0 -200px, 0 -200px; }
+  to { background-position: 0 200px, 0 200px, 0 200px, 0 200px, 0 200px; }
+}

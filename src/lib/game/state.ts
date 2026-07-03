@@ -289,10 +289,8 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     }));
 
   // Time-of-day / weather come from the Room columns (added in items 9 & 10).
-  // weather is still optional until item 10 lands, so we read it via cast.
-  const roomAny = room as any;
   const timeOfDay = (room.timeOfDay ?? "day") as "dawn" | "day" | "dusk" | "night";
-  const weather = (roomAny.weather ?? "clear") as "clear" | "rain" | "fog" | "storm" | "snow";
+  const weather = (room.weather ?? "clear") as "clear" | "rain" | "fog" | "storm" | "snow";
   const currentMapPos =
     room.currentMapX >= 0 && room.currentMapY >= 0
       ? { x: room.currentMapX, y: room.currentMapY }
@@ -447,7 +445,9 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
   }
 
   // Time of day.
-  lines.push(`=== Время суток ===\nСейчас: ${timeOfDayLabelRu(snap.timeOfDay)}`);
+  lines.push(
+    `=== Время суток и погода ===\nСейчас: ${timeOfDayLabelRu(snap.timeOfDay)} · ${weatherLabelRu(snap.weather)}`
+  );
 
   const recent = snap.chat.slice(-6);
   if (recent.length > 0) {
@@ -795,12 +795,20 @@ export async function advanceExplorationTurn(roomId: string, justActedName: stri
       const next = order[(idx + 1) % order.length];
       newTimeOfDay = next;
     }
+    // Weather: 20% chance to change to a weighted-random new kind.
+    let newWeather = room.weather || "clear";
+    let weatherChanged = false;
+    if (Math.random() < 0.2) {
+      newWeather = rollWeather();
+      weatherChanged = newWeather !== (room.weather || "clear");
+    }
     await db.room.update({
       where: { id: roomId },
       data: {
         explorationActorIndex: nextIdx,
         turnCount: newTurnCount,
         timeOfDay: newTimeOfDay,
+        weather: newWeather,
       },
     });
     if (advanceCycle) {
@@ -814,8 +822,48 @@ export async function advanceExplorationTurn(roomId: string, justActedName: stri
         },
       });
     }
+    if (weatherChanged) {
+      await db.chatMessage.create({
+        data: {
+          roomId,
+          role: "system",
+          speaker: "",
+          round: room.round,
+          content: `Погода меняется: ${weatherLabelRu(newWeather)}.`,
+        },
+      });
+    }
   } else {
     await db.room.update({ where: { id: roomId }, data: { explorationActorIndex: nextIdx } });
+  }
+}
+
+/** Roll a new weather kind using the weighted distribution:
+ *  clear 40%, rain 25%, fog 15%, storm 10%, snow 10%. */
+export function rollWeather(): "clear" | "rain" | "fog" | "storm" | "snow" {
+  const r = Math.random() * 100;
+  if (r < 40) return "clear";
+  if (r < 65) return "rain";
+  if (r < 80) return "fog";
+  if (r < 90) return "storm";
+  return "snow";
+}
+
+/** Human-readable Russian label for a weather value. */
+export function weatherLabelRu(w: string): string {
+  switch (w) {
+    case "clear":
+      return "Ясно";
+    case "rain":
+      return "Дождь";
+    case "fog":
+      return "Туман";
+    case "storm":
+      return "Гроза";
+    case "snow":
+      return "Снег";
+    default:
+      return "Ясно";
   }
 }
 
