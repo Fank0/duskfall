@@ -395,10 +395,12 @@ export const CombatGrid = memo(function CombatGrid({
       </CardHeader>
       <CardContent>
         {/* Tactical grid: square shape, sized to fit the right column without
-            forcing scroll. Capped at 280px on lg, but expands to 440px on xl
+            forcing scroll. Capped at 320px on lg, expands to 400px on xl
             (1920px+ screens) so the 10×10 grid is more usable for tactical
-            positioning. (audit-v2: grid was too small at 1920px.) */}
-        <div className="mx-auto aspect-square w-full max-w-[240px] sm:max-w-[280px] lg:max-w-[320px] xl:max-w-[440px]">
+            positioning. Kept at 400px (not larger) so the SceneViewer + grid
+            + optional targeting banner all fit vertically at 1080px.
+            (audit-v2: grid was 280px — too small at 1920px.) */}
+        <div className="mx-auto aspect-square w-full max-w-[240px] sm:max-w-[280px] lg:max-w-[320px] xl:max-w-[400px]">
           <div
             ref={gridRef}
             className={cn(
