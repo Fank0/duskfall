@@ -4,6 +4,9 @@ import { applyLevelUpTalent, applyLevelUpASI, getSnapshot, invalidateSnapshotCac
 import { getTalentsForClass, getASITalents } from "@/lib/game/talents";
 import { getClassIdByCharClass } from "@/lib/game/presets";
 import type { StatKey } from "@/lib/game/types";
+import { getAccountFromRequest } from "@/lib/auth/get-account";
+import { bumpSaveSlotLevel } from "@/lib/auth/save-slot";
+import { logger } from "@/lib/game/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +56,10 @@ export async function POST(req: NextRequest) {
       });
       invalidateSnapshotCache(room.id);
       const snapshot = await getSnapshot(roomCode);
+      // ===== Save-slot bump (auth-restore) =====
+      // If the requester is authenticated, mirror the new level onto any
+      // SaveSlots pointing at this (account, room, player).
+      await maybeBumpSaveSlot(req, room.id, me.id, snapshot);
       return NextResponse.json({ ok: true, snapshot, asi: { stat } });
     }
 
@@ -92,6 +99,8 @@ export async function POST(req: NextRequest) {
     invalidateSnapshotCache(room.id);
 
     const snapshot = await getSnapshot(roomCode);
+    // ===== Save-slot bump (auth-restore) =====
+    await maybeBumpSaveSlot(req, room.id, me.id, snapshot);
     return NextResponse.json({
       ok: true,
       snapshot,
@@ -100,5 +109,38 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error("[api/game/levelup] error:", e);
     return NextResponse.json({ ok: false, error: e?.message ?? "Ошибка повышения уровня." }, { status: 500 });
+  }
+}
+
+/**
+ * If the requester is authenticated, find the refreshed player row in the
+ * snapshot and bump charLevel + lastPlayed on every SaveSlot owned by the
+ * account that points at this room+player. Swallows errors so a failed
+ * slot bump never breaks the level-up flow.
+ */
+async function maybeBumpSaveSlot(
+  req: NextRequest,
+  roomId: string,
+  playerId: string,
+  snapshot: Awaited<ReturnType<typeof getSnapshot>>
+) {
+  try {
+    const account = await getAccountFromRequest(req.headers.get("cookie"));
+    if (!account) return;
+    if (!snapshot) return;
+    const player = snapshot.players.find((p) => p.id === playerId);
+    if (!player) return;
+    await bumpSaveSlotLevel({
+      accountId: account.id,
+      roomId,
+      playerId,
+      newLevel: player.level,
+    });
+  } catch (e) {
+    logger.warn("save-slot level bump failed", {
+      roomId,
+      playerId,
+      err: (e as Error)?.message?.slice(0, 100),
+    });
   }
 }

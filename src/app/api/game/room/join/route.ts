@@ -6,6 +6,8 @@ import { getSnapshot, getRoomByCode } from "@/lib/game/state";
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 import { rateLimit, rateLimitedResponse, getClientIp } from "@/lib/game/rate-limit";
 import { logger } from "@/lib/game/logger";
+import { getAccountFromRequest } from "@/lib/auth/get-account";
+import { upsertSaveSlotForPlayer, validateSlotNumber } from "@/lib/auth/save-slot";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +15,7 @@ export const dynamic = "force-dynamic";
 const joinLimiter = rateLimit({ windowMs: 3_600_000, max: 10, label: "room-join" });
 
 // POST /api/game/room/join
-// Body: { roomCode, playerName, classId, raceId, backgroundId }
+// Body: { roomCode, playerName, classId, raceId, backgroundId, slotNumber? }
 export async function POST(req: NextRequest) {
   try {
     // ===== Rate limit (item 26): 10 / hour / IP. =====
@@ -70,9 +72,40 @@ export async function POST(req: NextRequest) {
       bonusStats,
     });
 
+    // ===== Save-slot binding (auth-restore) =====
+    let slotBound = false;
+    const account = await getAccountFromRequest(req.headers.get("cookie"));
+    if (account) {
+      const slotNumber = validateSlotNumber(body?.slotNumber);
+      if (slotNumber !== null) {
+        const player = await db.player.findFirst({ where: { roomId: room.id, name: playerName } });
+        if (player) {
+          try {
+            await upsertSaveSlotForPlayer({
+              accountId: account.id,
+              slotNumber,
+              roomId: room.id,
+              playerId: player.id,
+              charName: playerName,
+              charClass: preset.charClass,
+              charRace: race.name,
+              charLevel: 1,
+            });
+            slotBound = true;
+          } catch (e) {
+            logger.warn("save-slot bind failed on room/join", {
+              err: (e as Error)?.message?.slice(0, 100),
+              accountId: account.id,
+              roomCode,
+            });
+          }
+        }
+      }
+    }
+
     const snapshot = await getSnapshot(roomCode);
-    logger.info("player joined room", { roomCode, playerName, ip });
-    return NextResponse.json({ ok: true, roomCode, snapshot, youAre: playerName });
+    logger.info("player joined room", { roomCode, playerName, ip, slotBound });
+    return NextResponse.json({ ok: true, roomCode, snapshot, youAre: playerName, slotBound });
   } catch (e: any) {
     console.error("[api/game/room/join] error:", e);
     return NextResponse.json({ ok: false, error: e?.message ?? "Не удалось войти в комнату." }, { status: 500 });
