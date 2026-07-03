@@ -8,8 +8,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Circle, Square, Type, Palette, ZoomIn } from "lucide-react";
+import { Settings, Circle, Square, Type, Palette, ZoomIn, Volume2, Music, Speaker } from "lucide-react";
 import { useSettings, type Theme, type UiScale } from "@/lib/game/settings";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
 const THEMES: { key: Theme; label: string; swatch: string; ring: string }[] = [
@@ -147,6 +148,59 @@ export function SettingsMenu({
                 onCheckedChange={(v) => settings.setShowTokenNames(Boolean(v))}
               />
             </label>
+          </section>
+
+          {/* ===== Audio (item 6.2) ===== */}
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300/80">
+              <Volume2 className="h-3.5 w-3.5" /> Звук и музыка
+            </h3>
+            <label className="mb-3 flex cursor-pointer items-center justify-between rounded-md border border-border/50 bg-stone-900/40 px-3 py-2">
+              <div className="flex flex-col">
+                <span className="flex items-center gap-1.5 text-sm">
+                  <Music className="h-3.5 w-3.5" /> Фоновая музыка
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Атмосферная музыка по настроению (мир/бой/напряжение)
+                </span>
+              </div>
+              <Switch
+                checked={settings.musicEnabled}
+                onCheckedChange={(v) => settings.setMusicEnabled(Boolean(v))}
+              />
+            </label>
+            <div className="space-y-3 rounded-md border border-border/50 bg-stone-900/40 px-3 py-2.5">
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Music className="h-3 w-3" /> Громкость музыки
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{Math.round(settings.musicVolume * 100)}%</span>
+                </div>
+                <Slider
+                  value={[settings.musicVolume * 100]}
+                  min={0}
+                  max={100}
+                  step={5}
+                  onValueChange={(v) => settings.setMusicVolume(v[0] / 100)}
+                />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Speaker className="h-3 w-3" /> Громкость эффектов
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{Math.round(settings.sfxVolume * 100)}%</span>
+                </div>
+                <Slider
+                  value={[settings.sfxVolume * 100]}
+                  min={0}
+                  max={100}
+                  step={5}
+                  onValueChange={(v) => settings.setSfxVolume(v[0] / 100)}
+                />
+              </div>
+            </div>
           </section>
         </div>
       </DialogContent>

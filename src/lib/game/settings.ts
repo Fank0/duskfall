@@ -21,6 +21,10 @@ export interface SettingsState {
   /** Collapsible panels state (item 21). */
   collapsedParty: boolean;
   collapsedDiceLog: boolean;
+  /** Audio settings (item 6.2). */
+  musicEnabled: boolean;
+  musicVolume: number; // 0..1
+  sfxVolume: number; // 0..1
   // setters
   setTokenShape: (v: "round" | "square") => void;
   setShowTokenNames: (v: boolean) => void;
@@ -30,6 +34,9 @@ export interface SettingsState {
   setCollapsedDiceLog: (v: boolean) => void;
   toggleParty: () => void;
   toggleDiceLog: () => void;
+  setMusicEnabled: (v: boolean) => void;
+  setMusicVolume: (v: number) => void;
+  setSfxVolume: (v: number) => void;
 }
 
 /**
@@ -45,6 +52,9 @@ export const useSettings = create<SettingsState>()(
       uiScale: 100,
       collapsedParty: false,
       collapsedDiceLog: false,
+      musicEnabled: true,
+      musicVolume: 0.4,
+      sfxVolume: 0.5,
       setTokenShape: (v) => set({ tokenShape: v }),
       setShowTokenNames: (v) => set({ showTokenNames: v }),
       setTheme: (v) => set({ theme: v }),
@@ -53,6 +63,9 @@ export const useSettings = create<SettingsState>()(
       setCollapsedDiceLog: (v) => set({ collapsedDiceLog: v }),
       toggleParty: () => set((s) => ({ collapsedParty: !s.collapsedParty })),
       toggleDiceLog: () => set((s) => ({ collapsedDiceLog: !s.collapsedDiceLog })),
+      setMusicEnabled: (v) => set({ musicEnabled: v }),
+      setMusicVolume: (v) => set({ musicVolume: Math.max(0, Math.min(1, v)) }),
+      setSfxVolume: (v) => set({ sfxVolume: Math.max(0, Math.min(1, v)) }),
     }),
     { name: "duskfall-settings" }
   )

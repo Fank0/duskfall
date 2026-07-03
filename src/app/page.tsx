@@ -17,6 +17,12 @@ import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
 import { Lobby } from "@/components/dnd/Lobby";
 import { ErrorBoundary } from "@/components/dnd/ErrorBoundary";
 import { useSettings } from "@/lib/game/settings";
+import {
+  initAudio, resumeAudio, startMusic, stopMusic, setMusicVolume, setSfxVolume, setMusicEnabled,
+  sfxDiceRoll, sfxHit, sfxCrit, sfxMiss, sfxHeal, sfxLevelUp, sfxConditionApply,
+  sfxMonsterDeath, sfxClick, sfxError, sfxCombatStart, sfxTurnChange,
+  startWeatherAmbient, stopWeatherAmbient, moodForState,
+} from "@/lib/game/audio";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -191,6 +197,40 @@ export default function Home() {
     return unsub;
   }, [session]);
 
+  // ===== Audio: sync settings + play music by mood (item 6.2) =====
+  useEffect(() => {
+    setMusicVolume(settings.musicVolume);
+    setSfxVolume(settings.sfxVolume);
+    setMusicEnabled(settings.musicEnabled);
+  }, [settings.musicVolume, settings.sfxVolume, settings.musicEnabled]);
+
+  useEffect(() => {
+    if (!snapshot || !settings.musicEnabled) {
+      stopMusic();
+      return;
+    }
+    const mood = moodForState({
+      combatActive: snapshot.combatActive,
+      timeOfDay: snapshot.timeOfDay ?? "day",
+      weather: snapshot.weather ?? "clear",
+    });
+    startMusic(mood);
+    // Weather ambient
+    startWeatherAmbient((snapshot.weather ?? "clear") as any);
+    return () => { stopWeatherAmbient(); };
+  }, [snapshot?.combatActive, snapshot?.timeOfDay, snapshot?.weather, settings.musicEnabled]);
+
+  // Init audio on first user interaction (browsers require gesture)
+  useEffect(() => {
+    const handler = () => { resumeAudio(); };
+    window.addEventListener("click", handler, { once: true });
+    window.addEventListener("keydown", handler, { once: true });
+    return () => {
+      window.removeEventListener("click", handler);
+      window.removeEventListener("keydown", handler);
+    };
+  }, []);
+
   useEffect(() => {
     if (!session) return;
     // Choose the poll interval based on combat vs. exploration, and pause
@@ -328,6 +368,16 @@ export default function Home() {
                     isCrit,
                     isHeal,
                   });
+                  // ===== SFX (item 6.2) =====
+                  try {
+                    if (event.combatStarted) sfxCombatStart();
+                    if (event.monsterThatDied) sfxMonsterDeath();
+                    else if (isCrit) sfxCrit();
+                    else if (isHeal) sfxHeal();
+                    else if (damage > 0 && event.damagedPlayer) sfxHit();
+                    else if (ev.playerRolls?.some((r: any) => r.notation?.includes("d20") && !r.success)) sfxMiss();
+                    if ((event as any).conditionsApplied > 0) sfxConditionApply();
+                  } catch {}
                 }
               }
               flush();
@@ -434,6 +484,7 @@ export default function Home() {
         setSnapshot(data.snapshot);
         pingRoom(session.roomCode);
         toast.success(`Новый талант: ${data.talent?.name ?? ""}!`);
+        try { sfxLevelUp(); } catch {}
       } else {
         toast.error(data.error ?? "Не удалось выбрать талант.");
       }
