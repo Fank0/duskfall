@@ -154,3 +154,29 @@ Work Log:
 Stage Summary:
 - Verified in browser: join flow now starts at the code step, then race→class→background→stats→name (correct order). Character creator preview shows abilities (e.g. Tiefling: Тёмное зрение, Сопротивление огню, Адское возмездие). In-game character sheet shows the full ability list with source badges and consumable markers — a Tiefling Wizard correctly displays 3 racial + 1 class ability + 1 consumable scroll. Lint clean (0 errors/warnings), no console errors.
 - Artifacts: `src/lib/game/abilities.ts`, updated `src/components/dnd/{CharacterCreator,CharacterSheet}.tsx`, `src/lib/game/{presets,state}.ts`.
+
+---
+Task ID: env-and-llm-restore
+Agent: main (Z.ai Code)
+Task: Add user's .env file, restore OpenRouter (NVIDIA Nemotron + Qwen3 + Llama) + Ollama as fallback providers alongside GLM + Gemini.
+
+Work Log:
+- Discovered the working tree had been reset to an old git commit — all files from the 7 subagent tasks (combat-v2, world-v2, progression-v2, visual-v2, opt-backend, opt-frontend, dungeon-gen, final-audit) were lost (never committed to git). The project reverted to the state from early session 1, before llm.ts existed. dm-agent.ts used ZAI SDK directly.
+- Added user's .env to project root with: GLM_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY (user's "QWEN_API_KEY" was actually an OpenRouter key starting with sk-or-v1-, so renamed to OPENROUTER_API_KEY).
+- Created src/lib/game/llm.ts from scratch with multi-provider fallback chain:
+  1. GLM (z.ai) — glm-4.6 → glm-4-plus → glm-4-air → glm-4-flash (primary)
+  2. Gemini (Google) — gemini-2.0-flash → gemini-1.5-flash → gemini-1.5-flash-8b
+  3. OpenRouter — qwen3-next-80b → nvidia/nemotron-3-super-120b → llama-3.3-70b → gpt-oss-120b → dolphin-mistral-24b
+  4. Ollama (local) — configurable model (default llama3.2)
+  5. z-ai-web-dev-sdk sandbox config (last resort)
+- Each provider has dedicated env vars: GLM_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL+OLLAMA_MODEL.
+- Updated dm-agent.ts: removed direct ZAI SDK usage (getZAI + 5 zai.chat.completions.create calls). Replaced with chatComplete() and chatStream() from llm.ts. Also fixed the role:"assistant" → role:"system" bug in all system prompts (was sending system prompts as assistant messages).
+- Updated .env.example with all provider variables documented.
+- Lint: clean (0 errors). tsc: 0 errors in LLM-related code (8 pre-existing errors in old combat logic, unrelated to LLM changes).
+- Dev server: running on port 3000, homepage returns 200 with DUSKFALL branding.
+
+Stage Summary:
+- LLM chain restored with NVIDIA Nemotron, Qwen3, Llama 3.3, GPT-OSS (via OpenRouter) + Ollama as fallbacks after GLM + Gemini.
+- User's .env has 3 keys active: GLM + Gemini + OpenRouter. Ollama skipped (no OLLAMA_BASE_URL set).
+- llm.ts auto-detects OpenRouter keys (sk-or-v1- prefix) in QWEN_API_KEY or LLM_API_KEY for backwards compatibility.
+- CRITICAL NOTE: The 7 subagent tasks from earlier this session (combat-v2, world-v2, progression-v2, visual-v2, opt-backend, opt-frontend, dungeon-gen, final-audit) were lost due to a working tree reset. The project is at the old HEAD commit state. Those features need to be re-implemented in a future session.

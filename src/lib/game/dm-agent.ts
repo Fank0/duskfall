@@ -12,8 +12,8 @@
 //
 // Monster turns are run by `advanceTurn`, not by the player-action path.
 
-import ZAI from "z-ai-web-dev-sdk";
 import { db } from "@/lib/db";
+import { chatComplete, chatStream } from "./llm";
 import {
   getDMContext,
   getSnapshot,
@@ -53,11 +53,6 @@ import type {
   PlayerState,
 } from "./types";
 
-let zaiPromise: Promise<any> | null = null;
-async function getZAI() {
-  if (!zaiPromise) zaiPromise = ZAI.create();
-  return zaiPromise;
-}
 
 const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Подземелий для D&D 5e, ведущий тёмное фэнтези-приключение для группы героев. Твоя задача — спланировать механику разрешения действия ОДНОГО героя.
 
@@ -125,17 +120,12 @@ async function planResolution(
   playerAction: string
 ): Promise<DMResolution> {
   const context = await getDMContext(roomCode, actorName);
-  const zai = await getZAI();
   const userMsg = `КОНТЕКСТ ИГРЫ:\n${context}\n\nДЕЙСТВУЮЩИЙ ГЕРОЙ: ${actorName}\nДЕЙСТВИЕ: ${playerAction}\n\nСпланируй механику разрешения. Верни только JSON.`;
   try {
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: SYSTEM_PROMPT_PLANNING },
-        { role: "user", content: userMsg },
-      ],
-      thinking: { type: "disabled" },
-    });
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = await chatComplete([
+      { role: "system", content: SYSTEM_PROMPT_PLANNING },
+      { role: "user", content: userMsg },
+    ]);
     const parsed = extractJson<DMResolution>(raw);
     if (parsed && parsed.success && parsed.failure) return parsed;
   } catch (e) {
@@ -152,17 +142,12 @@ export async function planAndNarrate(
   playerAction: string
 ): Promise<{ plan: DMResolution; narrative: string }> {
   const context = await getDMContext(roomCode, actorName);
-  const zai = await getZAI();
   const userMsg = `КОНТЕКСТ ИГРЫ:\n${context}\n\nДЕЙСТВУЮЩИЙ ГЕРОЙ: ${actorName}\nДЕЙСТВИЕ: ${playerAction}\n\nСпланируй механику И напиши нарратив в одном ответе. Верни только JSON.`;
   try {
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: SYSTEM_PROMPT_COMBINED },
-        { role: "user", content: userMsg },
-      ],
-      thinking: { type: "disabled" },
-    });
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const raw = await chatComplete([
+      { role: "system", content: SYSTEM_PROMPT_COMBINED },
+      { role: "user", content: userMsg },
+    ]);
     const parsed = extractJson<DMResolution & { narrative: string }>(raw);
     if (parsed && parsed.success && parsed.failure) {
       const narrative = parsed.narrative || parsed.success.narrative || parsed.failure.narrative;
@@ -221,7 +206,6 @@ async function narrateAction(
     location: string;
   }
 ): Promise<string> {
-  const zai = await getZAI();
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
   lines.push(`Герой: ${actorName}`);
@@ -240,15 +224,11 @@ async function narrateAction(
   lines.push(`Заготовка нарратива: ${data.branchNarrative}`);
 
   try {
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: SYSTEM_PROMPT_NARRATION },
-        { role: "user", content: `Напиши повествование:\n${lines.join("\n")}` },
-      ],
-      thinking: { type: "disabled" },
-    });
-    const text = completion.choices[0]?.message?.content?.trim();
-    if (text && text.length > 20) return text;
+    const text = await chatComplete([
+      { role: "system", content: SYSTEM_PROMPT_NARRATION },
+      { role: "user", content: `Напиши повествование:\n${lines.join("\n")}` },
+    ]);
+    if (text && text.trim().length > 20) return text.trim();
   } catch (e) {
     console.error("[DM] narrateAction error:", e);
   }
@@ -271,7 +251,6 @@ export async function* streamNarrativeAction(
     location: string;
   }
 ): AsyncGenerator<string> {
-  const zai = await getZAI();
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
   lines.push(`Герой: ${actorName}`);
@@ -286,45 +265,15 @@ export async function* streamNarrativeAction(
   lines.push(`Заготовка: ${data.branchNarrative}`);
 
   try {
-    const streamBody: any = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: SYSTEM_PROMPT_NARRATION },
-        { role: "user", content: `Напиши повествование (3-5 предложений):\n${lines.join("\n")}` },
-      ],
-      thinking: { type: "disabled" },
-      stream: true,
-    });
-    // streamBody is a ReadableStream of SSE. Parse it.
-    if (streamBody && typeof streamBody.getReader === "function") {
-      const reader = streamBody.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let full = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n");
-        buffer = parts.pop() ?? "";
-        for (const line of parts) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === "[DONE]") continue;
-          try {
-            const json = JSON.parse(payload);
-            const delta = json.choices?.[0]?.delta?.content;
-            if (delta) {
-              full += delta;
-              yield delta;
-            }
-          } catch {
-            /* skip malformed chunk */
-          }
-        }
-      }
-      if (full.trim().length > 20) return;
+    let full = "";
+    for await (const delta of chatStream([
+      { role: "system", content: SYSTEM_PROMPT_NARRATION },
+      { role: "user", content: `Напиши повествование (3-5 предложений):\n${lines.join("\n")}` },
+    ])) {
+      full += delta;
+      yield delta;
     }
+    if (full.trim().length > 20) return;
   } catch (e) {
     console.error("[DM] streamNarrativeAction error:", e);
   }
@@ -345,7 +294,6 @@ async function narrateMonsterTurn(
     location: string;
   }
 ): Promise<string> {
-  const zai = await getZAI();
   const lines: string[] = [];
   lines.push(`Локация: ${data.location}`);
   lines.push(`Ход монстра: ${data.monsterName}`);
@@ -359,15 +307,11 @@ async function narrateMonsterTurn(
     lines.push(`Атака промахивается по ${data.targetName}: бросок ${data.attackTotal} против AC ${data.ac}.`);
   }
   try {
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: SYSTEM_PROMPT_NARRATION },
-        { role: "user", content: `Напиши короткое повествование (2-4 предложения) хода монстра:\n${lines.join("\n")}` },
-      ],
-      thinking: { type: "disabled" },
-    });
-    const text = completion.choices[0]?.message?.content?.trim();
-    if (text && text.length > 15) return text;
+    const text = await chatComplete([
+      { role: "system", content: SYSTEM_PROMPT_NARRATION },
+      { role: "user", content: `Напиши короткое повествование (2-4 предложения) хода монстра:\n${lines.join("\n")}` },
+    ]);
+    if (text && text.trim().length > 15) return text.trim();
   } catch (e) {
     console.error("[DM] narrateMonsterTurn error:", e);
   }
