@@ -155,8 +155,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.music_hint": "Атмосферная музыка по настроению (мир/бой/напряжение)",
 
     // ===== rest =====
-    "rest.short_rest": "Короткий отдых",
-    "rest.long_rest": "Долгий отдых",
     "rest.short_rest_hint": "Короткий отдых: бросок кости здоровья, восстановление половины. Колдуну возвращаются ячейки.",
     "rest.long_rest_hint": "Долгий отдых: полное восстановление HP, все ячейки заклинаний, снятие кратковременных состояний.",
 
@@ -315,8 +313,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.music_hint": "Atmospheric music by mood (world/combat/tension)",
 
     // ===== rest =====
-    "rest.short_rest": "Short rest",
-    "rest.long_rest": "Long rest",
     "rest.short_rest_hint": "Short rest: hit-die roll, restore half HP. Casters regain some spell slots.",
     "rest.long_rest_hint": "Long rest: full HP, all spell slots, clear short conditions.",
 
@@ -470,8 +466,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Pequeña etiqueta bajo cada ficha en la cuadrícula",
     "ui.music_hint": "Música atmosférica según el ambiente (mundo/combate/tensión)",
 
-    "rest.short_rest": "Descanso corto",
-    "rest.long_rest": "Descanso largo",
     "rest.short_rest_hint": "Descanso corto: tirada de dado de golpe, recupera la mitad. El conjurador recupera espacios.",
     "rest.long_rest_hint": "Descanso largo: PG al máximo, todos los espacios, condiciones cortas eliminadas.",
 
@@ -620,8 +614,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Kleine Beschriftung unter jeder Figur im Raster",
     "ui.music_hint": "Atmosphärische Musik nach Stimmung (Welt/Kampf/Spannung)",
 
-    "rest.short_rest": "Kurze Rast",
-    "rest.long_rest": "Lange Rast",
     "rest.short_rest_hint": "Kurze Rast: Heilungswürfel, halbe TP. Zauberwirker erhält Plätze zurück.",
     "rest.long_rest_hint": "Lange Rast: volle TP, alle Zauberplätze, kurze Zustände entfernt.",
 
@@ -770,8 +762,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Petite étiquette sous chaque jeton sur la grille",
     "ui.music_hint": "Musique atmosphérique selon l'ambiance (monde/combat/tension)",
 
-    "rest.short_rest": "Repos court",
-    "rest.long_rest": "Repos long",
     "rest.short_rest_hint": "Repos court : jet de dé de vie, moitié des PV. Le lanceur récupère des emplacements.",
     "rest.long_rest_hint": "Repos long : PV pleins, tous les emplacements, états courts levés.",
 
@@ -975,8 +965,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.combat_log": "战斗日志",
     "ui.quest_journal": "任务日志",
     "ui.quest_empty": "日志为空。与NPC交谈或探索以获得任务。",
-    "rest.short_rest": "短休",
-    "rest.long_rest": "长休",
     "rest.short_rests": "短休",
   },
 };
