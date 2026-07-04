@@ -851,6 +851,24 @@ export default function Home() {
     cancelTargeting();
   }, [targetingAbility, targetingMode, snapshot, sendAction, cancelTargeting]);
 
+  const handlePlayerTargetClick = useCallback((playerName: string) => {
+    if (!targetingAbility || (targetingMode !== "ability" && targetingMode !== "item") || !snapshot) return;
+    const player = snapshot.players.find((p) => p.name === playerName);
+    if (!player) return;
+    const ctx: QuickActionContext = {
+      combatActive: snapshot.combatActive,
+      nearestMonsterName: undefined,
+    };
+    if (targetingMode === "item" && "itemName" in targetingAbility) {
+      // Targeting an ally with an item (e.g. potion on ally)
+      sendAction(`Я использую «${targetingAbility.itemName}» на ${playerName}.`);
+    } else {
+      // Targeting an ally with an ability (e.g. heal)
+      sendAction(`Я использую «${(targetingAbility as Ability).name}» на ${playerName}.`);
+    }
+    cancelTargeting();
+  }, [targetingAbility, targetingMode, snapshot, sendAction, cancelTargeting]);
+
   // When the player clicks a grid cell while in aoe-targeting mode, send an
   // action naming that cell as the AoE origin. The DM agent resolves who is
   // affected based on the spell's shape + size.
@@ -1278,20 +1296,19 @@ export default function Home() {
             {/* Item 3 — targeting banner. Shown above the grid while the
                 player is picking a monster / cell for an ability or AoE. */}
             {targetingMode !== "none" && targetingAbility && (
-              <div className="flex items-center gap-2 rounded-md border border-amber-500/60 bg-amber-950/50 px-2.5 py-1.5 text-xs text-amber-200 shadow">
-                <Crosshair className="h-3.5 w-3.5 shrink-0 text-amber-300" />
-                <span className="min-w-0 flex-1 truncate">
-                  {targetingMode === "ability" || targetingMode === "item"
-                    ? `Выберите цель для «${"name" in targetingAbility ? targetingAbility.name : "itemName" in targetingAbility ? targetingAbility.itemName : ""}»`
-                    : `Выберите точку для «${"name" in targetingAbility ? targetingAbility.name : "itemName" in targetingAbility ? targetingAbility.itemName : ""}»`}
+              <div className="flex items-center gap-2 rounded-md border border-amber-500/60 bg-amber-950/50 px-2.5 py-1.5 text-xs text-amber-200 shadow animate-pulse">
+                <Crosshair className="h-3.5 w-3.5 shrink-0 text-amber-300 animate-spin" style={{ animationDuration: "2s" }} />
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {targetingMode === "aoe"
+                    ? tt("ui.select_area_prompt")
+                    : tt("ui.select_target_prompt")} «{"name" in targetingAbility ? targetingAbility.name : "itemName" in targetingAbility ? targetingAbility.itemName : ""}»
                 </span>
                 <button
                   type="button"
                   onClick={cancelTargeting}
-                  className="shrink-0 rounded border border-amber-700/60 bg-amber-950/60 px-1.5 py-px text-[10px] text-amber-200 transition-colors hover:bg-amber-900/60"
-                  title="Отменить (Esc)"
+                  className="shrink-0 rounded border border-amber-700/60 bg-amber-950/60 px-2 py-px text-[10px] font-medium text-amber-200 transition-colors hover:bg-amber-900/60"
                 >
-                  Отмена
+                  {tt("ui.cancel")} (Esc)
                 </button>
               </div>
             )}
@@ -1310,6 +1327,7 @@ export default function Home() {
               }}
               targetingMode={targetingMode}
               onMonsterTargetClick={handleMonsterTargetClick}
+              onPlayerTargetClick={handlePlayerTargetClick}
               onCellTargetClick={handleCellTargetClick}
             />
           </aside>

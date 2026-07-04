@@ -263,7 +263,9 @@ export const BottomPanel = memo(function BottomPanel({
     if (!canQuickUse) return;
     const chipId = `abil:${a.id}`;
     if (disabledChips.has(chipId)) return;
-    if (combatActive && onRequestTargeting) {
+    // Two-step targeting: if the ability needs a target AND targeting is available,
+    // enter targeting mode (works in BOTH combat and exploration).
+    if (onRequestTargeting) {
       const kind = classifyAbilityTargeting(a);
       if (kind === "monster") {
         onRequestTargeting(a, "ability");
@@ -271,6 +273,11 @@ export const BottomPanel = memo(function BottomPanel({
       }
       if (kind === "aoe") {
         onRequestTargeting(a, "aoe");
+        return;
+      }
+      // Heal abilities could target allies — enter targeting mode too
+      if (kind === "self" && a.castType === "heal" && combatActive) {
+        onRequestTargeting(a, "ability");
         return;
       }
     }
@@ -286,7 +293,14 @@ export const BottomPanel = memo(function BottomPanel({
     if (!canQuickUse) return;
     const chipId = `item:${item.id}`;
     if (disabledChips.has(chipId)) return;
-    if (combatActive && onRequestTargeting && (item.itemType === "weapon" || item.itemType === "scroll")) {
+    // Two-step targeting: weapons, scrolls, and offensive items enter targeting
+    // mode (works in BOTH combat and exploration).
+    if (onRequestTargeting && (item.itemType === "weapon" || item.itemType === "scroll")) {
+      onRequestTargeting(item, "item");
+      return;
+    }
+    // Potions could target allies — enter targeting mode in combat
+    if (onRequestTargeting && item.itemType === "potion" && combatActive) {
       onRequestTargeting(item, "item");
       return;
     }

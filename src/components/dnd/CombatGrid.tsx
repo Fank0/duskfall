@@ -76,8 +76,10 @@ export interface CombatGridProps {
    *               onCellTargetClick(x, y).
    */
   targetingMode?: "none" | "ability" | "aoe" | "item";
-  /** Called when the player clicks a monster token in ability-targeting mode. */
+  /** Called when the player clicks a monster token in ability/item-targeting mode. */
   onMonsterTargetClick?: (monsterId: string) => void;
+  /** Called when the player clicks a player token in ability/item-targeting mode (for healing allies). */
+  onPlayerTargetClick?: (playerName: string) => void;
   /** Called when the player clicks a grid cell in aoe-targeting mode. */
   onCellTargetClick?: (x: number, y: number) => void;
 }
@@ -100,6 +102,7 @@ export const CombatGrid = memo(function CombatGrid({
   gridExtras,
   targetingMode = "none",
   onMonsterTargetClick,
+  onPlayerTargetClick,
   onCellTargetClick,
 }: CombatGridProps) {
   const settings = useSettings();
@@ -325,9 +328,6 @@ export const CombatGrid = memo(function CombatGrid({
   }, [activeMonsters]);
 
   // ===== Item 3: targeting-mode helpers =====
-  // In ability-targeting mode, we need a fast lookup of "which monster lives
-  // in this cell". If multiple monsters stack on a cell, the first one wins
-  // (the player can attack any one of them — the DM agent resolves positioning).
   const monsterByCell = useMemo(() => {
     const m = new Map<string, MonsterState>();
     for (const mon of activeMonsters) {
@@ -336,9 +336,18 @@ export const CombatGrid = memo(function CombatGrid({
     }
     return m;
   }, [activeMonsters]);
+  // Player cell lookup for ally targeting (heal/buff)
+  const playerByCell = useMemo(() => {
+    const m = new Map<string, PlayerState>();
+    for (const pl of alivePlayers) {
+      const k = `${pl.posX},${pl.posY}`;
+      if (!m.has(k)) m.set(k, pl);
+    }
+    return m;
+  }, [alivePlayers]);
   const isTargetingActive = targetingMode !== "none";
   const gridCursorClass =
-    targetingMode === "ability" || targetingMode === "aoe"
+    targetingMode === "ability" || targetingMode === "aoe" || targetingMode === "item"
       ? "cursor-crosshair"
       : undefined;
 
@@ -455,10 +464,13 @@ export const CombatGrid = memo(function CombatGrid({
               const isThreat = threatCells?.has(`${x},${y}`);
               // Item 3 — targeting-mode cell flags:
               const monsterInCell = targetingMode === "ability" || targetingMode === "item" ? monsterByCell.get(`${x},${y}`) : undefined;
+              const playerInCell = targetingMode === "ability" || targetingMode === "item" ? playerByCell.get(`${x},${y}`) : undefined;
               const isAoeTargetCell = targetingMode === "aoe";
               const cellClick =
                 monsterInCell && onMonsterTargetClick
                   ? () => onMonsterTargetClick(monsterInCell.id)
+                  : playerInCell && onPlayerTargetClick
+                  ? () => onPlayerTargetClick(playerInCell.name)
                   : isAoeTargetCell && onCellTargetClick
                   ? () => onCellTargetClick(x, y)
                   : undefined;
@@ -474,11 +486,15 @@ export const CombatGrid = memo(function CombatGrid({
                       "cursor-crosshair border-amber-400/40 hover:bg-amber-500/30 hover:border-amber-400/80",
                     // Ability-targeting: only cells with a monster are clickable.
                     monsterInCell &&
-                      "cursor-crosshair ring-2 ring-amber-400/70 animate-pulse-glow hover:bg-amber-500/25",
+                      "cursor-crosshair ring-2 ring-red-400/70 animate-pulse-glow hover:bg-red-500/25",
+                    playerInCell && !monsterInCell &&
+                      "cursor-crosshair ring-2 ring-emerald-400/70 animate-pulse-glow hover:bg-emerald-500/25",
                   )}
                   title={
                     monsterInCell
-                      ? `Выбрать цель: ${monsterInCell.name} (${monsterInCell.hp}/${monsterInCell.maxHp} HP)`
+                      ? `${t(settings.lang, "ui.select_target")}: ${monsterInCell.name} (${monsterInCell.hp}/${monsterInCell.maxHp} HP)`
+                      : playerInCell
+                      ? `${t(settings.lang, "ui.select_target")}: ${playerInCell.name} (${playerInCell.hp}/${playerInCell.maxHp} HP)`
                       : isAoeTargetCell
                       ? `${t(settings.lang, "ui.cast_at")} (${x}, ${y})`
                       : `(${x}, ${y})`
@@ -592,7 +608,7 @@ export const CombatGrid = memo(function CombatGrid({
             </span>
           ))}
           {alivePlayers.length === 0 && activeMonsters.length === 0 && (
-            <span className="italic">На сетке никого нет</span>
+            <span className="italic">no one on grid</span>
           )}
         </div>
       </CardContent>
