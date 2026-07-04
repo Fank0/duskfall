@@ -1118,3 +1118,77 @@ export function t(lang: Lang, key: string, params?: Record<string, string | numb
   }
   return value;
 }
+
+// ===== Game data translations =====
+// Used by localizeData() to translate game content (races, classes, items, etc.)
+
+const CLASS_I18N: Record<string, Record<Lang, string>> = {
+  "Воин": { "ru": "Воин", "en": "Fighter", "es": "Guerrero", "de": "Kämpfer", "fr": "Guerrier", "zh": "战士" },
+  "Варвар": { "ru": "Варвар", "en": "Barbarian", "es": "Bárbaro", "de": "Barbar", "fr": "Barbare", "zh": "野蛮人" },
+  "Паладин": { "ru": "Паладин", "en": "Paladin", "es": "Paladín", "de": "Paladin", "fr": "Paladin", "zh": "圣骑士" },
+  "Следопыт": { "ru": "Следопыт", "en": "Ranger", "es": "Explorador", "de": "Waldläufer", "fr": "Rôdeur", "zh": "游侠" },
+  "Плут": { "ru": "Плут", "en": "Rogue", "es": "Pícaro", "de": "Schurke", "fr": "Voleur", "zh": "盗贼" },
+  "Монах": { "ru": "Монах", "en": "Monk", "es": "Monje", "de": "Mönch", "fr": "Moine", "zh": "武僧" },
+  "Волшебник": { "ru": "Волшебник", "en": "Wizard", "es": "Mago", "de": "Magier", "fr": "Magicien", "zh": "法师" },
+  "Чародей": { "ru": "Чародей", "en": "Sorcerer", "es": "Hechicero", "de": "Hexer", "fr": "Sorcier", "zh": "术士" },
+  "Колдун": { "ru": "Колдун", "en": "Warlock", "es": "Brujo", "de": "Hexenmeister", "fr": "Sorcier", "zh": "邪术师" },
+  "Жрец": { "ru": "Жрец", "en": "Cleric", "es": "Clérigo", "de": "Kleriker", "fr": "Clerc", "zh": "牧师" },
+  "Друид": { "ru": "Друид", "en": "Druid", "es": "Druida", "de": "Druide", "fr": "Druide", "zh": "德鲁伊" },
+  "Бард": { "ru": "Бард", "en": "Bard", "es": "Bardo", "de": "Barde", "fr": "Barde", "zh": "吟游诗人" },
+};
+
+const RACE_I18N: Record<string, Record<Lang, string>> = {
+  "Человек": { "ru": "Человек", "en": "Human", "es": "Humano", "de": "Mensch", "fr": "Humain", "zh": "人类" },
+  "Эльф": { "ru": "Эльф", "en": "Elf", "es": "Elfo", "de": "Elf", "fr": "Elfe", "zh": "精灵" },
+  "Дварф": { "ru": "Дварф", "en": "Dwarf", "es": "Enano", "de": "Zwerg", "fr": "Nain", "zh": "矮人" },
+  "Полурослик": { "ru": "Полурослик", "en": "Halfling", "es": "Mediano", "de": "Halbling", "fr": "Halfelin", "zh": "半身人" },
+  "Полуэльф": { "ru": "Полуэльф", "en": "Half-Elf", "es": "Semielfo", "de": "Halbelf", "fr": "Demi-elfe", "zh": "半精灵" },
+  "Тифлинг": { "ru": "Тифлинг", "en": "Tiefling", "es": "Tiefling", "de": "Tiefling", "fr": "Tieflin", "zh": "提夫林" },
+  "Драконорождённый": { "ru": "Драконорождённый", "en": "Dragonborn", "es": "Dracónido", "de": "Drachenblütiger", "fr": "Drakéide", "zh": "龙裔" },
+  "Гном": { "ru": "Гном", "en": "Gnome", "es": "Gnomo", "de": "Gnom", "fr": "Gnome", "zh": "侏儒" },
+  "Полуорк": { "ru": "Полуорк", "en": "Half-Orc", "es": "Semiorgo", "de": "Halbork", "fr": "Demi-orc", "zh": "半兽人" },
+};
+
+const BACKGROUND_I18N: Record<string, Record<Lang, string>> = {
+  "Солдат": { "ru": "Солдат", "en": "Soldier", "es": "Soldado", "de": "Soldat", "fr": "Soldat", "zh": "士兵" },
+  "Шарлатан": { "ru": "Шарлатан", "en": "Charlatan", "es": "Charlatán", "de": "Scharlatan", "fr": "Charlatan", "zh": "骗子" },
+  "Преступник": { "ru": "Преступник", "en": "Criminal", "es": "Criminal", "de": "Verbrecher", "fr": "Criminel", "zh": "罪犯" },
+  "Мудрец": { "ru": "Мудрец", "en": "Sage", "es": "Sabio", "de": "Gelehrter", "fr": "Sage", "zh": "贤者" },
+  "Отшельник": { "ru": "Отшельник", "en": "Hermit", "es": "Ermitaño", "de": "Einsiedler", "fr": "Ermite", "zh": "隐士" },
+  "Народный герой": { "ru": "Народный герой", "en": "Folk Hero", "es": "Héroe del pueblo", "de": "Volksheld", "fr": "Héros du peuple", "zh": "民间英雄" },
+  "Чужак": { "ru": "Чужак", "en": "Outlander", "es": "Forastero", "de": "Fremdling", "fr": "Étranger", "zh": "异乡人" },
+  "Аколит": { "ru": "Аколит", "en": "Acolyte", "es": "Acólito", "de": "Akolyth", "fr": "Acolyte", "zh": "侍僧" },
+  "Артист": { "ru": "Артист", "en": "Entertainer", "es": "Animador", "de": "Künstler", "fr": "Artiste", "zh": "艺人" },
+  "Благородный": { "ru": "Благородный", "en": "Noble", "es": "Noble", "de": "Adliger", "fr": "Noble", "zh": "贵族" },
+};
+
+const ITEM_I18N: Record<string, Record<Lang, string>> = {
+  "Длинный меч": { "ru": "Длинный меч", "en": "Longsword", "es": "Espada larga", "de": "Langschwert", "fr": "Épée longue", "zh": "长剑" },
+  "Короткий лук": { "ru": "Короткий лук", "en": "Shortbow", "es": "Arco corto", "de": "Kurzbogen", "fr": "Arc court", "zh": "短弓" },
+  "Деревянный щит": { "ru": "Деревянный щит", "en": "Wooden Shield", "es": "Escudo de madera", "de": "Holzschild", "fr": "Bouclier en bois", "zh": "木盾" },
+  "Зелье лечения": { "ru": "Зелье лечения", "en": "Healing Potion", "es": "Poción de curación", "de": "Heiltrank", "fr": "Potion de soin", "zh": "治疗药水" },
+  "Факел": { "ru": "Факел", "en": "Torch", "es": "Antorcha", "de": "Fackel", "fr": "Torche", "zh": "火把" },
+  "Кинжал": { "ru": "Кинжал", "en": "Dagger", "es": "Daga", "de": "Dolch", "fr": "Dague", "zh": "匕首" },
+  "Кожаная броня": { "ru": "Кожаная броня", "en": "Leather Armor", "es": "Armadura de cuero", "de": "Lederrüstung", "fr": "Armure de cuir", "zh": "皮甲" },
+  "Святой символ": { "ru": "Святой символ", "en": "Holy Symbol", "es": "Símbolo sagrado", "de": "Heiliges Symbol", "fr": "Symbole sacré", "zh": "圣徽" },
+  "Колчан стрел": { "ru": "Колчан стрел", "en": "Quiver of Arrows", "es": "Carcaj de flechas", "de": "Köcher mit Pfeilen", "fr": "Carquois de flèches", "zh": "箭袋" },
+  "Короткий меч": { "ru": "Короткий меч", "en": "Shortsword", "es": "Espada corta", "de": "Kurzschwert", "fr": "Épée courte", "zh": "短剑" },
+  "Боевой посох": { "ru": "Боевой посох", "en": "Quarterstaff", "es": "Bastón", "de": "Kampfstab", "fr": "Bâton", "zh": "武僧杖" },
+  "Знак отличия роты": { "ru": "Знак отличия роты", "en": "Company Insignia", "es": "Insignia de la compañía", "de": "Abzeichen der Kompanie", "fr": "Insigne de compagnie", "zh": "小队徽章" },
+  "Костяной игральный кубик": { "ru": "Костяной игральный кубик", "en": "Bone Gambling Die", "es": "Dado de hueso", "de": "Knochenwürfel", "fr": "Dé en os", "zh": "骨骰" },
+  "Трофей с врага": { "ru": "Трофей с врага", "en": "Enemy Trophy", "es": "Trofeo de enemigo", "de": "Feindtrophy", "fr": "Trophée d'ennemi", "zh": "战利品" },
+  "Набор для костюма": { "ru": "Набор для костюма", "en": "Disguise Kit", "es": "Kit de disfraz", "de": "Verkleidungsset", "fr": "Kit de déguisement", "zh": "伪装套装" },
+  "Письмо с рекомендацией": { "ru": "Письмо с рекомендацией", "en": "Letter of Recommendation", "es": "Carta de recomendación", "de": "Empfehlungsschreiben", "fr": "Lettre de recommandation", "zh": "推荐信" },
+  "Свиток магической стрелы": { "ru": "Свиток магической стрелы", "en": "Scroll of Magic Missile", "es": "Pergamino de Proyectil Mágico", "de": "Schriftrolle des Magischen Geschosses", "fr": "Parchemin de Projectile Magique", "zh": "魔法飞弹卷轴" },
+  "Символ веры": { "ru": "Символ веры", "en": "Prayer Beads", "es": "Cuentas de oración", "de": "Gebetsperlen", "fr": "Chapelet", "zh": "念珠" },
+  "Лютня": { "ru": "Лютня", "en": "Lute", "es": "Laúd", "de": "Laute", "fr": "Luth", "zh": "鲁特琴" },
+  "Записная книжка": { "ru": "Записная книжка", "en": "Notebook", "es": "Cuaderno", "de": "Notizbuch", "fr": "Carnet", "zh": "笔记本" },
+};
+
+/** Translate game data (race/class/background/item names) into the UI language. */
+export function localizeData(lang: Lang, category: "class" | "race" | "background" | "item", ruName: string): string {
+  const table = category === "class" ? CLASS_I18N : category === "race" ? RACE_I18N : category === "background" ? BACKGROUND_I18N : ITEM_I18N;
+  const entry = table[ruName];
+  if (entry && entry[lang]) return entry[lang];
+  return ruName; // fallback to Russian
+}

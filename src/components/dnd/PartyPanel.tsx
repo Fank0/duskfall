@@ -10,6 +10,7 @@ import type { PlayerState } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { useSettings } from "@/lib/game/settings";
 import { t } from "@/lib/game/i18n";
+import { localizeData } from "@/lib/game/i18n";
 import { makeShallowComparator } from "@/lib/game/shallow";
 import { cn } from "@/lib/utils";
 
@@ -88,7 +89,7 @@ export const PartyPanel = memo(function PartyPanel({
                         )}
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span className="font-medium text-stone-300">{p.raceName} {p.charClass}</span>
+                        <span className="font-medium text-stone-300">{localizeData(settings.lang, "race", p.raceName)} {localizeData(settings.lang, "class", p.charClass)}</span>
                         <span>·</span>
                         <span className="text-amber-300/80">{t(settings.lang, "character.level_short")}{p.level}</span>
                         <span>·</span>

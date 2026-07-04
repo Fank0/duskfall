@@ -15,7 +15,7 @@ import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
 import { shallowEqual } from "@/lib/game/shallow";
 import { useSettings } from "@/lib/game/settings";
-import { t } from "@/lib/game/i18n";
+import { t, localizeData } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 import {
   buildAbilityQuickText,
@@ -170,9 +170,9 @@ export const CharacterSheet = memo(function CharacterSheet({
             )}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            {player.raceName} {player.charClass} · {player.backgroundName} · {tt("character.level_short")}{player.level}
+            {localizeData(lang, "race", player.raceName)} {localizeData(lang, "class", player.charClass)} · {localizeData(lang, "background", player.backgroundName)} · {tt("character.level_short")}{player.level}
           </p>
-          <p className="text-[9px] text-muted-foreground/70">{player.weaponName}</p>
+          <p className="text-[9px] text-muted-foreground/70">{localizeData(lang, "item", player.weaponName)}</p>
         </div>
       </div>
 
