@@ -8,6 +8,7 @@ import { CONDITIONS } from "@/lib/game/conditions";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE } from "@/lib/game/state";
 import { useSettings } from "@/lib/game/settings";
+import { t } from "@/lib/game/i18n";
 import { shallowEqual } from "@/lib/game/shallow";
 
 /** AoE overlay info passed from the page (transient — lasts ~2s). */
@@ -373,7 +374,7 @@ export const CombatGrid = memo(function CombatGrid({
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2 gold-text">
-            <Crosshair className="h-4 w-4" /> Тактическая сетка
+            <Crosshair className="h-4 w-4" /> {t(settings.lang, "ui.tactical_grid")}
           </span>
           <div className="flex items-center gap-2 text-xs font-normal">
             {isTargetingActive ? (
@@ -453,7 +454,7 @@ export const CombatGrid = memo(function CombatGrid({
               const isTrap = trapMap?.has(`${x},${y}`);
               const isThreat = threatCells?.has(`${x},${y}`);
               // Item 3 — targeting-mode cell flags:
-              const monsterInCell = targetingMode === "ability" ? monsterByCell.get(`${x},${y}`) : undefined;
+              const monsterInCell = targetingMode === "ability" || targetingMode === "item" ? monsterByCell.get(`${x},${y}`) : undefined;
               const isAoeTargetCell = targetingMode === "aoe";
               const cellClick =
                 monsterInCell && onMonsterTargetClick

@@ -171,6 +171,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.send_action": "Отправить действие",
     "chat.action_placeholder": "Что вы делаете? (атакуйте, обыщите, поговорите, спрячьтесь…)",
     "chat.dead_placeholder": "Герой пал. Ожидайте новой игры.",
+    "chat.dice_empty": "Кости ещё не брошены…",
     "chat.waiting_placeholder": "Ожидание хода ({name} действует)…",
     "chat.show_more": "Показать ещё",
     "chat.master_title": "Мастер Игры",
@@ -217,7 +218,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Журнал пуст. Поговорите с NPC или исследуйте мир, чтобы получить задание.",
     "rest.short_rest": "Короткий",
     "rest.long_rest": "Долгий",
-    "rest.short_rests": "Короткие",
+    ""ui.click_use": "клик — использовать",
+    "ui.click_apply": "клик — применить",
   },
 
   en: {
@@ -331,6 +333,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.send_action": "Send action",
     "chat.action_placeholder": "What do you do? (attack, search, talk, hide…)",
     "chat.dead_placeholder": "The hero has fallen. Await a new game.",
+    "chat.dice_empty": "Dice not yet rolled…",
     "chat.waiting_placeholder": "Waiting for turn ({name} acting)…",
     "chat.show_more": "Show more",
     "chat.master_title": "Game Master",
@@ -377,7 +380,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Talk to NPCs or explore to get quests.",
     "rest.short_rest": "Short",
     "rest.long_rest": "Long",
-    "rest.short_rests": "Short rests",
+    ""ui.click_use": "click — use",
+    "ui.click_apply": "click — apply",
   },
 
   es: {
@@ -527,7 +531,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Hablar to NPCs or explore to get quests.",
     "rest.short_rest": "Corto",
     "rest.long_rest": "Largo",
-    "rest.short_rests": "Descansos cortos",
+    ""ui.click_use": "clic — usar",
+    "ui.click_apply": "clic — aplicar",
   },
 
   de: {
@@ -634,6 +639,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.send_action": "Aktion senden",
     "chat.action_placeholder": "Was tust du? (angreifen, durchsuchen, sprechen, verstecken…)",
     "chat.dead_placeholder": "Der Held ist gefallen. Warte auf ein neues Spiel.",
+    "chat.dice_empty": "Würfel noch nicht geworfen…",
     "chat.waiting_placeholder": "Warte auf Zug ({name} handelt)…",
     "chat.show_more": "Mehr anzeigen",
     "chat.master_title": "Game Master",
@@ -677,7 +683,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Sprechen to NPCs or explore to get quests.",
     "rest.short_rest": "Kurz",
     "rest.long_rest": "Lang",
-    "rest.short_rests": "Kurze Rasten",
+    ""ui.click_use": "Klick — verwenden",
+    "ui.click_apply": "Klick — anwenden",
   },
 
   fr: {
@@ -827,7 +834,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Parler to NPCs or explore to get quests.",
     "rest.short_rest": "Court",
     "rest.long_rest": "Long",
-    "rest.short_rests": "Repos courts",
+    ""ui.click_use": "clic — utiliser",
+    "ui.click_apply": "clic — appliquer",
   },
 
   zh: {
@@ -936,6 +944,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.send_action": "发送动作",
     "chat.action_placeholder": "描述英雄的动作…（回车发送）",
     "chat.dead_placeholder": "英雄已倒下。等待新游戏。",
+    "chat.dice_empty": "骰子尚未投掷…",
     "chat.waiting_placeholder": "等待回合（{name} 行动中）…",
     "chat.show_more": "显示更多",
     "chat.master_title": "游戏主持",
@@ -977,7 +986,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.combat_log": "战斗日志",
     "ui.quest_journal": "任务日志",
     "ui.quest_empty": "日志为空。与NPC交谈或探索以获得任务。",
-    "rest.short_rests": "短休",
+    ""ui.click_use": "点击 — 使用",
+    "ui.click_apply": "点击 — 施放",
   },
 };
 

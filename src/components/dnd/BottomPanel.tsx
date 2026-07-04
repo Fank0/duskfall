@@ -300,7 +300,7 @@ export const BottomPanel = memo(function BottomPanel({
         <div className="flex flex-col gap-1 lg:w-[18%]">
           <div className="flex items-center gap-1.5">
             <Shirt className="h-3.5 w-3.5 text-amber-300" />
-            <span className="text-[11px] font-semibold gold-text">Снаряжение</span>
+            <span className="text-[11px] font-semibold gold-text">{tt("ui.equipment")}</span>
             <Badge variant="secondary" className="ml-auto text-[8px]">{equippedCount}/8</Badge>
           </div>
           <div className="grid grid-cols-4 gap-1 lg:grid-cols-2">
@@ -348,14 +348,14 @@ export const BottomPanel = memo(function BottomPanel({
             <Package className="h-3.5 w-3.5 text-amber-300" />
             <span className="text-[11px] font-semibold gold-text">{tt("character.inventory")}</span>
             {canQuickUse && (
-              <span className="text-[9px] italic text-muted-foreground/60">клик — использовать</span>
+              <span className="text-[9px] italic text-muted-foreground/60">{tt("ui.click_use")}</span>
             )}
             <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
           </div>
           <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
             <div className="flex flex-wrap gap-1">
               {inventory.length === 0 ? (
-                <span className="text-[10px] italic text-muted-foreground">Инвентарь пуст</span>
+                <span className="text-[10px] italic text-muted-foreground">{tt("ui.inventory_empty")}</span>
               ) : (
                 inventory.map((item) => {
                   const chipId = `item:${item.id}`;
@@ -450,7 +450,7 @@ export const BottomPanel = memo(function BottomPanel({
             <Sparkles className="h-3.5 w-3.5 text-purple-300" />
             <span className="text-[11px] font-semibold gold-text">{tt("character.abilities")}</span>
             {canQuickUse && (
-              <span className="text-[9px] italic text-muted-foreground/60">клик — применить</span>
+              <span className="text-[9px] italic text-muted-foreground/60">{tt("ui.click_apply")}</span>
             )}
             <Badge variant="secondary" className="ml-auto text-[8px]">
               {showAbilitySearch && abilitySearch.trim() !== ""
@@ -512,7 +512,7 @@ export const BottomPanel = memo(function BottomPanel({
           <div className="flex flex-col gap-1 lg:w-auto">
             <div className="flex items-center gap-1.5">
               <Wand2 className="h-3.5 w-3.5 text-fuchsia-300" />
-              <span className="text-[11px] font-semibold gold-text">Слоты</span>
+              <span className="text-[11px] font-semibold gold-text">{tt("ui.slots")}</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {slots.map((s) => {
@@ -561,11 +561,11 @@ export const BottomPanel = memo(function BottomPanel({
           <div className="flex flex-col gap-1 lg:w-auto">
             <div className="flex items-center gap-1.5">
               <Bed className="h-3.5 w-3.5 text-sky-300" />
-              <span className="text-[11px] font-semibold gold-text">Отдых</span>
+              <span className="text-[11px] font-semibold gold-text">{tt("ui.rest")}</span>
             </div>
             {/* BG3: short rest counter (3 max between long rests) */}
             <div className="flex items-center gap-1 mb-0.5">
-              <span className="text-[9px] text-muted-foreground">Короткие:</span>
+              <span className="text-[9px] text-muted-foreground">{tt("rest.short_rests")}:</span>
               <div className="flex gap-0.5">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div

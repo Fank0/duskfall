@@ -9,6 +9,7 @@ import { Users, Crown, Heart, Skull, ChevronDown } from "lucide-react";
 import type { PlayerState } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { useSettings } from "@/lib/game/settings";
+import { t } from "@/lib/game/i18n";
 import { makeShallowComparator } from "@/lib/game/shallow";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,7 @@ export const PartyPanel = memo(function PartyPanel({
           <CardHeader className="cursor-pointer select-none pb-2 transition-colors hover:bg-stone-900/40">
             <CardTitle className="flex items-center justify-between text-sm gold-text">
               <span className="flex items-center gap-2">
-                <Users className="h-4 w-4" /> Отряд
+                <Users className="h-4 w-4" /> {t(settings.lang, "ui.party")}
               </span>
               <span className="flex items-center gap-1.5">
                 <Badge variant="secondary" className="text-[10px]">

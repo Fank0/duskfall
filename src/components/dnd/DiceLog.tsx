@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dices, ChevronDown } from "lucide-react";
 import type { DiceRollState } from "@/lib/game/types";
 import { useSettings } from "@/lib/game/settings";
+import { t } from "@/lib/game/i18n";
 import { makeShallowComparator } from "@/lib/game/shallow";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +27,7 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
           <CardHeader className="cursor-pointer select-none pb-2 transition-colors hover:bg-stone-900/40">
             <CardTitle className="flex items-center justify-between text-sm gold-text">
               <span className="flex items-center gap-2">
-                <Dices className="h-4 w-4" /> Кости судьбы
+                <Dices className="h-4 w-4" /> {t(settings.lang, "ui.dice")}
               </span>
               <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", collapsed && "rotate-180")} />
             </CardTitle>
@@ -36,7 +37,7 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
           <CardContent className="py-0">
             {rolls.length === 0 ? (
               <p className="py-3 text-center text-xs italic text-muted-foreground">
-                Кости ещё не брошены…
+                {t(settings.lang, "chat.dice_empty") || "Кости ещё не брошены…"}
               </p>
             ) : (
               <ul className="max-h-28 space-y-1 overflow-y-auto fantasy-scroll pr-1">

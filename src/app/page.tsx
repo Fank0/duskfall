@@ -1103,30 +1103,30 @@ export default function Home() {
             size="sm"
             onClick={() => setBestiaryOpen(true)}
             className="gap-1.5 border-rose-800/50 bg-rose-950/20 text-rose-200 hover:bg-rose-950/40"
-            title="Бестиарий"
+            title={tt("ui.bestiary")}
           >
             <BookMarked className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Бестиарий</span>
+            <span className="hidden sm:inline">{tt("ui.bestiary")}</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setSpellbookOpen(true)}
             className="gap-1.5 border-purple-800/50 bg-purple-950/20 text-purple-200 hover:bg-purple-950/40"
-            title="Книга заклинаний"
+            title={tt("ui.spellbook")}
           >
             <SpellbookIcon className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Книга заклинаний</span>
+            <span className="hidden sm:inline">{tt("ui.spellbook")}</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setItemDbOpen(true)}
             className="gap-1.5 border-amber-700/50 bg-amber-950/20 text-amber-200 hover:bg-amber-950/40"
-            title="Предметы"
+            title={tt("ui.items")}
           >
             <PackageIcon className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Предметы</span>
+            <span className="hidden sm:inline">{tt("ui.items")}</span>
           </Button>
           <Button
             variant="outline"
