@@ -1,60 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
 import { rateLimit, rateLimitedResponse, getClientIp } from "@/lib/game/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 20 TTS requests per 10 minutes per IP (audit-v2: TTS is expensive).
+// 20 TTS requests per 10 minutes per IP.
 const ttsLimiter = rateLimit({ windowMs: 10 * 60_000, max: 20, label: "tts" });
 
-/**
- * TTS voice narration for the AI Game Master (task tts-voice-dm).
- *
- * POST /api/game/tts
- * Body: { text: string, lang?: "ru"|"en"|"es"|"de"|"fr"|"zh", voice?: "male"|"female"|"narrator" }
- *
- * Returns: audio/mpeg stream synthesized from `text` via the z-ai-web-dev-sdk TTS.
- *
- * Notes:
- * - z-ai-web-dev-sdk MUST live in a server route only (never client-side).
- * - Input text is hard-capped at 500 characters (TTS is expensive — task spec).
- * - The SDK TTS engine auto-detects language from the input text, so `lang`
- *   is mainly used for logging/forward-compat. The internal SDK voice name is
- *   derived from the user-facing `voice` setting (male/female/narrator).
- */
-
-/** Supported UI languages (kept in sync with src/lib/game/i18n.ts). */
 const SUPPORTED_LANGS = new Set(["ru", "en", "es", "de", "fr", "zh"]);
-
-/** Hard cap on input length — TTS is expensive (task spec). */
 const MAX_TEXT_LENGTH = 500;
 
-/**
- * Map the user-facing voice setting (male/female/narrator) to one of the
- * underlying z-ai TTS voices:
- *   tongtong  — warm, intimate     → Мужской
- *   chuichui  — lively, bright     → Женский
- *   luodo     — rich, infectious   → Рассказчик
- */
 const VOICE_MAP: Record<string, string> = {
   male: "tongtong",
   female: "chuichui",
   narrator: "luodo",
 };
 
-let zaiPromise: Promise<any> | null = null;
-async function getZAI() {
-  if (!zaiPromise) zaiPromise = ZAI.create();
-  return zaiPromise;
-}
-
-/**
- * Light text normalization before sending to TTS:
- * - collapse whitespace runs to a single space
- * - strip markdown bold/italic markers (`**`, `*`, `_`, `__`)
- * - strip leading/trailing quote chars that LLMs sometimes wrap around speech
- */
 function prepareText(raw: string): string {
   let s = raw
     .replace(/\*\*(.+?)\*\*/g, "$1")
@@ -68,7 +29,6 @@ function prepareText(raw: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    // ===== Rate limit (audit-v2): 20 / 10 min / IP. =====
     const ip = getClientIp(req);
     const rl = ttsLimiter.check(`tts:${ip}`);
     if (!rl.ok) {
@@ -83,51 +43,65 @@ export async function POST(req: NextRequest) {
     const voice = VOICE_MAP[voiceKey] ?? VOICE_MAP.male;
 
     if (!text.trim()) {
-      return NextResponse.json(
-        { ok: false, error: "Нет текста для озвучки." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Нет текста для озвучки." }, { status: 400 });
     }
 
     const prepared = prepareText(text);
     if (!prepared) {
+      return NextResponse.json({ ok: false, error: "Нет текста для озвучки." }, { status: 400 });
+    }
+
+    // Use z.ai GLM TTS API directly via HTTP (no SDK dependency)
+    const glmKey = process.env.GLM_API_KEY || process.env.LLM_API_KEY || "";
+    if (!glmKey) {
       return NextResponse.json(
-        { ok: false, error: "Нет текста для озвучки." },
-        { status: 400 }
+        { ok: false, error: "TTS недоступен — не задан GLM_API_KEY." },
+        { status: 503 }
       );
     }
 
-    const zai = await getZAI();
+    const baseUrl = process.env.GLM_BASE_URL || "https://api.z.ai/api/paas/v4";
 
     let audioBuffer: Buffer | null = null;
-    let upstreamContentType = "audio/wav";
+    let contentType = "audio/wav";
     try {
-      // IMPORTANT: the z-ai-web-dev-sdk TTS engine only supports `wav` and
-      // `pcm` response formats (NOT mp3). The SDK returns the raw Response
-      // object so we can read the upstream Content-Type header to forward it
-      // verbatim — this prevents the browser from refusing to play audio
-      // because of a Content-Type / data mismatch.
-      // The second `{ signal }` arg is silently ignored by the SDK (it only
-      // accepts one body arg) — kept for forward-compat with future SDK versions.
-      const response = await zai.audio.tts.create(
-        {
+      const response = await fetch(`${baseUrl}/audio/tts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${glmKey}`,
+        },
+        body: JSON.stringify({
           input: prepared,
           voice,
           speed: 1.0,
           response_format: "wav",
           stream: false,
-        },
-        { signal: req.signal }
-      );
-      // Forward the upstream Content-Type so the browser knows how to decode.
+        }),
+        signal: req.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        console.error("[api/game/tts] GLM TTS error:", response.status, errText.slice(0, 200));
+        return NextResponse.json(
+          { ok: false, error: `TTS ошибка: ${response.status}` },
+          { status: 502 }
+        );
+      }
+
       const ct = response.headers?.get?.("content-type");
-      if (ct && ct.trim()) upstreamContentType = ct.trim();
+      if (ct && ct.trim()) contentType = ct.trim();
       const arrayBuffer = await response.arrayBuffer();
       audioBuffer = Buffer.from(new Uint8Array(arrayBuffer));
     } catch (e: any) {
       if (e?.name !== "AbortError") {
-        console.error("[api/game/tts] synthesis failed:", e);
+        console.error("[api/game/tts] synthesis failed:", e?.message?.slice(0, 120));
       }
+      return NextResponse.json(
+        { ok: false, error: "Не удалось сгенерировать голос." },
+        { status: 500 }
+      );
     }
 
     if (!audioBuffer || audioBuffer.length === 0) {
@@ -137,16 +111,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // NextResponse expects a BodyInit (Uint8Array / ArrayBuffer / string),
-    // not a Node Buffer — convert explicitly.
     const audioBytes = new Uint8Array(audioBuffer);
     return new NextResponse(audioBytes, {
       status: 200,
       headers: {
-        // Forward the actual upstream audio content type (audio/wav or
-        // audio/pcm) — NOT a hard-coded audio/mpeg, which mismatches the wav
-        // data the SDK actually returns and breaks browser playback.
-        "Content-Type": upstreamContentType,
+        "Content-Type": contentType,
         "Content-Length": audioBuffer.length.toString(),
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "X-TTS-Lang": lang,
@@ -156,7 +125,7 @@ export async function POST(req: NextRequest) {
   } catch (e: any) {
     console.error("[api/game/tts] error:", e);
     return NextResponse.json(
-      { ok: false, error: "Ошибка синтеза голоса Мастера." },
+      { ok: false, error: "Ошибка синтеза голоса." },
       { status: 500 }
     );
   }
