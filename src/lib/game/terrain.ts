@@ -69,8 +69,8 @@ function hashString(s: string): number {
  *  Monsters start at top-right area (x: 14-23, y: 0-6).
  *  We avoid placing full_cover in these zones so tokens aren't hidden. */
 function isSpawnZone(x: number, y: number): boolean {
-  const playerZone = x <= 7 && y >= 17;
-  const monsterZone = x >= 14 && y <= 7;
+  const playerZone = x <= 5 && y >= 11;
+  const monsterZone = x >= 10 && y <= 5;
   return playerZone || monsterZone;
 }
 

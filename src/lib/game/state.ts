@@ -27,7 +27,7 @@ import type {
   StatKey,
 } from "./types";
 
-export const GRID_SIZE = 24;
+export const GRID_SIZE = 16;
 
 // ---------- mappers ----------
 /** Parse a JSON spell-slot string into a Record<string, number>. Defensive. */

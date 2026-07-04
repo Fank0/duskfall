@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
           "Authorization": `Bearer ${glmKey}`,
         },
         body: JSON.stringify({
+          model: "tts-1",
           input: prepared,
           voice,
           speed: 1.0,

@@ -275,14 +275,13 @@ export const BottomPanel = memo(function BottomPanel({
     const chipId = `abil:${a.id}`;
     if (disabledChips.has(chipId)) return;
     // Two-step targeting: if the ability needs a target AND targeting is available.
-    // — monster targeting: only in combat (need monster tokens to click);
-    //   outside combat the action is sent immediately.
-    // — aoe targeting: works in BOTH combat (target monsters) and exploration
-    //   (target a grid cell — e.g. Fireball at a door).
-    // — heal targeting: only in combat (target an ally token).
+    // — monster targeting: enter targeting mode in BOTH combat and exploration
+    //   (player can click a monster token on the grid).
+    // — aoe targeting: enter AoE targeting mode (player clicks a grid cell).
+    // — heal targeting: enter targeting mode (player clicks an ally token).
     if (onRequestTargeting) {
       const kind = classifyAbilityTargeting(a);
-      if (kind === "monster" && combatActive) {
+      if (kind === "monster") {
         onRequestTargeting(a, "ability");
         return;
       }
@@ -290,7 +289,7 @@ export const BottomPanel = memo(function BottomPanel({
         onRequestTargeting(a, "aoe");
         return;
       }
-      if (kind === "self" && a.castType === "heal" && combatActive) {
+      if (kind === "self" && a.castType === "heal") {
         onRequestTargeting(a, "ability");
         return;
       }
@@ -299,22 +298,20 @@ export const BottomPanel = memo(function BottomPanel({
   };
 
   /**
-   * Item click dispatcher. Items that need a target (weapons in combat,
-   * scrolls that target enemies) enter targeting mode when combat is active.
-   * Self-use items (potions, torches) are sent immediately.
+   * Item click dispatcher. Items that need a target (weapons, scrolls,
+   * potions) enter targeting mode so the player can pick a target on the grid.
    */
   const triggerItem = (item: InventoryItemState) => {
     if (!canQuickUse) return;
     const chipId = `item:${item.id}`;
     if (disabledChips.has(chipId)) return;
-    // Two-step targeting: weapons/scrolls target monster tokens — only in
-    // combat. Potions target ally tokens — only in combat. Outside combat
-    // all items are sent immediately via the standard quick-use flow.
-    if (onRequestTargeting && combatActive && (item.itemType === "weapon" || item.itemType === "scroll")) {
+    // Two-step targeting: weapons/scrolls target monster tokens, potions
+    // target ally tokens. Works in BOTH combat and exploration.
+    if (onRequestTargeting && (item.itemType === "weapon" || item.itemType === "scroll")) {
       onRequestTargeting(item, "item");
       return;
     }
-    if (onRequestTargeting && combatActive && item.itemType === "potion") {
+    if (onRequestTargeting && item.itemType === "potion") {
       onRequestTargeting(item, "item");
       return;
     }
@@ -535,11 +532,11 @@ export const BottomPanel = memo(function BottomPanel({
         </div>
 
         {/* Divider */}
-        {combatActive && onQuickAction && <div className="hidden lg:block w-px bg-border/40" />}
+        {onQuickAction && <div className="hidden lg:block w-px bg-border/40" />}
 
         {/* ===== Combat actions (BG3/D&D 5e) — Dash, Disengage, Dodge, Help, Ready =====
-            Only shown in combat. These use your Action (D&D 5e action economy). */}
-        {combatActive && onQuickAction && (
+            Always visible in the abilities section. These use your Action (D&D 5e action economy). */}
+        {onQuickAction && (
           <div className="flex flex-col gap-1 lg:w-auto">
             <div className="flex items-center gap-1.5">
               <Swords className="h-3.5 w-3.5 text-amber-400" />

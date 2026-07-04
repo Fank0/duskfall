@@ -462,32 +462,6 @@ export const ChatPanel = memo(function ChatPanel({
         ))}
       </div>
 
-      {/* Rest buttons */}
-      {onRest && (
-        <div className="flex flex-wrap gap-1.5 border-t border-border/30 px-3 pt-1.5">
-          <button
-            type="button"
-            disabled={combatActive || isThinking || isDead}
-            onClick={() => onRest("short")}
-            title={tt("rest.short_rest_hint")}
-            className="flex items-center gap-1 rounded-full border border-sky-800/60 bg-sky-950/40 px-2.5 py-1 text-[11px] text-sky-200 transition-colors hover:bg-sky-950/60 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Bed className="h-3 w-3" />
-            {tt("rest.short_rest")}
-          </button>
-          <button
-            type="button"
-            disabled={combatActive || isThinking || isDead}
-            onClick={() => onRest("long")}
-            title={tt("rest.long_rest_hint")}
-            className="flex items-center gap-1 rounded-full border border-indigo-800/60 bg-indigo-950/40 px-2.5 py-1 text-[11px] text-indigo-200 transition-colors hover:bg-indigo-950/60 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Moon className="h-3 w-3" />
-            {tt("rest.long_rest")}
-          </button>
-        </div>
-      )}
-
       {/* Input */}
       <div className="flex items-end gap-2 p-3">
         <Textarea

@@ -89,32 +89,32 @@ function SpellCard({ spell }: { spell: Spell }) {
         </p>
 
         {/* Stats grid: casting time, range, duration, components */}
-        <div className="mt-2 grid grid-cols-2 gap-1 text-xs sm:grid-cols-4">
-          <div className="flex items-center gap-1 rounded bg-stone-950/60 px-1.5 py-1">
+        <div className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
+          <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Clock className="h-3 w-3 text-sky-400 shrink-0" />
-            <span className="text-muted-foreground">Время</span>
-            <span className="ml-auto font-mono font-bold text-stone-100">
+            <span className="text-muted-foreground shrink-0">Время:</span>
+            <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.castingTime}
             </span>
           </div>
-          <div className="flex items-center gap-1 rounded bg-stone-950/60 px-1.5 py-1">
+          <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Ruler className="h-3 w-3 text-emerald-400 shrink-0" />
-            <span className="text-muted-foreground">Дальн.</span>
-            <span className="ml-auto font-mono font-bold text-stone-100">
+            <span className="text-muted-foreground shrink-0">Дальн.:</span>
+            <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.range}
             </span>
           </div>
-          <div className="flex items-center gap-1 rounded bg-stone-950/60 px-1.5 py-1">
+          <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Hourglass className="h-3 w-3 text-amber-400 shrink-0" />
-            <span className="text-muted-foreground">Длит.</span>
-            <span className="ml-auto font-mono font-bold text-stone-100">
+            <span className="text-muted-foreground shrink-0">Длит.:</span>
+            <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.duration}
             </span>
           </div>
-          <div className="flex items-center gap-1 rounded bg-stone-950/60 px-1.5 py-1">
+          <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Box className="h-3 w-3 text-purple-400 shrink-0" />
-            <span className="text-muted-foreground">Комп.</span>
-            <span className="ml-auto font-mono font-bold text-stone-100">
+            <span className="text-muted-foreground shrink-0">Комп.:</span>
+            <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.components}
             </span>
           </div>
