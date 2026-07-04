@@ -15,7 +15,7 @@ import { getClassIdByCharClass, isCasterClass } from "@/lib/game/presets";
 import { computeACBreakdown, inferEquipProps } from "@/lib/game/item-props";
 import { shallowEqual } from "@/lib/game/shallow";
 import { useSettings } from "@/lib/game/settings";
-import { t, localizeData } from "@/lib/game/i18n";
+import { t, localizeData, localizeAbility } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 import {
   buildAbilityQuickText,
@@ -422,11 +422,11 @@ export const CharacterSheet = memo(function CharacterSheet({
                         <span className="flex items-center gap-1 truncate text-[11px] font-semibold">
                           {a.source === "scroll" && <ScrollIcon className="h-3 w-3 shrink-0 text-amber-300" />}
                           {a.source === "spell" && <Sparkles className="h-3 w-3 shrink-0 text-purple-300" />}
-                          {a.name}
+                          {localizeAbility(lang, a.name)}
                         </span>
                         <div className="flex shrink-0 items-center gap-1">
                           {a.consumable && (
-                            <Badge className="bg-amber-900/60 text-[7px] text-amber-200">расходуемый</Badge>
+                            <Badge className="bg-amber-900/60 text-[7px] text-amber-200">{tt("ui.consumable")}</Badge>
                           )}
                           {a.slotLevel && a.slotLevel > 0 && (
                             <Badge variant="outline" className="text-[7px] border-purple-700/50 text-purple-300">

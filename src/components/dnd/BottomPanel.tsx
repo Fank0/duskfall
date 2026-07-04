@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
-import { t } from "@/lib/game/i18n";
+import { t, localizeData, localizeAbility, type Lang } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 import type { PlayerState, InventoryItemState } from "@/lib/game/types";
 import {
@@ -310,7 +310,7 @@ export const BottomPanel = memo(function BottomPanel({
                 type="button"
                 disabled={!onUnequip || !item}
                 onClick={() => item && onUnequip?.(slot)}
-                title={item ? `${item.itemName} — клик, чтобы снять` : label}
+                title={item ? `${localizeData(lang, "item", item.itemName)} — tt("ui.click_unequip")` : label}
                 className={cn(
                   "flex flex-col items-center justify-center rounded border px-1 py-0.5 text-[8px] transition-colors",
                   item
@@ -322,7 +322,7 @@ export const BottomPanel = memo(function BottomPanel({
               >
                 <span className="text-[7px] opacity-70">{label}</span>
                 <span className="truncate max-w-[50px] text-[9px] font-medium">
-                  {item ? item.itemName : "—"}
+                  {item ? localizeData(lang, "item", item.itemName) : "—"}
                 </span>
               </button>
             ))}
@@ -332,9 +332,9 @@ export const BottomPanel = memo(function BottomPanel({
               type="button"
               onClick={onCraft}
               className="mt-1 rounded border border-purple-700/40 bg-purple-950/30 px-2 py-0.5 text-[9px] text-purple-200 transition-colors hover:bg-purple-950/50"
-              title="Крафт"
+              title={tt("character.crafting")}
             >
-              <Hammer className="inline h-2.5 w-2.5" /> Крафт
+              <Hammer className="inline h-2.5 w-2.5" /> {tt("character.crafting")}
             </button>
           )}
         </div>
@@ -385,14 +385,14 @@ export const BottomPanel = memo(function BottomPanel({
                           {item.itemType === "potion" && <Heart className="h-2.5 w-2.5" />}
                           {item.itemType === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
                           {item.itemType === "weapon" && <Swords className="h-2.5 w-2.5" />}
-                          <span className="truncate max-w-[80px]">{item.itemName}</span>
+                          <span className="truncate max-w-[80px]">{localizeData(lang, "item", item.itemName)}</span>
                           {item.quantity > 1 && <span className="text-[8px] opacity-70">×{item.quantity}</span>}
 
                         </button>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-[240px] text-left text-[10px] leading-tight">
                         <div className="space-y-0.5">
-                          <div className="font-semibold text-amber-200">{item.itemName}</div>
+                          <div className="font-semibold text-amber-200">{localizeData(lang, "item", item.itemName)}</div>
                           <div className="text-[9px] text-muted-foreground">{tooltip}</div>
                         </div>
                       </TooltipContent>
@@ -433,6 +433,7 @@ export const BottomPanel = memo(function BottomPanel({
                       canQuickUse={canQuickUse}
                       onTrigger={triggerAbility}
                       onToggleFavorite={toggleFavoriteAbility}
+                      lang={lang}
                     />
                   );
                 })}
@@ -476,8 +477,8 @@ export const BottomPanel = memo(function BottomPanel({
               {abilities.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">
                   {showAbilitySearch && abilitySearch.trim() !== ""
-                    ? "Ничего не найдено"
-                    : "Нет способностей"}
+                    ? tt("ui.nothing_found")
+                    : tt("ui.no_abilities")}
                 </span>
               ) : (
                 abilities.map((a, idx) => {
@@ -496,6 +497,7 @@ export const BottomPanel = memo(function BottomPanel({
                       canQuickUse={canQuickUse}
                       onTrigger={triggerAbility}
                       onToggleFavorite={toggleFavoriteAbility}
+                      lang={lang}
                     />
                   );
                 })
@@ -585,7 +587,7 @@ export const BottomPanel = memo(function BottomPanel({
                 type="button"
                 disabled={combatActive || isThinking || isDead || (player.shortRestsUsed ?? 0) >= 3}
                 onClick={() => onRest("short")}
-                title={combatActive ? "Нельзя отдыхать в бою" : (player.shortRestsUsed ?? 0) >= 3 ? "Исчерпаны короткие отдыхи. Нужен долгий отдых." : "Короткий отдых: бросок кости здоровья, восстановление ячеек колдуна"}
+                title={combatActive ? tt("rest.no_rest_combat") : (player.shortRestsUsed ?? 0) >= 3 ? tt("rest.no_short_left") : tt("rest.short_rest_hint")}
                 className={cn(
                   "flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
                   "border-sky-800/60 bg-sky-950/40 text-sky-200 hover:bg-sky-950/60",
@@ -599,7 +601,7 @@ export const BottomPanel = memo(function BottomPanel({
                 type="button"
                 disabled={combatActive || isThinking || isDead}
                 onClick={() => onRest("long")}
-                title={combatActive ? "Нельзя отдыхать в бою" : "Долгий отдых: полное HP, все ячейки, снятие коротких состояний, восстановление коротких отдыхов"}
+                title={combatActive ? tt("rest.no_rest_combat") : tt("rest.long_rest_hint")}
                 className={cn(
                   "flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
                   "border-indigo-800/60 bg-indigo-950/40 text-indigo-200 hover:bg-indigo-950/60",
@@ -679,8 +681,10 @@ function AbilityChip({
   canQuickUse,
   onTrigger,
   onToggleFavorite,
-}: AbilityChipProps) {
+  lang,
+}: AbilityChipProps & { lang: Lang }) {
   const tooltip = buildAbilityTooltip(a);
+  const tt2 = (key: string) => t(lang, key);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -710,7 +714,7 @@ function AbilityChip({
             {a.source === "scroll" && <ScrollIcon className="h-2.5 w-2.5" />}
             {a.source === "class" && <Zap className="h-2.5 w-2.5" />}
             {a.source === "race" && <Shield className="h-2.5 w-2.5" />}
-            <span className="truncate max-w-[90px]">{a.name}</span>
+            <span className="truncate max-w-[90px]">{localizeAbility(lang, a.name)}</span>
             {/* Item 2 — prominent slot-level badge: colored circle "КN". */}
             {a.slotLevel && a.slotLevel > 0 && (
               <span
@@ -763,7 +767,7 @@ function AbilityChip({
       <TooltipContent side="top" className="max-w-[260px] text-left text-[10px] leading-tight">
         <div className="space-y-0.5">
           <div className="font-semibold text-amber-200">
-            {a.name}
+            {localizeAbility(lang, a.name)}
             {a.source === "spell" && a.slotLevel && a.slotLevel > 0 && (
               <span className="ml-1 text-fuchsia-300">· круг {a.slotLevel}</span>
             )}

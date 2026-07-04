@@ -159,8 +159,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.music_hint": "Атмосферная музыка по настроению (мир/бой/напряжение)",
 
     // ===== rest =====
-    "rest.short_rest_hint": "Короткий отдых: бросок кости здоровья, восстановление половины. Колдуну возвращаются ячейки.",
-    "rest.long_rest_hint": "Долгий отдых: полное восстановление HP, все ячейки заклинаний, снятие кратковременных состояний.",
 
     // ===== actions (chat quick actions) =====
     "actions.explore": "Осмотреться",
@@ -237,6 +235,15 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.no_scene": "Сцена не задана",
     "ui.drawing_scene": "Рисую сцену…",
     "ui.in_party": "в строю",
+
+    "ui.click_unequip": "клик, чтобы снять",
+    "ui.no_abilities": "Нет способностей",
+    "ui.nothing_found": "Ничего не найдено",
+    "ui.consumable": "расходуемый",
+    "rest.no_rest_combat": "Нельзя отдыхать в бою",
+    "rest.no_short_left": "Исчерпаны короткие отдыхи. Нужен долгий отдых.",
+    "rest.short_rest_hint": "Короткий отдых: бросок кости здоровья, восстановление ячеек колдуна",
+    "rest.long_rest_hint": "Долгий отдых: полное HP, все ячейки, снятие коротких состояний, восстановление коротких отдыхов",
   },
 
   en: {
@@ -338,8 +345,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.music_hint": "Atmospheric music by mood (world/combat/tension)",
 
     // ===== rest =====
-    "rest.short_rest_hint": "Short rest: hit-die roll, restore half HP. Casters regain some spell slots.",
-    "rest.long_rest_hint": "Long rest: full HP, all spell slots, clear short conditions.",
 
     // ===== actions =====
     "actions.explore": "Look around",
@@ -416,6 +421,15 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.no_scene": "No scene set",
     "ui.drawing_scene": "Drawing scene…",
     "ui.in_party": "in party",
+
+    "ui.click_unequip": "click to unequip",
+    "ui.no_abilities": "No abilities",
+    "ui.nothing_found": "Nothing found",
+    "ui.consumable": "consumable",
+    "rest.no_rest_combat": "Cannot rest in combat",
+    "rest.no_short_left": "No short rests left. Need a long rest.",
+    "rest.short_rest_hint": "Short rest: roll hit dice, restore warlock slots",
+    "rest.long_rest_hint": "Long rest: full HP, all slots, clear conditions, reset short rests",
   },
 
   es: {
@@ -512,8 +526,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Pequeña etiqueta bajo cada ficha en la cuadrícula",
     "ui.music_hint": "Música atmosférica según el ambiente (mundo/combate/tensión)",
 
-    "rest.short_rest_hint": "Descanso corto: tirada de dado de golpe, recupera la mitad. El conjurador recupera espacios.",
-    "rest.long_rest_hint": "Descanso largo: PG al máximo, todos los espacios, condiciones cortas eliminadas.",
 
     "actions.explore": "Explorar",
     "actions.talk": "Hablar",
@@ -584,6 +596,15 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.no_scene": "Sin escena",
     "ui.drawing_scene": "Dibujando escena…",
     "ui.in_party": "en grupo",
+
+    "ui.click_unequip": "clic para quitar",
+    "ui.no_abilities": "Sin habilidades",
+    "ui.nothing_found": "Nada encontrado",
+    "ui.consumable": "consumible",
+    "rest.no_rest_combat": "No se puede descansar en combate",
+    "rest.no_short_left": "No quedan descansos cortos. Necesitas un descanso largo.",
+    "rest.short_rest_hint": "Descanso corto: tirada de dados de vida, restaurar espacios de brujo",
+    "rest.long_rest_hint": "Descanso largo: HP completo, todos los espacios, limpiar condiciones, reiniciar descansos",
   },
 
   de: {
@@ -680,8 +701,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Kleine Beschriftung unter jeder Figur im Raster",
     "ui.music_hint": "Atmosphärische Musik nach Stimmung (Welt/Kampf/Spannung)",
 
-    "rest.short_rest_hint": "Kurze Rast: Heilungswürfel, halbe TP. Zauberwirker erhält Plätze zurück.",
-    "rest.long_rest_hint": "Lange Rast: volle TP, alle Zauberplätze, kurze Zustände entfernt.",
 
     "actions.explore": "Umsehen",
     "actions.talk": "Sprechen",
@@ -753,6 +772,15 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.no_scene": "Keine Szene",
     "ui.drawing_scene": "Szene wird gezeichnet…",
     "ui.in_party": "in Gruppe",
+
+    "ui.click_unequip": "Klick zum Ablegen",
+    "ui.no_abilities": "Keine Fähigkeiten",
+    "ui.nothing_found": "Nichts gefunden",
+    "ui.consumable": "verbrauchbar",
+    "rest.no_rest_combat": "Keine Rast im Kampf",
+    "rest.no_short_left": "Keine kurzen Rasten übrig. Lange Rast nötig.",
+    "rest.short_rest_hint": "Kurze Rast: Würfelwurf, Hexer-Plätze wiederherstellen",
+    "rest.long_rest_hint": "Lange Rast: Volle HP, alle Plätze, Zustände entfernen, kurze Rasten zurücksetzen",
   },
 
   fr: {
@@ -849,8 +877,6 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Petite étiquette sous chaque jeton sur la grille",
     "ui.music_hint": "Musique atmosphérique selon l'ambiance (monde/combat/tension)",
 
-    "rest.short_rest_hint": "Repos court : jet de dé de vie, moitié des PV. Le lanceur récupère des emplacements.",
-    "rest.long_rest_hint": "Repos long : PV pleins, tous les emplacements, états courts levés.",
 
     "actions.explore": "Explorer",
     "actions.talk": "Parler",
@@ -921,6 +947,15 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.no_scene": "Pas de scène",
     "ui.drawing_scene": "Dessin de la scène…",
     "ui.in_party": "en groupe",
+
+    "ui.click_unequip": "clic pour retirer",
+    "ui.no_abilities": "Pas d'aptitudes",
+    "ui.nothing_found": "Rien trouvé",
+    "ui.consumable": "consommable",
+    "rest.no_rest_combat": "Impossible de se reposer en combat",
+    "rest.no_short_left": "Plus de repos courts. Repos long nécessaire.",
+    "rest.short_rest_hint": "Repos court: jet de dés de vie, restaurer les emplacements de sorcier",
+    "rest.long_rest_hint": "Repos long: HP complet, tous les emplacements, clear conditions, reset repos",
   },
 
   zh: {
@@ -1019,8 +1054,6 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "rest.short_rest": "短休",
     "rest.long_rest": "长休",
-    "rest.short_rest_hint": "短休：生命骰投掷，恢复一半。施法者恢复部分法术位。",
-    "rest.long_rest_hint": "长休：生命值全满，所有法术位，清除短时状态。",
 
     "actions.explore": "环顾",
     "actions.talk": "交谈",
@@ -1090,6 +1123,15 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.no_scene": "未设置场景",
     "ui.drawing_scene": "正在绘制场景…",
     "ui.in_party": "在队伍中",
+
+    "ui.click_unequip": "点击卸下",
+    "ui.no_abilities": "无能力",
+    "ui.nothing_found": "未找到",
+    "ui.consumable": "消耗品",
+    "rest.no_rest_combat": "战斗中不能休息",
+    "rest.no_short_left": "短休用完。需要长休。",
+    "rest.short_rest_hint": "短休：掷生命骰，恢复邪术师法术位",
+    "rest.long_rest_hint": "长休：满HP，所有法术位，清除状态，重置短休",
   },
 };
 
@@ -1191,4 +1233,34 @@ export function localizeData(lang: Lang, category: "class" | "race" | "backgroun
   const entry = table[ruName];
   if (entry && entry[lang]) return entry[lang];
   return ruName; // fallback to Russian
+}
+// ===== Ability name translations =====
+const ABILITY_I18N: Record<string, Record<Lang, string>> = {
+  "Универсальность": { "ru": "Универсальность", "en": "Versatility", "es": "Versatilidad", "de": "Vielseitigkeit", "fr": "Polyvalence", "zh": "全能" },
+  "Тёмное зрение": { "ru": "Тёмное зрение", "en": "Darkvision", "es": "Visión en la oscuridad", "de": "Dunkelsicht", "fr": "Vision dans le noir", "zh": "黑暗视觉" },
+  "Наследие фей": { "ru": "Наследие фей", "en": "Fey Ancestry", "es": "Herencia feérica", "de": "Feenblut", "fr": "Héritage féerique", "zh": "精类血统" },
+  "Дварфская устойчивость": { "ru": "Дварфская устойчивость", "en": "Dwarven Resilience", "es": "Resistencia enana", "de": "Zwergenwiderstand", "fr": "Résistance naine", "zh": "矮人抗性" },
+  "Удача": { "ru": "Удача", "en": "Lucky", "es": "Suerte", "de": "Glück", "fr": "Chanceux", "zh": "幸运" },
+  "Храбрость": { "ru": "Храбрость", "en": "Brave", "es": "Valentía", "de": "Mutig", "fr": "Brave", "zh": "勇敢" },
+  "Сопротивление огню": { "ru": "Сопротивление огню", "en": "Fire Resistance", "es": "Resistencia al fuego", "de": "Feuerresistenz", "fr": "Résistance au feu", "zh": "火焰抗性" },
+  "Дыхание дракона": { "ru": "Дыхание дракона", "en": "Dragon Breath", "es": "Aliento de dragón", "de": "Drachenodem", "fr": "Souffle de dragon", "zh": "龙息" },
+  "Второе дыхание": { "ru": "Второе дыхание", "en": "Second Wind", "es": "Segundo aliento", "de": "Zweiter Wind", "fr": "Second souffle", "zh": "第二风力" },
+  "Ярость варвара": { "ru": "Ярость варвара", "en": "Rage", "es": "Furia", "de": "Wut", "fr": "Rage", "zh": "狂暴" },
+  "Божественная кара": { "ru": "Божественная кара", "en": "Divine Smite", "es": "Castigo divino", "de": "Göttlicher Zorn", "fr": "Châtiment divin", "zh": "神圣惩罚" },
+  "Метка охотника": { "ru": "Метка охотника", "en": "Hunter's Mark", "es": "Marca del cazador", "de": "Mal des Jägers", "fr": "Marque du chasseur", "zh": "猎人印记" },
+  "Скрытая атака": { "ru": "Скрытая атака", "en": "Sneak Attack", "es": "Ataque furtivo", "de": "Schnellangriff", "fr": "Attaque sournoise", "zh": "偷袭" },
+  "Боевые искусства": { "ru": "Боевые искусства", "en": "Martial Arts", "es": "Artes marciales", "de": "Kampfkunst", "fr": "Arts martiaux", "zh": "武技" },
+  "Магическое восстановление": { "ru": "Магическое восстановление", "en": "Arcane Recovery", "es": "Recuperación arcana", "de": "Arkanes Wiederherstellen", "fr": "Récupération arcanique", "zh": "奥术恢复" },
+  "Источник магии": { "ru": "Источник магии", "en": "Font of Magic", "es": "Fuente de magia", "de": "Quelle der Magie", "fr": "Source de magie", "zh": "魔力之源" },
+  "Пакт магии": { "ru": "Пакт магии", "en": "Pact Magic", "es": "Magia de pacto", "de": "Paktmagie", "fr": "Magie de pacte", "zh": "契约魔法" },
+  "Божественная сила": { "ru": "Божественная сила", "en": "Channel Divinity", "es": "Canalizar divinidad", "de": "Göttlichkeit kanalisieren", "fr": "Canaliser la divinité", "zh": "引导神力" },
+  "Звериный облик": { "ru": "Звериный облик", "en": "Wild Shape", "es": "Forma salvaje", "de": "Wildgestalt", "fr": "Forme sauvage", "zh": "野性变形" },
+  "Вдохновение барда": { "ru": "Вдохновение барда", "en": "Bardic Inspiration", "es": "Inspiración de bardo", "de": "Bardeninspiration", "fr": "Inspiration bardique", "zh": "吟游激励" },
+};
+
+/** Translate an ability name into the UI language. */
+export function localizeAbility(lang: Lang, ruName: string): string {
+  const entry = ABILITY_I18N[ruName];
+  if (entry && entry[lang]) return entry[lang];
+  return ruName;
 }
