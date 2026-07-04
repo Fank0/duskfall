@@ -29,25 +29,32 @@ import {
 import {
   SPELLBOOK,
   SPELL_SCHOOLS,
-  formatSpellLevel,
   schoolColor,
-  schoolLabelRu,
-  saveAbilityLabelRu,
   type Spell,
   type SpellSchool,
 } from "@/lib/game/spellbook";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/game/i18n";
+import { useSettings } from "@/lib/game/settings";
 
 /** Level tabs: cantrips (0) + levels 1..5. */
 const LEVEL_TABS: (0 | 1 | 2 | 3 | 4 | 5)[] = [0, 1, 2, 3, 4, 5];
 
-/** Russian label for a level tab. */
-function levelTabLabel(level: 0 | 1 | 2 | 3 | 4 | 5): string {
-  return formatSpellLevel(level);
+/** Localized label for a spell level — cantrip (0) or "Circle N" (1..5). */
+function spellLevelLabel(
+  tt: (key: string, params?: Record<string, string | number>) => string,
+  level: 0 | 1 | 2 | 3 | 4 | 5
+): string {
+  return level === 0
+    ? tt("spellbook.cantrip")
+    : tt("spellbook.level_label", { n: level });
 }
 
 /** A single spell card — name + school badge + stats grid + description + damage. */
 function SpellCard({ spell }: { spell: Spell }) {
+  const lang = useSettings((s) => s.lang);
+  const tt = (key: string, params?: Record<string, string | number>) =>
+    t(lang, key, params);
   const colors = schoolColor(spell.school);
   return (
     <Card
@@ -68,15 +75,17 @@ function SpellCard({ spell }: { spell: Spell }) {
                 variant="outline"
                 className={cn("text-[9px] uppercase tracking-wider", colors.badge)}
               >
-                {schoolLabelRu(spell.school)}
+                {tt(`spellbook.school.${spell.school}`)}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground italic">
-              {spell.nameEn} · {formatSpellLevel(spell.level)}
+              {spell.nameEn} · {spellLevelLabel(tt, spell.level)}
             </p>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-[9px] uppercase text-muted-foreground">Ур.</div>
+            <div className="text-[9px] uppercase text-muted-foreground">
+              {tt("spellbook.level_short")}
+            </div>
             <div className={cn("font-serif text-base font-bold leading-none", colors.text)}>
               {spell.level === 0 ? "0" : spell.level}
             </div>
@@ -92,28 +101,28 @@ function SpellCard({ spell }: { spell: Spell }) {
         <div className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
           <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Clock className="h-3 w-3 text-sky-400 shrink-0" />
-            <span className="text-muted-foreground shrink-0">Время:</span>
+            <span className="text-muted-foreground shrink-0">{tt("spellbook.cast_time")}</span>
             <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.castingTime}
             </span>
           </div>
           <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Ruler className="h-3 w-3 text-emerald-400 shrink-0" />
-            <span className="text-muted-foreground shrink-0">Дальн.:</span>
+            <span className="text-muted-foreground shrink-0">{tt("spellbook.range")}</span>
             <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.range}
             </span>
           </div>
           <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Hourglass className="h-3 w-3 text-amber-400 shrink-0" />
-            <span className="text-muted-foreground shrink-0">Длит.:</span>
+            <span className="text-muted-foreground shrink-0">{tt("spellbook.duration")}</span>
             <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.duration}
             </span>
           </div>
           <div className="flex items-center gap-1.5 rounded bg-stone-950/60 px-2 py-1.5 min-w-0">
             <Box className="h-3 w-3 text-purple-400 shrink-0" />
-            <span className="text-muted-foreground shrink-0">Комп.:</span>
+            <span className="text-muted-foreground shrink-0">{tt("spellbook.components")}</span>
             <span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">
               {spell.components}
             </span>
@@ -131,13 +140,13 @@ function SpellCard({ spell }: { spell: Spell }) {
                   <Sparkles className="h-3 w-3" />
                 )}
                 <span className="font-mono">{spell.damage}</span>
-                <span className="text-[9px] text-red-300/80">урон/лечение</span>
+                <span className="text-[9px] text-red-300/80">{tt("spellbook.damage_heal")}</span>
               </span>
             )}
             {spell.saveAbility && (
               <span className="flex items-center gap-1 rounded bg-sky-950/40 px-1.5 py-0.5 text-xs text-sky-200">
                 <Shield className="h-3 w-3" />
-                <span>Спас {saveAbilityLabelRu(spell.saveAbility)}</span>
+                <span>{tt("spellbook.save_prefix")}{tt(`character.${spell.saveAbility}`)}</span>
                 {spell.saveDC && (
                   <span className="font-mono text-sky-300">DC {spell.saveDC}</span>
                 )}
@@ -148,10 +157,10 @@ function SpellCard({ spell }: { spell: Spell }) {
                 <Wind className="h-3 w-3" />
                 <span>
                   {spell.aoeShape === "circle"
-                    ? "Круг"
+                    ? tt("spellbook.aoe_circle")
                     : spell.aoeShape === "cone"
-                    ? "Конус"
-                    : "Линия"}
+                    ? tt("spellbook.aoe_cone")
+                    : tt("spellbook.aoe_line")}
                   {spell.aoeSize ? ` ${spell.aoeSize}` : ""}
                 </span>
               </span>
@@ -172,6 +181,9 @@ export function SpellbookPanel({
   onOpenChange: (v: boolean) => void;
   player?: import("@/lib/game/types").PlayerState | null;
 }) {
+  const lang = useSettings((s) => s.lang);
+  const tt = (key: string, params?: Record<string, string | number>) =>
+    t(lang, key, params);
   const [query, setQuery] = useState("");
   const [activeLevel, setActiveLevel] = useState<0 | 1 | 2 | 3 | 4 | 5 | "all">("all");
 
@@ -200,10 +212,10 @@ export function SpellbookPanel({
         s.name.toLowerCase().includes(q) ||
         s.nameEn.toLowerCase().includes(q) ||
         s.description.toLowerCase().includes(q) ||
-        schoolLabelRu(s.school).toLowerCase().includes(q)
+        tt(`spellbook.school.${s.school}`).toLowerCase().includes(q)
       );
     });
-  }, [query, activeLevel]);
+  }, [query, activeLevel, lang]);
 
   // Group filtered spells by level for the active tab.
   const grouped = useMemo(() => {
@@ -237,17 +249,16 @@ export function SpellbookPanel({
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <BookOpen className="h-5 w-5 text-amber-300" />
-            Книга заклинаний
+            {tt("ui.spellbook")}
             <Badge
               variant="outline"
               className="ml-1 border-amber-800/50 bg-amber-950/30 text-amber-200"
             >
-              {SPELLBOOK.length} заклинаний
+              {tt("spellbook.spells_count", { n: SPELLBOOK.length })}
             </Badge>
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Каталог заклинаний d20 fantasy RPG SRD: заговоры и 5 кругов, 8 школ магии.
-            Ищите по названию, фильтруйте по кругу.
+            {tt("spellbook.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -256,12 +267,12 @@ export function SpellbookPanel({
           <div className="mx-5 mb-2 rounded-md border border-fuchsia-800/40 bg-fuchsia-950/20 px-3 py-2">
             <div className="mb-1.5 flex items-center gap-1.5">
               <Wand2 className="h-3.5 w-3.5 text-fuchsia-300" />
-              <span className="text-xs font-semibold text-fuchsia-200">Ячейки заклинаний</span>
+              <span className="text-xs font-semibold text-fuchsia-200">{tt("character.spell_slots")}</span>
             </div>
             <div className="flex flex-wrap gap-3">
               {slots.map((s) => (
                 <div key={s.level} className="flex flex-col items-center gap-0.5">
-                  <span className="text-[10px] text-muted-foreground">Круг {s.level}</span>
+                  <span className="text-[10px] text-muted-foreground">{tt("spellbook.level_label", { n: s.level })}</span>
                   <div className="flex gap-0.5">
                     {Array.from({ length: s.max }).map((_, i) => (
                       <div
@@ -288,7 +299,7 @@ export function SpellbookPanel({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск: огненный шар, fireball, эвокация..."
+              placeholder={tt("spellbook.search_placeholder")}
               className="h-9 pl-9 border-border/60 bg-stone-900/60"
             />
           </div>
@@ -308,7 +319,7 @@ export function SpellbookPanel({
               value="all"
               className="h-7 px-2 text-xs data-[state=active]:bg-amber-900/40 data-[state=active]:text-amber-100"
             >
-              Все ({SPELLBOOK.length})
+              {tt("spellbook.all_count", { n: SPELLBOOK.length })}
             </TabsTrigger>
             {LEVEL_TABS.map((lv) => (
               <TabsTrigger
@@ -320,7 +331,7 @@ export function SpellbookPanel({
                 )}
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                {levelTabLabel(lv)} ({counts.get(lv) ?? 0})
+                {spellLevelLabel(tt, lv)} ({counts.get(lv) ?? 0})
               </TabsTrigger>
             ))}
           </TabsList>
@@ -332,7 +343,7 @@ export function SpellbookPanel({
             <div className="flex-1 overflow-y-auto pr-2 fantasy-scroll" style={{ maxHeight: "calc(85vh - 120px)" }}>
               {filtered.length === 0 ? (
                 <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                  Ничего не найдено по запросу «{query}».
+                  {tt("spellbook.empty", { query })}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-2 pb-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -351,7 +362,7 @@ export function SpellbookPanel({
         {/* Footer: school legend */}
         <div className="border-t border-border/40 px-5 py-2">
           <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-muted-foreground">
-            <span className="uppercase tracking-wider">Школы:</span>
+            <span className="uppercase tracking-wider">{tt("spellbook.schools_label")}</span>
             {SPELL_SCHOOLS.map((sc) => {
               const c = schoolColor(sc);
               return (
@@ -363,7 +374,7 @@ export function SpellbookPanel({
                   )}
                 >
                   <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />
-                  {schoolLabelRu(sc)} ({schoolCounts.get(sc) ?? 0})
+                  {tt(`spellbook.school.${sc}`)} ({schoolCounts.get(sc) ?? 0})
                 </span>
               );
             })}

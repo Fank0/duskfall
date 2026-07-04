@@ -2194,3 +2194,205 @@ Stage Summary:
 - Monster flee logic now correctly runs from nearest player (not farthest)
 - Monster target fallback now uses actor position (not corner 0,0)
 - Action economy pips now actually consume on combat actions
+
+---
+Task ID: i18n-bestiary
+Agent: i18n-bestiary (sub agent)
+Task: Add full i18n support to src/components/dnd/BestiaryPanel.tsx — replace ALL hardcoded Russian strings with `tt("bestiary.*")` calls and add the new keys to all 6 language sections (ru/en/es/de/fr/zh) in src/lib/game/i18n.ts.
+
+Work Log:
+- Read BestiaryPanel.tsx fully (257 lines, two components: `BestiaryCard` + `BestiaryPanel`).
+- Read i18n.ts (1738 lines) and confirmed the `t(lang, key, params?)` API + `DICT: Record<Lang, Record<string, string>>` flat-namespace structure. Read settings.ts to confirm `useSettings((s) => s.lang)` hook exists.
+- Read bestiary.ts to understand the data model: `entry.name` (Russian), `entry.nameEn` (English), `entry.size` (already English: "Small"/"Medium"/…), `entry.description` / `entry.specialAbility` / `entry.loot.items` are Russian *data* (out of scope — task says only translate UI strings, not game data). `categoryLabelRu(c)` is a Russian-only helper used by the panel for the 7 monster categories.
+- Identified 14 hardcoded Russian UI strings in BestiaryPanel.tsx: title "Бестиарий"; count suffix "существ"; description line; search placeholder "Поиск: гоблин, dragon, скелет..."; tab label "Все"; category labels (Гуманоиды/Нежить/Твари/Драконы/Демоны/Элементали/Боссы); stat labels "Атк" / "Урон" / "Ск"; special-ability header "⚡ Особая способность"; loot header "Добыча"; gold suffix "зм"; empty-state message "Ничего не найдено по запросу «{query}».".
+- Added 21 new keys under `bestiary.*` namespace to ALL 6 language sections in i18n.ts:
+  - `bestiary.title`, `bestiary.creatures_count` (with `{n}` param), `bestiary.description`, `bestiary.search_placeholder`
+  - `bestiary.all`, `bestiary.all_count` (with `{n}` param)
+  - `bestiary.category.{humanoid,undead,beast,dragon,demon,elemental,boss}` (7 keys)
+  - `bestiary.attack_short`, `bestiary.damage_short`, `bestiary.speed_short`
+  - `bestiary.special_ability`, `bestiary.loot`, `bestiary.gold_short`
+  - `bestiary.empty` (with `{query}` param)
+- Translations provided for every key in all 6 languages (ru/en/es/de/fr/zh). Russian matches the original strings verbatim so existing ru users see no change.
+- Modified BestiaryPanel.tsx:
+  - Added `import { t } from "@/lib/game/i18n"` and `import { useSettings } from "@/lib/game/settings"`.
+  - Removed now-unused `categoryLabelRu` import (replaced by `tt(`bestiary.category.${c}`)` template-string lookups).
+  - Added `const lang = useSettings((s) => s.lang);` and `const tt = (key, params?) => t(lang, key, params);` to BOTH `BestiaryCard` (it renders category badge + stat labels + loot) and `BestiaryPanel` (modal chrome + tabs + empty state). This is the same pattern used elsewhere in the codebase (e.g. page.tsx, CharacterSheet.tsx).
+  - Replaced all 14 hardcoded Russian UI strings with `tt(...)` calls — including 2 parameterised ones (`creatures_count`/`all_count` take `{n}`, `empty` takes `{query}`).
+  - Did NOT touch `entry.name`, `entry.nameEn`, `entry.size`, `entry.description`, `entry.specialAbility`, `entry.loot.items` — these are game data (Russian), not UI chrome, and translating them is out of scope for this task. Did NOT change any props, state, useMemo logic, JSX structure, or CSS classes.
+- Verified: `bun run lint` → exit 0 (0 errors). `bunx tsc --noEmit` → exit 0 (0 errors).
+
+Stage Summary:
+- BestiaryPanel is now fully localised: non-Russian players using the en/es/de/fr/zh UI see translated modal title, search placeholder, category tabs, stat labels (ATK/DMG/Spd/etc.), special-ability + loot headers, gold suffix, and empty-state message.
+- Added 21 new i18n keys × 6 languages = 126 new dictionary entries under the `bestiary.*` namespace.
+- Russian behaviour is byte-identical (Russian translations match the original hardcoded strings verbatim) — no regression for the primary audience.
+- No structural, prop, or logic changes — only string sources were swapped from literals to `tt()` calls. Removed the now-orphaned `categoryLabelRu` import from BestiaryPanel.tsx (the function itself is still exported from bestiary.ts and was never used anywhere else in the codebase per grep).
+- lint: 0 errors, tsc: 0 errors.
+
+---
+Task ID: i18n-spellbook
+Agent: i18n-spellbook (sub agent)
+Task: Add full i18n support to src/components/dnd/SpellbookPanel.tsx — replace ALL hardcoded Russian strings with `tt("spellbook.*")` (and reused existing keys) and add the new keys to all 6 language sections (ru/en/es/de/fr/zh) in src/lib/game/i18n.ts.
+
+Work Log:
+- Read SpellbookPanel.tsx fully (376 lines, two components: `SpellCard` + `SpellbookPanel`). Identified 19 distinct hardcoded Russian UI strings: modal title "Книга заклинаний"; spell-count suffix "заклинаний"; description line; search placeholder "Поиск: огненный шар, fireball, эвокация..."; level-tab labels (via `formatSpellLevel` → "Заговор" / "Круг N"); "Все (N)" tab; "Ур." level-column header; stat labels "Время:"/"Дальн.:"/"Длит.:"/"Комп.:"; "урон/лечение" damage/heal suffix; "Спас " save prefix + `saveAbilityLabelRu(...)`; AoE shape names "Круг"/"Конус"/"Линия"; "Ячейки заклинаний" spell-slots section header; "Круг N" spell-slot row labels; "Ничего не найдено по запросу «{query}»." empty state; "Школы:" footer label; school names (via `schoolLabelRu` → 8 schools).
+- Read i18n.ts (1871 lines) and confirmed the `t(lang, key, params?)` API + flat-namespace `DICT: Record<Lang, Record<string, string>>`. Confirmed `react-hooks/exhaustive-deps` is OFF in eslint.config.mjs (so adding `lang` to the `filtered` useMemo deps is not strictly required, but I added it for correctness).
+- Audited existing keys to avoid duplicates (per task instructions): `ui.spellbook` already exists for all 6 langs with text identical to the modal title ("Книга заклинаний" / "Spellbook" / "Libro de hechizos" / "Zauberbuch" / "Livre de sorts" / "法术书") — reused it for the modal title instead of adding `spellbook.title`. `character.spell_slots` already exists for all 6 langs ("Ячейки заклинаний" / "Spell slots" / "Espacios de conjuros" / "Zauberplätze" / "Emplacements de sorts" / "法术位") — reused it for the spell-slots section header. `character.str/dex/con/int/wis/cha` already exist for all 6 langs with the exact ability abbreviations returned by `saveAbilityLabelRu` — reused `tt(`character.${spell.saveAbility}`)` for the save badge.
+- Confirmed via grep that `formatSpellLevel`, `schoolLabelRu`, `saveAbilityLabelRu` are only imported by SpellbookPanel.tsx (no other consumer); the functions remain exported from spellbook.ts for any future use.
+- Added 26 new keys under `spellbook.*` namespace to ALL 6 language sections in i18n.ts:
+  - `spellbook.spells_count` ({n}), `spellbook.description`, `spellbook.search_placeholder`
+  - `spellbook.all_count` ({n}), `spellbook.cantrip`, `spellbook.level_label` ({n}), `spellbook.level_short`
+  - `spellbook.cast_time`, `spellbook.range`, `spellbook.duration`, `spellbook.components`
+  - `spellbook.damage_heal`, `spellbook.save_prefix`
+  - `spellbook.aoe_circle`, `spellbook.aoe_cone`, `spellbook.aoe_line`
+  - `spellbook.empty` ({query})
+  - `spellbook.schools_label`
+  - `spellbook.school.{evocation,transmutation,enchantment,illusion,necromancy,divination,abjuration,conjuration}` (8 keys)
+- Translations provided for every key in all 6 languages. Russian strings match the originals verbatim so ru users see no change. Used locale-appropriate quotation marks in `spellbook.empty`: ru «…», en "…", es "…", de "…", fr « … », zh "…".
+- Modified SpellbookPanel.tsx:
+  - Added `import { t } from "@/lib/game/i18n"` and `import { useSettings } from "@/lib/game/settings"`.
+  - Removed the now-unused `formatSpellLevel`, `schoolLabelRu`, `saveAbilityLabelRu` imports from spellbook (the `schoolColor` and type-only imports remain).
+  - Added `const lang = useSettings((s) => s.lang);` and `const tt = (key, params?) => t(lang, key, params);` to BOTH `SpellCard` and `SpellbookPanel` (same pattern as BestiaryPanel).
+  - Replaced the top-level `levelTabLabel(level)` helper (which just called `formatSpellLevel`) with a localised `spellLevelLabel(tt, level)` helper that takes `tt` as a parameter — cantrip branch returns `tt("spellbook.cantrip")`, level 1–5 branch returns `tt("spellbook.level_label", { n: level })`. Used in both the SpellCard subtitle and the level TabsTriggers.
+  - Replaced `schoolLabelRu(spell.school)` with `tt(`spellbook.school.${spell.school}`)` in 3 sites (card badge, school footer legend, and the search filter — the filter now matches the user's UI-language school name instead of always-Russian, which is the natural consequence of replacing a Russian-only helper with an i18n call).
+  - Replaced `saveAbilityLabelRu(spell.saveAbility)` with `tt(`character.${spell.saveAbility}`)` (reuses the existing ability-abbreviation keys).
+  - Replaced all 19 hardcoded Russian UI strings with `tt(...)` calls — including 3 parameterised ones (`spells_count`/`all_count`/`level_label` take `{n}`, `empty` takes `{query}`).
+  - Added `lang` to the `filtered` useMemo deps array so the search re-runs when the user switches language.
+  - Did NOT touch `spell.name`, `spell.nameEn`, `spell.description`, `spell.castingTime`, `spell.range`, `spell.duration`, `spell.components`, `spell.damage`, `spell.saveDC`, `spell.aoeSize` — these are Russian game data (out of scope). Did NOT change any props, state, JSX structure, CSS classes, the spell-slots computation logic, the `grouped`/`counts`/`schoolCounts` memos, or the inline `maxHeight: "calc(85vh - 120px)"` style. Left the pre-existing unused `ScrollArea` import as-is to keep the diff minimal and avoid touching unrelated lines.
+- Verified: `bun run lint` → exit 0 (0 errors). `bunx tsc --noEmit` → exit 0 (0 errors). Confirmed via grep that no Cyrillic characters remain in SpellbookPanel.tsx and no references to the removed `schoolLabelRu`/`saveAbilityLabelRu`/`formatSpellLevel`/`levelTabLabel` remain.
+
+Stage Summary:
+- SpellbookPanel is now fully localised: non-Russian players using the en/es/de/fr/zh UI see translated modal title, description, search placeholder, level tabs (cantrip + Level 1–5), "All (N)" tab, spell card stat labels (Time/Range/Dur./Comp.), damage/heal suffix, save-ability badge (Save STR/DEX/…/CHA via existing character.* keys), AoE shape names (Circle/Cone/Line), spell-slots section header + per-level labels, empty-state message (with locale-appropriate quotes), schools footer label, and all 8 magic school names.
+- Added 26 new i18n keys × 6 languages = 156 new dictionary entries under the `spellbook.*` namespace. Reused 9 existing keys (`ui.spellbook`, `character.spell_slots`, `character.{str,dex,con,int,wis,cha}`) instead of duplicating them.
+- Russian behaviour is byte-identical (Russian translations match the original hardcoded strings verbatim) — no regression for the primary audience.
+- No structural, prop, or logic changes — only string sources were swapped from literals/Russian-helpers to `tt()` calls. The `filtered` useMemo now also depends on `lang` so the search re-runs on language switch.
+- lint: 0 errors, tsc: 0 errors.
+
+---
+Task ID: i18n-itemdb
+Agent: i18n-itemdb-agent
+Task: Add full i18n support to src/components/dnd/ItemDatabasePanel.tsx (modal was 100% hardcoded Russian — non-Russian players couldn't use it).
+
+Work Log:
+- Read worklog.md (last 2 sections: fix-critical-12 + dm-context-fix) for context.
+- Read ItemDatabasePanel.tsx (376 lines) fully — identified all hardcoded Russian
+  strings: modal title "Предметы", count badge "N предметов", description, search
+  placeholder, "Все (N)" tab, "Ничего не найдено по запросу «…»" empty state, plus
+  ItemCard strings ("Комплект" set badge, "Слот:" label, "N зарядов" charges,
+  "AC"/"Урон"/"Хар-ки"/"Цена"/"Вес" stat labels, "Проклятие" curse label,
+  set bonus header/desc/contents) and helper-function output (equipSlotLabelRu,
+  enchantmentLabelRu, rarityLabelRu, itemTypeLabelRu imported from item-database.ts,
+  plus formatGold/formatWeight local helpers with "зм/см/мм"/"фнт" suffixes).
+- Read i18n.ts to understand the `t(lang, key, params?)` function (lines 1888-1906)
+  and the `useSettings((s) => s.lang)` hook pattern used in BestiaryPanel,
+  SpellbookPanel, CharacterSheet, ChatPanel, Lobby. Confirmed dictionary structure:
+  `DICT: Record<Lang, Record<string, string>>` with 6 lang sections (ru/en/es/de/fr/zh),
+  fallback chain (target → ru → literal key), and `{param}` placeholder substitution.
+
+Changes to ItemDatabasePanel.tsx (logic, structure, props untouched):
+- Added imports: `t` from "@/lib/game/i18n", `useSettings` from "@/lib/game/settings".
+- Added `type TtFn` alias for the tt signature so formatGold/formatWeight can be
+  typed without re-declaring the inline closure signature.
+- Removed the local `equipSlotLabelRu()` and `enchantmentLabelRu()` helpers —
+  replaced inline with `tt(\`itemdb.slot.${slot}\`)` / `tt(\`itemdb.enchantment.${enchant}\`)`
+  lookups (single-key calls, no need for a wrapper function).
+- Removed `rarityLabelRu` and `itemTypeLabelRu` from the item-database import —
+  replaced inline with `tt(\`itemdb.rarity.${r}\`)` / `tt(\`itemdb.type.${t}\`)`.
+- Kept `enchantmentColor()` (returns Tailwind text classes only — no translation).
+- Refactored `formatGold(value, tt)` and `formatWeight(weight, tt)` to accept a `tt`
+  function so the gold/weight unit suffixes (зм/см/мм/фнт) become translatable via
+  `tt("itemdb.gold_gp", {n})` etc. Preserved the existing 3-tier (gp/sp/cp) and
+  2-tier (round-sub-1 vs full-1+) formatting logic verbatim — only the unit string
+  is now localized.
+- Added `const lang = useSettings((s) => s.lang);` and `const tt = (k, p?) => t(lang, k, p);`
+  in BOTH the ItemCard component and the ItemDatabasePanel component (ItemCard is a
+  separate child component, needs its own lang/tt scope).
+- Replaced every visible Russian string with a `tt("itemdb.*")` call:
+    * Modal title, count badge, description, search placeholder
+    * "Все (N)" tab → `tt("itemdb.all_count", {n})`
+    * Empty state → `tt("itemdb.empty", {query})`
+    * Set badge → `tt("itemdb.set_badge")`
+    * Slot prefix → `tt("itemdb.slot_label")` + `tt(\`itemdb.slot.${slot}\`)`
+    * Charges → `tt("itemdb.charges", {n})`
+    * Stat labels (AC/Урон/Хар-ки/Цена/Вес) → `tt("itemdb.ac"|"itemdb.damage"|"itemdb.stats"|"itemdb.price"|"itemdb.weight")`
+    * Curse label → `tt("itemdb.curse")`
+    * Set bonus header → `tt("itemdb.set_bonus_header", {name})`
+    * Set bonus desc → `tt("itemdb.set_bonus_desc", {n, bonus})`
+    * Set contents → `tt("itemdb.set_contents", {items})`
+    * Rarity tab labels → `tt(\`itemdb.rarity.${r}\`)`
+
+Changes to i18n.ts:
+- Added an `// ===== itemdb =====` block of 54 keys to ALL 6 language sections
+  (ru/en/es/de/fr/zh), inserted immediately after the `spellbook.school.conjuration`
+  key in each section. New keys:
+    Layout/header: title, count, description, search_placeholder, all_count, empty
+    Card labels: set_badge, slot_label, charges, ac, damage, stats, price, weight,
+                 curse, set_bonus_header, set_bonus_desc, set_contents
+    Format helpers: dash, weight_value, gold_gp, gold_sp, gold_cp
+    Enum labels (matched 1-to-1 with the source-of-truth switch statements in
+    item-database.ts and the original local helpers):
+      rarity.{common,uncommon,rare,veryrare,legendary}
+      type.{weapon,armor,shield,potion,scroll,ring,amulet,cloak,misc,key,material}
+      slot.{weapon,shield,head,chest,legs,hands,accessory}
+      enchantment.{fire,ice,lightning,poison,necrotic,holy}
+- All keys use `{n}`, `{query}`, `{name}`, `{bonus}`, `{items}` placeholders as
+  needed; these are substituted by the existing `t()` function's `{param}` replacer.
+- Russian values preserve the EXACT original strings from the file (Предметы,
+  Обычный, Оружие, Огонь, зм/см/мм/фнт, «…» quotes, em-dash, etc.) so Russian
+  users see zero visual change. Other 5 languages use idiomatic D&D terminology
+  (e.g. en: "Items"/"Longsword"→"Weapon"/"Common"/"gp"; de: "Gegenstände"/"GM";
+  fr: "Objets"/"po"; es: "Objetos"/"po"; zh: "物品"/"金币").
+
+Verification:
+- `bun run lint`: 0 errors, 0 warnings (clean).
+- `bunx tsc --noEmit`: 0 errors (clean).
+- grep for Cyrillic in ItemDatabasePanel.tsx: only 1 hit remains — a JSDoc comment
+  on line 62 documenting the original behavior ("N зм" for ≥1 gp…), which is not
+  user-visible UI text.
+
+Stage Summary:
+- All hardcoded Russian UI strings in ItemDatabasePanel.tsx are now driven by the
+  shared i18n dictionary. The modal now fully localizes into English, Spanish,
+  German, French, and Chinese (with Russian preserved as the source-of-truth).
+- No logic, props, or component structure changed — only string lookups swapped.
+- 54 new i18n keys added across all 6 language sections of i18n.ts under the
+  `itemdb.*` namespace.
+- lint: 0 errors, tsc: 0 errors.
+- Artifacts touched:
+  * src/components/dnd/ItemDatabasePanel.tsx (imports, removed local helpers +
+    removed rarityLabelRu/itemTypeLabelRu imports, lang/tt setup in ItemCard +
+    ItemDatabasePanel, formatGold/formatWeight take tt, all visible strings → tt())
+  * src/lib/game/i18n.ts (added `itemdb.*` block of 54 keys × 6 languages = 324
+    new dictionary entries, inserted after the `spellbook.school.conjuration`
+    key in each language section)
+
+---
+Task ID: i18n-modals-mobile-fixes
+Agent: main-agent
+Task: i18n 3 modals (Bestiary/Spellbook/ItemDatabase) + header mobile fix + toast i18n
+
+Work Log:
+- Delegated i18n work to 3 parallel subagents:
+  * BestiaryPanel: 21 new i18n keys (bestiary.* namespace) across 6 languages
+  * SpellbookPanel: 26 new i18n keys (spellbook.* + school.* namespace) across 6 languages, reused 9 existing keys
+  * ItemDatabasePanel: 54 new i18n keys (itemdb.* + rarity/type/slot/enchantment subkeys) across 6 languages
+- Fixed header overflow on mobile: added flex-wrap to header container, reduced gap on mobile (gap-1.5 vs sm:gap-3)
+- Fixed magic number /16 in page.tsx: replaced with GRID_SIZE constant (imported from state.ts)
+- Fixed encounterLabelRu function: 
+  * Renamed to encounterLabel (was shadowing i18n `t` function with parameter named `t`)
+  * Now returns i18n key instead of hardcoded Russian string
+  * Added 7 encounter.* i18n keys to all 6 languages
+- Fixed 5 hardcoded Russian toasts in page.tsx:
+  * Combat started/ended toasts → tt("ui.combat_started"/"ui.combat_ended")
+  * Monster defeated toast → tt("ui.defeated")
+  * Damage dealt/taken toasts → tt("ui.damage_dealt"/"ui.takes_damage")
+  * Entered room / random event toasts → tt("ui.entered_room"/"ui.random_event")
+  * Added 8 new ui.* i18n keys to all 6 languages
+- Total new i18n keys: ~116 across 6 languages (21 bestiary + 26 spellbook + 54 itemdb + 7 encounter + 8 ui)
+- lint: 0 errors, tsc: 0 errors
+
+Stage Summary:
+- 3 modals fully i18n'd (BestiaryPanel, SpellbookPanel, ItemDatabasePanel) — ~101 new keys
+- Header no longer overflows on mobile (flex-wrap + responsive gaps)
+- encounterLabelRu renamed and i18n'd (was shadowing imported t function)
+- 5 combat/event toasts i18n'd
+- Magic number /16 replaced with GRID_SIZE constant

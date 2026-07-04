@@ -19,14 +19,17 @@ import {
   MONSTER_CATEGORIES,
   type BestiaryEntry,
   type MonsterCategory,
-  categoryLabelRu,
   categoryColor,
   formatCR,
 } from "@/lib/game/bestiary";
 import { cn } from "@/lib/utils";
+import { t } from "@/lib/game/i18n";
+import { useSettings } from "@/lib/game/settings";
 
 /** A single bestiary entry card — name + stats grid + optional ability/loot. */
 function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
+  const lang = useSettings((s) => s.lang);
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
   const colors = categoryColor(entry.category);
   return (
     <Card
@@ -43,7 +46,7 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
                 {entry.name}
               </h3>
               <Badge variant="outline" className={cn("text-[9px] uppercase tracking-wider", colors.badge)}>
-                {categoryLabelRu(entry.category)}
+                {tt(`bestiary.category.${entry.category}`)}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground italic whitespace-normal">
@@ -76,19 +79,19 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
           </div>
           <div className="flex items-center gap-1 rounded bg-stone-950/60 px-1.5 py-1">
             <Sword className="h-3 w-3 text-amber-400" />
-            <span className="text-muted-foreground">Атк</span>
+            <span className="text-muted-foreground">{tt("bestiary.attack_short")}</span>
             <span className="ml-auto font-mono font-bold text-stone-100">+{entry.attackBonus}</span>
           </div>
           <div className="flex items-center gap-1 rounded bg-stone-950/60 px-1.5 py-1">
             <Sparkles className="h-3 w-3 text-purple-400" />
-            <span className="text-muted-foreground">Урон</span>
+            <span className="text-muted-foreground">{tt("bestiary.damage_short")}</span>
             <span className="ml-auto font-mono font-bold text-stone-100">{entry.damageNotation}</span>
           </div>
         </div>
 
         <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <Footprints className="h-3 w-3" /> Ск {entry.speed}
+            <Footprints className="h-3 w-3" /> {tt("bestiary.speed_short")} {entry.speed}
           </span>
           <span className="flex items-center gap-1">
             <Ruler className="h-3 w-3" /> {entry.size}
@@ -99,7 +102,7 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
         {entry.specialAbility && (
           <div className="mt-2 rounded border border-purple-800/40 bg-purple-950/20 px-2 py-1.5">
             <div className="text-[9px] font-semibold uppercase tracking-wider text-purple-300">
-              ⚡ Особая способность
+              {tt("bestiary.special_ability")}
             </div>
             <p className="mt-0.5 text-sm leading-snug text-purple-100">
               {entry.specialAbility}
@@ -111,11 +114,11 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
         {entry.loot && (entry.loot.gold > 0 || entry.loot.items.length > 0) && (
           <div className="mt-1.5 rounded border border-amber-800/40 bg-amber-950/20 px-2 py-1.5">
             <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
-              <Coins className="h-3 w-3" /> Добыча
+              <Coins className="h-3 w-3" /> {tt("bestiary.loot")}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-amber-100">
               {entry.loot.gold > 0 && (
-                <span className="font-mono">{entry.loot.gold} зм</span>
+                <span className="font-mono">{entry.loot.gold} {tt("bestiary.gold_short")}</span>
               )}
               {entry.loot.items.map((it, i) => (
                 <span key={i} className="rounded bg-amber-950/40 px-1 py-0.5">
@@ -137,6 +140,8 @@ export function BestiaryPanel({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const lang = useSettings((s) => s.lang);
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<MonsterCategory | "all">("all");
 
@@ -179,13 +184,13 @@ export function BestiaryPanel({
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <BookOpen className="h-5 w-5 text-amber-300" />
-            Бестиарий
+            {tt("bestiary.title")}
             <Badge variant="outline" className="ml-1 border-amber-800/50 bg-amber-950/30 text-amber-200">
-              {BESTIARY.length} существ
+              {tt("bestiary.creatures_count", { n: BESTIARY.length })}
             </Badge>
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Каталог всех монстров мира DUSKFALL — ищите по названию, фильтруйте по категории.
+            {tt("bestiary.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -196,7 +201,7 @@ export function BestiaryPanel({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск: гоблин, dragon, скелет..."
+              placeholder={tt("bestiary.search_placeholder")}
               className="h-9 pl-9 border-border/60 bg-stone-900/60"
             />
           </div>
@@ -212,7 +217,7 @@ export function BestiaryPanel({
               value="all"
               className="h-7 px-2 text-xs data-[state=active]:bg-amber-900/40 data-[state=active]:text-amber-100"
             >
-              Все ({BESTIARY.length})
+              {tt("bestiary.all_count", { n: BESTIARY.length })}
             </TabsTrigger>
             {MONSTER_CATEGORIES.map((c) => {
               const colors = categoryColor(c);
@@ -226,7 +231,7 @@ export function BestiaryPanel({
                   )}
                 >
                   <span className={cn("h-1.5 w-1.5 rounded-full", colors.dot)} />
-                  {categoryLabelRu(c)} ({counts.get(c) ?? 0})
+                  {tt(`bestiary.category.${c}`)} ({counts.get(c) ?? 0})
                 </TabsTrigger>
               );
             })}
@@ -236,7 +241,7 @@ export function BestiaryPanel({
             <div className="flex-1 overflow-y-auto pr-2 fantasy-scroll" style={{ maxHeight: "calc(85vh - 120px)" }}>
               {filtered.length === 0 ? (
                 <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                  Ничего не найдено по запросу «{query}».
+                  {tt("bestiary.empty", { query })}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-2 pb-4 sm:grid-cols-2 xl:grid-cols-3">

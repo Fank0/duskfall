@@ -35,6 +35,7 @@ import {
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent, InventoryItemState } from "@/lib/game/types";
 import { t } from "@/lib/game/i18n";
+import { GRID_SIZE } from "@/lib/game/state";
 import { findNearestMonsterName, buildAbilityQuickText, buildItemQuickText, classifyAbilityTargeting, type QuickActionContext } from "@/lib/game/quick-use";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 
@@ -84,23 +85,9 @@ const ItemDatabasePanel = dynamic(
 const LS_KEY = "dnd_vtt_session";
 
 /** Human-readable Russian label for an encounter type. */
-function encounterLabelRu(t: string): string {
-  switch (t) {
-    case "combat":
-      return "Бой";
-    case "merchant":
-      return "Торговец";
-    case "puzzle":
-      return "Загадка";
-    case "npc":
-      return "Встреча с NPC";
-    case "trap":
-      return "Ловушка";
-    case "treasure":
-      return "Сокровище";
-    default:
-      return "Событие";
-  }
+function encounterLabel(encounter: string): string {
+  // Returns i18n key for the encounter type — resolved by the caller via tt().
+  return `encounter.${encounter ?? "event"}`;
 }
 
 interface Session {
@@ -382,10 +369,10 @@ export default function Home() {
               if (event) {
                 imgPrompt = event.imagePrompt;
                 imgNeeded = event.imageNeeded;
-                if (event.combatStarted) toast("Бой начался! Брошена инициатива.", { description: "Ход определяется порядком инициативы." });
-                if (event.combatEnded) toast.success("Бой окончен!", { description: "Все враги повержены." });
-                if (event.monsterThatDied) toast.success(`${event.monsterThatDied} повержен!`, { description: `Нанесено ${event.damageDealtToMonster} урона.` });
-                if (event.damagedPlayer) toast.warning(`${event.damagedPlayer} получает ${event.damageDealtToPlayer} урона!`);
+                if (event.combatStarted) toast(tt("ui.combat_started"), { description: tt("ui.initiative_rolled") });
+                if (event.combatEnded) toast.success(tt("ui.combat_ended"), { description: tt("ui.all_enemies_defeated") });
+                if (event.monsterThatDied) toast.success(`${event.monsterThatDied} ${tt("ui.defeated")}!`, { description: `${tt("ui.damage_dealt")} ${event.damageDealtToMonster}.` });
+                if (event.damagedPlayer) toast.warning(`${event.damagedPlayer} ${tt("ui.takes_damage")} ${event.damageDealtToPlayer}!`);
                 // Show the AoE overlay for ~2.5s if this action had one.
                 if (event.aoe) {
                   const aoe = event.aoe;
@@ -447,8 +434,8 @@ export default function Home() {
                     const posX = player?.posX ?? monster?.posX ?? 0;
                     const posY = player?.posY ?? monster?.posY ?? 0;
                     // Convert grid position to relative 0..1 for the overlay.
-                    const relX = (posX + 0.5) / 16;
-                    const relY = (posY + 0.5) / 16;
+                    const relX = (posX + 0.5) / GRID_SIZE;
+                    const relY = (posY + 0.5) / GRID_SIZE;
                     let ft: FloatingText | null = null;
                     if (isHeal && damage > 0) {
                       ft = makeHealText(relX, relY, damage);
@@ -742,10 +729,10 @@ export default function Home() {
         if (data.ok) {
           setSnapshot(data.snapshot);
           pingRoom(session.roomCode);
-          toast.success(`Вы вошли в: ${data.room?.label ?? ""}`);
+          toast.success(`${tt("ui.entered_room")}: ${data.room?.label ?? ""}`);
           if (data.encounter && data.encounter !== "none") {
-            toast(`Случайное событие: ${encounterLabelRu(data.encounter)}`, {
-              description: "См. журнал чата для подробностей.",
+            toast(`${tt("ui.random_event")}: ${tt(encounterLabel(data.encounter))}`, {
+              description: tt("ui.see_chat_for_details"),
             });
           }
           // Trigger a background image generation for the new room type.
@@ -1112,7 +1099,7 @@ export default function Home() {
     >
       {/* ===== Header ===== */}
       <header className="shrink-0 border-b border-border/60 bg-stone-950/60 backdrop-blur">
-        <div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
+        <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 sm:gap-3 sm:px-4">
           <div className="flex h-9 w-9 items-center justify-center rounded-md border border-primary/60 bg-stone-900 animate-flicker">
             <Skull className="h-5 w-5 text-primary" />
           </div>
