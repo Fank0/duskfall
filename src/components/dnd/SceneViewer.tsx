@@ -3,6 +3,8 @@
 import { Image as ImageIcon, Loader2 } from "lucide-react";
 import type { SceneState } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
+import { useSettings } from "@/lib/game/settings";
+import { t } from "@/lib/game/i18n";
 
 export function SceneViewer({
   scene,
@@ -26,10 +28,13 @@ export function SceneViewer({
           ? "brightness(0.55) saturate(0.85) hue-rotate(200deg)"
           : "none";
 
+  const settings = useSettings();
+  const tt = (key: string) => t(settings.lang, key);
+
   const timeEmoji =
     timeOfDay === "dawn" ? "🌅" : timeOfDay === "day" ? "☀️" : timeOfDay === "dusk" ? "🌇" : "🌙";
   const timeLabel =
-    timeOfDay === "dawn" ? "Рассвет" : timeOfDay === "day" ? "День" : timeOfDay === "dusk" ? "Сумерки" : "Ночь";
+    timeOfDay === "dawn" ? tt("time.dawn") : timeOfDay === "day" ? tt("time.day") : timeOfDay === "dusk" ? tt("time.dusk") : tt("time.night");
 
   return (
     <div className="relative w-full aspect-video overflow-hidden rounded-lg bg-stone-950">
@@ -50,7 +55,7 @@ export function SceneViewer({
       ) : (
         <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground">
           <ImageIcon className="mb-2 h-10 w-10" />
-          <span className="text-sm">Сцена не задана</span>
+          <span className="text-sm">{tt("ui.no_scene")}</span>
         </div>
       )}
 
@@ -87,7 +92,7 @@ export function SceneViewer({
 
       {/* Location caption */}
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-amber-300/80">Локация</p>
+        <p className="text-[10px] uppercase tracking-[0.2em] text-amber-300/80">{tt("ui.location")}</p>
         <h2 className="font-serif text-lg font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{location}</h2>
       </div>
 
@@ -95,13 +100,13 @@ export function SceneViewer({
       {isGenerating && (
         <div className="absolute right-3 top-12 flex items-center gap-2 rounded-full border border-amber-700/60 bg-stone-950/80 px-3 py-1 text-xs text-amber-300 backdrop-blur">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Рисую сцену…
+          {tt("ui.drawing_scene")}
         </div>
       )}
 
       {/* AI disclaimer */}
       <div className="pointer-events-none absolute bottom-1 right-2 text-[8px] text-white/30">
-        Изображение создано нейросетью
+        {tt("ui.ai_generated")}
       </div>
     </div>
   );

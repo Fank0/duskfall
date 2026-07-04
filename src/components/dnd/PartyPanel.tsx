@@ -43,7 +43,7 @@ export const PartyPanel = memo(function PartyPanel({
               </span>
               <span className="flex items-center gap-1.5">
                 <Badge variant="secondary" className="text-[10px]">
-                  {players.filter((p) => p.isAlive && p.hp > 0).length}/{players.length} в строю
+                  {players.filter((p) => p.isAlive && p.hp > 0).length}/{players.length} {t(settings.lang, "ui.in_party")}
                 </Badge>
                 <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", collapsed && "rotate-180")} />
               </span>
@@ -84,7 +84,7 @@ export const PartyPanel = memo(function PartyPanel({
                         {p.isHost && <Crown className="h-3 w-3 shrink-0 text-amber-300" />}
                         {dead && <Skull className="h-3 w-3 shrink-0 text-red-400" />}
                         {isTurn && (
-                          <Badge className="ml-auto shrink-0 bg-primary text-[9px]">Ход</Badge>
+                          <Badge className="ml-auto shrink-0 bg-primary text-[9px]">{t(settings.lang, "game.turn")}</Badge>
                         )}
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">

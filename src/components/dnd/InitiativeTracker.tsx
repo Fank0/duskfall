@@ -22,6 +22,10 @@ export function InitiativeTracker({
   combatActive: boolean;
   round: number;
 }) {
+  const settings = useSettings();
+  const lang = settings.lang;
+  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
+
   if (!combatActive || initiatives.length === 0) return null;
 
   function colorFor(name: string, type: string): string {
@@ -41,10 +45,6 @@ export function InitiativeTracker({
     const m = monsters.find((x) => x.name === name);
     return !m || !m.isActive || m.hp <= 0;
   }
-
-  const settings = useSettings();
-  const lang = settings.lang;
-  const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
 
   return (
     <Card className="parchment rune-border border-border/80 gap-0 overflow-hidden">
