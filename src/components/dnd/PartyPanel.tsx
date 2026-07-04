@@ -87,26 +87,35 @@ export const PartyPanel = memo(function PartyPanel({
                         )}
                       </div>
                       <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span>{p.raceName} {p.charClass}</span>
+                        <span className="font-medium text-stone-300">{p.raceName} {p.charClass}</span>
+                        <span>·</span>
+                        <span className="text-amber-300/80">ур.{p.level}</span>
                         <span>·</span>
                         <span className="flex items-center gap-0.5">
                           <Heart className="h-2.5 w-2.5 text-red-400" />
-                          {p.hp}/{p.maxHp}
+                          <span className={cn(hpPct <= 30 && "font-bold text-red-400")}>{p.hp}/{p.maxHp}</span>
                         </span>
                         <span>·</span>
                         <span>AC {p.ac}</span>
+                        {p.gold > 0 && (
+                          <>
+                            <span>·</span>
+                            <span className="text-amber-400">{p.gold}з</span>
+                          </>
+                        )}
                       </div>
                       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-black/40">
                         <div
                           className={cn(
                             "h-full transition-all duration-500",
-                            hpPct > 60 ? "bg-emerald-500" : hpPct > 30 ? "bg-amber-500" : "bg-red-600"
+                            hpPct > 60 ? "bg-emerald-500" : hpPct > 30 ? "bg-amber-500" : "bg-red-600 animate-pulse"
                           )}
                           style={{ width: `${hpPct}%` }}
                         />
                       </div>
-                      <div className="mt-0.5 text-[9px] font-mono text-muted-foreground">
-                        СИЛ{p.str}({fmt(abilityModifier(p.str))}) ЛОВ{p.dex}({fmt(abilityModifier(p.dex))}) · {p.weaponName}
+                      <div className="mt-0.5 flex items-center justify-between text-[9px] font-mono text-muted-foreground">
+                        <span>СИЛ{p.str}({fmt(abilityModifier(p.str))}) ЛОВ{p.dex}({fmt(abilityModifier(p.dex))}) ТЕЛ{p.con}({fmt(abilityModifier(p.con))})</span>
+                        <span className="truncate ml-1 text-stone-400">{p.weaponName}</span>
                       </div>
                     </li>
                   );
