@@ -13,6 +13,7 @@ import { inferEquipProps } from "./item-props";
 import { randomBiomeId } from "./dungeon-biomes";
 import { ITEM_DATABASE, type ItemEntry } from "./item-database";
 import { addDatabaseItemToInventory } from "./state";
+import { generateTerrainForRoom } from "./terrain";
 
 /** Serialize a Partial<Stats> into a JSON string for storage. */
 function serializeEquipStats(stats: Partial<Record<"str" | "dex" | "con" | "int" | "wis" | "cha", number>>): string {
@@ -57,6 +58,14 @@ export async function seedRoomContent(roomId: string, input: CreatePlayerInput) 
 
   // Pick a random biome for the procedural dungeon (Пункт 36).
   const biomeId = randomBiomeId();
+
+  // Generate D&D 5e tactical terrain features on the combat grid.
+  // Biome-aware: forests get trees, crypts get pillars, swamps get mud, etc.
+  try {
+    await generateTerrainForRoom(roomId, biomeId);
+  } catch (e) {
+    console.error("[seed] generateTerrainForRoom failed:", e);
+  }
 
   // Generate a procedural dungeon map for the room (entrance auto-discovered).
   // The biome drives themed room labels + per-room-type image prompts; depth

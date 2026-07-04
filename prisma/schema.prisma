@@ -62,6 +62,7 @@ model Room {
   traps        Trap[]
   saves        SaveSlot[]
   storyMemories StoryMemory[]
+  terrainCells  TerrainCell[]
 }
 
 /// A registered user account (auth-restore). Stores a bcrypt password hash;
@@ -117,8 +118,8 @@ model Player {
   cha              Int
   proficiencyBonus Int      @default(2)
   gold             Int      @default(10)
-  posX             Int      @default(1)
-  posY             Int      @default(8)
+  posX             Int      @default(2)
+  posY             Int      @default(20)
   color            String
   weaponName       String   @default("Длинный меч")
   weaponNotation   String   @default("1d8+3")
@@ -201,8 +202,8 @@ model Monster {
   ac             Int      @default(13)
   damageNotation String   @default("1d6+2")
   attackBonus    Int      @default(3)
-  posX           Int      @default(8)
-  posY           Int      @default(1)
+  posX           Int      @default(20)
+  posY           Int      @default(3)
   color          String   @default("#16a34a")
   description    String   @default("")
   isActive       Boolean  @default(true)
@@ -403,4 +404,24 @@ model StoryMemory {
   createdAt DateTime @default(now())
 
   @@index([roomId, createdAt])
+}
+
+/// D&D 5e tactical terrain features on the combat grid.
+/// Each cell can have one terrain feature that affects combat mechanics:
+///   - difficult: difficult terrain (mud/ice/rubble) — movement costs 2x
+///   - half_cover: pillar/tree/low wall — +2 AC to creature behind it
+///   - full_cover: solid wall/large boulder — blocks line of sight + projectiles
+///   - high_ground: elevation — advantage on attacks, enemies have disadvantage
+///   - water: shallow water — no special effect but visible
+model TerrainCell {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  x         Int
+  y         Int
+  type      String   // difficult | half_cover | full_cover | high_ground | water
+  createdAt DateTime @default(now())
+
+  @@unique([roomId, x, y])
+  @@index([roomId])
 }

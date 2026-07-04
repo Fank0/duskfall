@@ -1337,6 +1337,7 @@ export default function Home() {
               gridExtras={{
                 lootCells: snapshot.lootCells,
                 traps: snapshot.traps,
+                terrainCells: snapshot.terrainCells,
               }}
               targetingMode={targetingMode}
               onMonsterTargetClick={handleMonsterTargetClick}

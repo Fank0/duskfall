@@ -1486,3 +1486,94 @@ Stage Summary:
 - bunx tsc --noEmit: 0 errors (clean)
 - Agent Browser verified: app runs cleanly, all new features render correctly
 - Core D&D 5e/BG3 mechanics now implemented: death saves, dying state, temp HP, action economy, concentration tracking, combat action options
+
+---
+Task ID: ui-enhance-1
+Agent: ui-enhance-agent
+Task: Enhance AuthScreen and Lobby UI
+
+Work Log:
+- Read worklog (bg3-mechanics-1 section) for project context; read AuthScreen.tsx, Lobby.tsx, globals.css (existing utility classes: parchment, rune-border, gold-text, text-glow, vignette, animate-flicker, animate-pulse-glow, animate-fade-up, weather-fog, weather-snow) and shadcn ui components (input, button, tabs, card) to understand available styling primitives. Confirmed `cn()` uses tailwind-merge so arbitrary utility classes safely override component defaults.
+- Verified lucide-react exports all icons needed (Sparkles, Swords, Languages, Flame, AlertTriangle + existing Skull/Users/Plus/LogIn/LogOut/Save/User/Loader2) and the `LucideIcon` type.
+- AuthScreen.tsx — kept all logic (validation, submit, fetch, toast, onAuthenticated) and the component signature identical; enhanced only presentation:
+  * Card: added drop shadow, top ornamental accent line (amber gradient), soft inner top-radial glow, `animate-fade-up` entrance.
+  * Header: skull badge now sits in a glowing blurred primary halo (`animate-flicker`); title + italic subtitle; ornamental divider (flame icon between two gradient rules).
+  * Tabs/inputs: tabs unchanged; field labels get a small primary bullet dot; inputs kept default (preserves the existing focus ring).
+  * Error: now a bordered box with AlertTriangle icon + `animate-fade-up`.
+  * Submit button: primary gradient (`from-primary/90 to-primary/70`), hover lift (`-translate-y-0.5`), hover crimson glow shadow, and a shine-sweep overlay on hover (group-hover translate-x).
+  * Footer: ornamental diamond divider + atmospheric Russian flavor quote «Тьма помнит имена.» (hardcoded, consistent with AuthScreen's existing hardcoded-Russian pattern; not an i18n key).
+- Lobby.tsx — kept all logic (session restore via /api/auth/me, logout, continue-save, view routing, i18n via tt()) and component signature identical; enhanced only presentation:
+  * Added 3 CSS-only atmospheric background layers (fixed, pointer-events-none, z-0): two `weather-fog` mist layers (different opacities/durations, second reversed for parallax) + a `vignette` overlay. Pure CSS keyframes already in globals.css, no JS.
+  * Title block: skull badge enlarged with blurred primary halo + inset shadow + `animate-flicker`; title flanked by two amber gradient flourishes; subtitle restyled with letter-spacing.
+  * Account bar: checking-session spinner tinted primary; logged-in state gets a pulsing emerald status dot (`animate-ping` + solid dot) + subtle inset highlight; keeps My saves / Sign out buttons unchanged.
+  * Gather-party card: top amber accent line, soft top radial glow, `animate-fade-up`; section header now has an amber icon medallion (Users) + gold-text heading.
+  * Create-room button: primary gradient + border, hover lift, hover crimson glow, shine-sweep overlay, icon now in a circular medallion.
+  * Join-by-code button: outline variant restyled with amber-accented icon medallion, hover lift + amber glow.
+  * Feature badges row (NEW, below gather-party card): 2-col on mobile / 4-col on sm+, 4 hardcoded English badges — AI DM (Sparkles), Tactical Combat (Swords), Multiplayer (Users), 6 Languages (Languages) — each a rounded card with an amber icon medallion, hover lift + glow + color shift. Decorative, not i18n (per task spec).
+  * Footer hint: now framed by an ornamental flame divider; text slightly dimmed. Existing i18n key `lobby.footer_hint` preserved.
+- Used `size-5` for button-internal icons (excludes them from the Button base `[&_svg:not([class*='size-'])]:size-4` override) so they render reliably at 20px inside the 36px medallions.
+- Verified with agent-browser on running dev server (http://localhost:3000): page loads, no page errors, no console errors. Snapshot confirms h1 "DUSKFALL", h2 "Аккаунт" (AuthScreen), tablist Вход/Регистрация, username/password textboxes, "Войти" button, h2 "Соберите отряд", "Создать комнату" + "Войти по коду" buttons all present. DOM eval confirms all 4 feature badges render ("AI DM", "Tactical Combat", "Multiplayer", "6 Languages") and the AuthScreen flavor quote renders.
+- Ran `bun run lint` (0 errors) and `bunx tsc --noEmit` (0 errors) — both clean.
+
+Stage Summary:
+- AuthScreen.tsx: visual-only polish — ornamental header/dividers, glow halo on skull badge, gradient+glow submit button with shine sweep, icon-decorated error box, atmospheric flavor footer. Logic, props, validation, i18n-free hardcoded text all unchanged.
+- Lobby.tsx: visual-only polish — 3 CSS-only animated atmospheric layers (mist drift + vignette), enhanced title with flourishes, pulsing status dot on logged-in bar, restyled gather-party card with amber medallion header, gradient+glow+shine buttons with icon medallions, NEW feature-badges row (4 hardcoded badges), ornamental footer divider. Logic, props, i18n keys, layout (auth card on top, gather-party below) all unchanged.
+- No new i18n keys; no logic changes; no component-structure changes; only Tailwind classes + existing shadcn/ui + lucide-react icons + existing globals.css utility classes used.
+- bun run lint: 0 errors, 0 warnings. bunx tsc --noEmit: 0 errors. agent-browser: clean load, all elements verified present.
+
+---
+Task ID: terrain-ui-enhance
+Agent: main-agent
+Task: Improve UI/menus, expand tactical grid to D&D standard, add terrain obstacles, move combat actions to bottom panel
+
+Work Log:
+- Read current state: AuthScreen, Lobby, CombatGrid (GRID_SIZE=10), system for combat actions in ChatPanel
+- Increased GRID_SIZE from 10 to 24 (standard D&D VTT size)
+- Updated monster positions in locations.ts for the larger 24x24 grid (monsters now at x:16-21, y:2-4)
+- Updated default player/monster positions in prisma/schema.prisma (players at x:2,y:20; monsters at x:20,y:3)
+- Created new TerrainCell Prisma model (roomId, x, y, type) with unique constraint on (roomId, x, y)
+- Created src/lib/game/terrain.ts with:
+  * 5 terrain types: difficult (mud), half_cover (tree/pillar), full_cover (wall/boulder), high_ground (elevation), water
+  * Biome-specific generation profiles (forest=crypt=village=caverns=marsh=tower=shipwreck=monastery=dungeon)
+  * Seeded PRNG (deterministic per roomId)
+  * Spawn-zone protection (no cover in player/monster starting zones)
+  * Helper functions: coverAcBonus(), highGroundAdvantage(), blocksLineOfSight(), isDifficultTerrain(), hasLineOfSight() (Bresenham's line)
+- Updated getSnapshot() to load terrainCells from DB and include in snapshot
+- Updated seed.ts to call generateTerrainForRoom() during room creation
+- Updated CombatGrid.tsx:
+  * Added terrainCells to GridExtras interface
+  * Added terrainMap useMemo for fast cell lookup
+  * Added visual rendering for all 5 terrain types (emoji icons + colored backgrounds + tooltips)
+    - difficult: 〰️ on amber/dark background
+    - water: 🌊 on blue/dark background
+    - half_cover: 🌳 on stone background
+    - full_cover: 🪨 on dark stone background with border
+    - high_ground: ⬆️ on amber background with border
+- Updated page.tsx to pass terrainCells to CombatGrid
+- Added 5 new i18n keys (terrain.difficult/half_cover/full_cover/high_ground/water) to all 6 languages
+- Moved combat actions (Dash, Disengage, Dodge, Help, Ready) from ChatPanel to BottomPanel:
+  * Removed COMBAT_ACTIONS array and combat actions render block from ChatPanel
+  * Removed unused icon imports (Wind, ShieldOff, Shield, Heart, Clock) from ChatPanel
+  * Added COMBAT_ACTIONS array to BottomPanel
+  * Added new "Combat actions" section in BottomPanel between abilities and spell slots (only shown in combat)
+  * Combat actions styled with amber accents, vertical layout on desktop
+- Integrated terrain mechanics into DM agent:
+  * DM context now includes "Рельеф местности" section listing all terrain cells grouped by type
+  * System prompt updated with "РЕЛЬЕФ МЕСТНОСТИ (D&D 5e)" rules section explaining all 5 terrain types
+  * Monster turn logic now applies cover AC bonus (+2 half, +5 full) to target's AC
+  * Monster attacks have disadvantage when target is on high ground
+  * Roll labels show cover bonus and high ground disadvantage
+- Enhanced AuthScreen + Lobby UI (delegated to subagent — visual-only changes, no logic/structure changes):
+  * AuthScreen: amber accent line, radial glow, ornamental dividers, gradient submit button with shine effect
+  * Lobby: animated atmospheric fog layers, title flourishes, feature badges (AI DM, Tactical Combat, Multiplayer, 6 Languages), ornamental dividers
+- Verification: lint 0 errors, tsc 0 errors. Server starts and responds 200. API works through Caddy (401 for /api/auth/me). Full browser verification limited by Caddy gateway configuration showing Z.ai page on root path.
+
+Stage Summary:
+- GRID_SIZE increased 10 → 24 (standard D&D VTT)
+- New TerrainCell model + terrain.ts with 5 terrain types, biome-aware generation, line-of-sight, cover bonuses
+- Terrain visually rendered on combat grid with icons + tooltips
+- Terrain mechanics integrated into DM agent (cover AC bonus, high ground advantage/disadvantage)
+- Combat actions moved from ChatPanel to BottomPanel (abilities section)
+- AuthScreen + Lobby visually enhanced (BG3-inspired dark fantasy polish)
+- 5 new i18n keys across 6 languages
+- lint: 0 errors, tsc: 0 errors

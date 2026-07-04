@@ -27,7 +27,7 @@ import type {
   StatKey,
 } from "./types";
 
-export const GRID_SIZE = 10;
+export const GRID_SIZE = 24;
 
 // ---------- mappers ----------
 /** Parse a JSON spell-slot string into a Record<string, number>. Defensive. */
@@ -381,7 +381,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
 
   // Take only the last 100 chat messages (descending then reverse to keep asc order).
   // Older messages are loadable on demand via /api/game/chat-history.
-  const [players, monsters, inventory, chatDesc, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs, trapRows] = await Promise.all([
+  const [players, monsters, inventory, chatDesc, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs, trapRows, terrainRows] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
@@ -396,6 +396,8 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     // Traps (Пункт 36): only discovered traps reach the client. Disarmed traps
     // are still shown (so the player can see they were neutralized).
     db.trap.findMany({ where: { roomId: room.id, discovered: true } }),
+    // D&D 5e terrain cells.
+    db.terrainCell.findMany({ where: { roomId: room.id } }),
   ]);
   // Reverse the chat so the snapshot exposes ascending chronological order.
   const chat = chatDesc.slice().reverse();
@@ -492,6 +494,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     hasEnchant: Boolean(room.hasEnchant),
     lootCells,
     traps,
+    terrainCells: terrainRows.map((t) => ({ x: t.x, y: t.y, type: t.type })),
     dungeonBiome: room.dungeonBiome ?? "dungeon",
     dungeonDepth: room.dungeonDepth ?? 1,
     dungeonCleared: Boolean(room.dungeonCleared),
@@ -714,6 +717,33 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
   }
   if (activeMonsters.length === 0 && hiddenMonsters.length === 0) {
     lines.push("Противники: нет");
+  }
+
+  // D&D 5e terrain features on the tactical grid (so the DM knows about
+  // cover, difficult terrain, high ground, etc. when resolving actions).
+  if (snap.terrainCells && snap.terrainCells.length > 0) {
+    lines.push("=== Рельеф местности (D&D 5e) ===");
+    const terrainDesc: Record<string, string> = {
+      difficult: "сложная местность (движение ×2)",
+      half_cover: "укрытие (+2 AC)",
+      full_cover: "полное укрытие (+5 AC, блокирует линию огня)",
+      high_ground: "возвышенность (преимущество на атаку, враги с помехой)",
+      water: "мелкая вода",
+    };
+    // Group by type for compact display.
+    const byType: Record<string, string[]> = {};
+    for (const c of snap.terrainCells) {
+      const key = c.type;
+      if (!byType[key]) byType[key] = [];
+      byType[key].push(`(${c.x},${c.y})`);
+    }
+    for (const [type, cells] of Object.entries(byType)) {
+      const desc = terrainDesc[type] ?? type;
+      // Limit to first 12 cells per type to avoid context bloat.
+      const shown = cells.slice(0, 12).join(", ");
+      const more = cells.length > 12 ? ` …и ещё ${cells.length - 12}` : "";
+      lines.push(`${desc}: ${shown}${more}`);
+    }
   }
 
   if (snap.combatActive && snap.initiatives.length > 0) {

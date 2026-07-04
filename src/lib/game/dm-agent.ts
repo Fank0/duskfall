@@ -47,6 +47,7 @@ import {
   setConcentration,
   grantTempHp,
 } from "./state";
+import { coverAcBonus, highGroundAdvantage, hasLineOfSight, getTerrainCells, type TerrainCellState } from "./terrain";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
 import { extractJson } from "./json";
 import { getCondition, attackBonusDice } from "./conditions";
@@ -211,6 +212,15 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Игры для d20 fantas
 - Отступление: монстр с HP < 30% может попытаться убежать или сдаться (если разумный).
 - Способности: если у монстра есть ⚡ Способность в контексте — используй её! Дракон дышит огнём, паук плетёт паутину, некромант поднимает трупы.
 - Окружение: монстры используют укрытия, толкают в пропасть, ставят подножки.
+
+=== РЕЛЬЕФ МЕСТНОСТИ (D&D 5e, ВАЖНО) ===
+В контексте есть секция "Рельеф местности" — это тактические элементы на сетке. Учитывай их при разрешении боевых действий:
+1. СЛОЖНАЯ МЕСТНОСТЬ (difficult): движение стоит ×2 (каждая клетка = 2 клетки движения). Если герой движется через грязь — это замедляет.
+2. УКРЫТИЕ (half_cover): дерево/столб даёт +2 AC существу на этой клетке. Атаки по нему идут с штрафом.
+3. ПОЛНОЕ УКРЫТИЕ (full_cover): камень/стена блокирует линию огня. НЕЛЬЗЯ атаковать через полное укрытие стрелами/направленными заклинаниями. Существо за полным укрытием получает +5 AC.
+4. ВЫСОТА (high_ground): существо на возвышенности получает ПРЕИМУЩЕСТВО на атаки ближнего боя, а враги атакуют его с ПОМЕХОЙ.
+5. ВОДА (water): мелкая вода — без механического эффекта, но видна.
+Если игрок атакует врага за укрытием — увеличь AC цели на +2 (half) или +5 (full). Если игрок на возвышенности — дай преимущество на бросок атаки. Если между героем и врагом полное укрытие — объяви действие invalid (нельзя стрелять сквозь стены).
 
 === ДИНАМИЧЕСКИЕ DC (сложность проверок) ===
 DC зависит от уровня группы и ситуации:
@@ -1518,12 +1528,21 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     const def = getCondition(c.condition);
     if (def?.acBonus) condAcBonus += def.acBonus;
   }
-  const targetAC = effectiveAC(targetState) + condAcBonus;
+  // D&D 5e: cover bonus from terrain at the target's position.
+  const terrainCells = await getTerrainCells(roomId);
+  const coverBonus = coverAcBonus(terrainCells, target.posX, target.posY);
+  // D&D 5e: high ground gives disadvantage to attackers below.
+  const targetOnHighGround = highGroundAdvantage(terrainCells, target.posX, target.posY) === "advantage";
+  const targetAC = effectiveAC(targetState) + condAcBonus + coverBonus;
 
-  const atk = rollD20(m.attackBonus);
+  // If target is on high ground, monster attacks with disadvantage.
+  const atk = targetOnHighGround
+    ? rollD20Advantage("disadvantage", m.attackBonus)
+    : rollD20(m.attackBonus);
   const hit = atk.total >= targetAC;
   rolls.push({
-    label: `Атака ${m.name}`, notation: "1d20", modifier: m.attackBonus,
+    label: `Атака ${m.name}${targetOnHighGround ? " (помеха — цель на возвышенности)" : ""}${coverBonus > 0 ? ` (цель в укрытии +${coverBonus} AC)` : ""}`,
+    notation: "1d20", modifier: m.attackBonus,
     result: atk.rolls[0], total: atk.total, target: targetAC, success: hit,
     purpose: "monster_attack",
   });

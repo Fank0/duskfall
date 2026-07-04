@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
-  Shirt, Hammer, Star, Search, Bed, Moon,
+  Shirt, Hammer, Star, Search, Bed, Moon, Wind, ShieldOff, Clock,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -25,6 +25,17 @@ import {
   classifyAbilityTargeting,
   type QuickActionContext,
 } from "@/lib/game/quick-use";
+
+/** BG3/D&D 5e combat actions — Dash, Disengage, Dodge, Help, Ready.
+ *  These use your Action (D&D 5e action economy). Shown in the abilities
+ *  section only during combat. */
+const COMBAT_ACTIONS = [
+  { key: "dash", labelKey: "actions.dash", hintKey: "actions.dash_hint", icon: Wind, text: "Я использую действие «Рывок» — удваиваю скорость передвижения в этом ходу." },
+  { key: "disengage", labelKey: "actions.disengage", hintKey: "actions.disengage_hint", icon: ShieldOff, text: "Я использую действие «Отход» — отступаю, не провоцируя атак по возможности." },
+  { key: "dodge", labelKey: "actions.dodge", hintKey: "actions.dodge_hint", icon: Shield, text: "Я использую действие «Уклонение» — все атаки по мне до моего следующего хода с помехой, бонусы к Ловкости тоже." },
+  { key: "help", labelKey: "actions.help", hintKey: "actions.help_hint", icon: Heart, text: "Я использую действие «Помощь» — помогаю союзнику, давая ему преимущество на следующую атаку по врагу." },
+  { key: "ready", labelKey: "actions.ready", hintKey: "actions.ready_hint", icon: Clock, text: "Я использую действие «Готовность» — готовлю действие, которое сработает при определённом условии." },
+];
 
 /**
  * Cast-type sort priority (Item 5 — most-used abilities first).
@@ -522,6 +533,40 @@ export const BottomPanel = memo(function BottomPanel({
             </div>
           </ScrollArea>
         </div>
+
+        {/* Divider */}
+        {combatActive && onQuickAction && <div className="hidden lg:block w-px bg-border/40" />}
+
+        {/* ===== Combat actions (BG3/D&D 5e) — Dash, Disengage, Dodge, Help, Ready =====
+            Only shown in combat. These use your Action (D&D 5e action economy). */}
+        {combatActive && onQuickAction && (
+          <div className="flex flex-col gap-1 lg:w-auto">
+            <div className="flex items-center gap-1.5">
+              <Swords className="h-3.5 w-3.5 text-amber-400" />
+              <span className="text-[11px] font-semibold gold-text">{tt("ui.combat_actions")}</span>
+            </div>
+            <div className="flex flex-wrap gap-1 lg:flex-col">
+              {COMBAT_ACTIONS.map((q) => (
+                <button
+                  key={q.key}
+                  type="button"
+                  disabled={!canQuickUse}
+                  onClick={() => onQuickAction(q.text)}
+                  title={tt(q.hintKey)}
+                  className={cn(
+                    "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium transition-all",
+                    "border-amber-700/40 bg-amber-950/20 text-amber-200",
+                    canQuickUse && "cursor-pointer hover:border-amber-500/60 hover:bg-amber-950/40",
+                    !canQuickUse && "cursor-default opacity-40",
+                  )}
+                >
+                  <q.icon className="h-2.5 w-2.5 shrink-0" />
+                  <span className="truncate">{tt(q.labelKey)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Divider */}
         {hasSpellSlots && <div className="hidden lg:block w-px bg-border/40" />}

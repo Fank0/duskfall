@@ -37,6 +37,7 @@ export interface CombatAnimEvent {
 export interface GridExtras {
   lootCells: { x: number; y: number; itemName: string }[];
   traps: { x: number; y: number; discovered: boolean }[];
+  terrainCells?: { x: number; y: number; type: string }[];
 }
 
 /** Keywords that mark a monster as ranged (used for threat-range overlay, item 20). */
@@ -307,6 +308,15 @@ export const CombatGrid = memo(function CombatGrid({
     return m;
   }, [traps]);
 
+  // ===== D&D 5e terrain: difficult (mud), cover (pillars/trees), high ground, water =====
+  const terrainMap = useMemo(() => {
+    const cells = gridExtras?.terrainCells;
+    if (!cells?.length) return null;
+    const m = new Map<string, string>();
+    for (const c of cells) m.set(`${c.x},${c.y}`, c.type);
+    return m;
+  }, [gridExtras?.terrainCells]);
+
   // ===== Threat range: faint red zone around ranged monsters (item 20) =====
   const threatCells = useMemo(() => {
     const ranged = activeMonsters.filter(isRangedMonster);
@@ -462,6 +472,7 @@ export const CombatGrid = memo(function CombatGrid({
               const trapDiscovered = trapMap?.get(`${x},${y}`);
               const isTrap = trapMap?.has(`${x},${y}`);
               const isThreat = threatCells?.has(`${x},${y}`);
+              const terrainType = terrainMap?.get(`${x},${y}`);
               // Item 3 — targeting-mode cell flags:
               const monsterInCell = targetingMode === "ability" || targetingMode === "item" ? monsterByCell.get(`${x},${y}`) : undefined;
               const playerInCell = targetingMode === "ability" || targetingMode === "item" ? playerByCell.get(`${x},${y}`) : undefined;
@@ -506,6 +517,47 @@ export const CombatGrid = memo(function CombatGrid({
                       className="pointer-events-none absolute inset-0 z-10 rounded-[2px] bg-red-700/15"
                       title={t(settings.lang, "ui.threat_zone")}
                     />
+                  )}
+                  {/* D&D 5e terrain features */}
+                  {terrainType === "difficult" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-amber-950/40"
+                      title={t(settings.lang, "terrain.difficult")}
+                    >
+                      <span className="text-[8px] opacity-60">〰️</span>
+                    </div>
+                  )}
+                  {terrainType === "water" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-blue-950/50"
+                      title={t(settings.lang, "terrain.water")}
+                    >
+                      <span className="text-[8px] opacity-70">🌊</span>
+                    </div>
+                  )}
+                  {terrainType === "half_cover" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-stone-700/60 border border-stone-500/40"
+                      title={t(settings.lang, "terrain.half_cover")}
+                    >
+                      <span className="text-[10px] opacity-80">🌳</span>
+                    </div>
+                  )}
+                  {terrainType === "full_cover" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-stone-800/90 border-2 border-stone-600/60"
+                      title={t(settings.lang, "terrain.full_cover")}
+                    >
+                      <span className="text-[10px]">🪨</span>
+                    </div>
+                  )}
+                  {terrainType === "high_ground" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-amber-600/30 border border-amber-400/40"
+                      title={t(settings.lang, "terrain.high_ground")}
+                    >
+                      <span className="text-[8px] opacity-80">⬆️</span>
+                    </div>
                   )}
                   {/* Loot cell shimmer (item 20) */}
                   {lootItems && lootItems.length > 0 && (

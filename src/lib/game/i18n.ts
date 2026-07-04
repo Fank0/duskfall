@@ -304,6 +304,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.loot": "Добыча",
     "grid.trap": "Ловушка",
     "grid.aoe_origin": "Центр AoE",
+    "terrain.difficult": "Сложная местность (грязь/щебень) — передвижение ×2",
+    "terrain.half_cover": "Укрытие (дерево/столб) — +2 AC",
+    "terrain.full_cover": "Полное укрытие — блокирует линию огня, +5 AC",
+    "terrain.high_ground": "Возвышенность — преимущество на атаку, враги с помехой",
+    "terrain.water": "Мелкая вода",
   },
 
   en: {
@@ -550,6 +555,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.loot": "Loot",
     "grid.trap": "Trap",
     "grid.aoe_origin": "AoE origin",
+    "terrain.difficult": "Difficult terrain (mud/rubble) — movement ×2",
+    "terrain.half_cover": "Cover (tree/pillar) — +2 AC",
+    "terrain.full_cover": "Full cover — blocks line of fire, +5 AC",
+    "terrain.high_ground": "High ground — advantage on attacks, enemies at disadvantage",
+    "terrain.water": "Shallow water",
   },
 
   es: {
@@ -785,6 +795,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.loot": "Botín",
     "grid.trap": "Trampa",
     "grid.aoe_origin": "Origen AoE",
+    "terrain.difficult": "Terreno difícil (barro/escombros) — movimiento ×2",
+    "terrain.half_cover": "Cobertura (árbol/pilar) — +2 CA",
+    "terrain.full_cover": "Cobertura total — bloquea línea de visión, +5 CA",
+    "terrain.high_ground": "Tierra alta — ventaja en ataques, enemigos con desventaja",
+    "terrain.water": "Agua poco profunda",
   },
 
   de: {
@@ -1021,6 +1036,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.loot": "Beute",
     "grid.trap": "Falle",
     "grid.aoe_origin": "AoE-Ursprung",
+    "terrain.difficult": "Schweres Gelände (Schlamm/Schutt) — Bewegung ×2",
+    "terrain.half_cover": "Deckung (Baum/Pfeiler) — +2 RK",
+    "terrain.full_cover": "Volle Deckung — blockiert Sichtlinie, +5 RK",
+    "terrain.high_ground": "Anhöhe — Vorteil auf Angriffe, Feinde mit Nachteil",
+    "terrain.water": "Seichtes Wasser",
   },
 
   fr: {
@@ -1256,6 +1276,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.loot": "Butin",
     "grid.trap": "Piège",
     "grid.aoe_origin": "Origine AoE",
+    "terrain.difficult": "Terrain difficile (boue/débris) — déplacement ×2",
+    "terrain.half_cover": "Couvert (arbre/pilier) — +2 CA",
+    "terrain.full_cover": "Couvert total — bloque la ligne de vue, +5 CA",
+    "terrain.high_ground": "Hauteur — avantage aux attaques, ennemis en désavantage",
+    "terrain.water": "Eau peu profonde",
   },
 
   zh: {
@@ -1492,6 +1517,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.loot": "战利品",
     "grid.trap": "陷阱",
     "grid.aoe_origin": "AoE中心",
+    "terrain.difficult": "困难地形（泥/碎石）— 移动×2",
+    "terrain.half_cover": "掩护（树/柱）— +2 AC",
+    "terrain.full_cover": "完全掩护 — 阻挡视线，+5 AC",
+    "terrain.high_ground": "高地 — 攻击有优势，敌人有劣势",
+    "terrain.water": "浅水",
   },
 };
 
