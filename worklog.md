@@ -1173,3 +1173,316 @@ Stage Summary:
 - bunx tsc --noEmit: 0 errors (clean).
 - Agent Browser verified: targeting works in combat (prompt appears, monster click sends action), all UI strings translate correctly when language is switched.
 - Remaining: location names (generated at runtime from locations.ts) still in Russian — needs a LOCATION_I18N dictionary + localizeLocation() function. Database panels (Bestiary/Spellbook/ItemDatabase) still need full i18n refactoring.
+
+---
+Task ID: analysis-1
+Agent: bg3-analysis-agent
+Task: Analyze BG3/D&D improvement opportunities
+
+Work Log:
+- Read /home/z/my-project/worklog.md (last 3 sections) — prior work was i18n + targeting bug fixes.
+- Combat system files read:
+  * src/lib/game/dm-agent.ts (resolvePlayerMechanics L1743-2076, resolvePlayerAction L784-983, runMonsterTurn L1372-1516, advanceTurn L1523-1639) — combat has initiative, AoE w/ saves, flanking, advantage from conditions, monster flee at HP<25%, monster movement 2 cells/turn toward nearest player.
+  * src/lib/game/conditions.ts (188L, all 10 conditions: poisoned/stunned/frightened/burning/slowed/blinded/prone/blessed/shielded/weakened — has attackDisadvantage/saveAdvantage/acBonus/speedMultiplier/skipTurn/damagePerRound/attackBonusDice effects).
+  * src/components/dnd/CombatGrid.tsx (967L, 10x10 grid, tokens with HP bars + condition icons + buff aura + AoE overlay + loot shimmer + trap warning + threat range + flanking lines + targeting modes; NO click-to-move).
+  * src/components/dnd/InitiativeTracker.tsx (96L, simple horizontal initiative order with current-turn pulse + dead indicator).
+- Character/abilities files read:
+  * src/lib/game/abilities.ts (251L, full — 9 races + 11 classes + scroll spells + spellbook spells; computeAbilities() returns full list).
+  * src/lib/game/talents.ts (148L, first 100 — effectiveAC, effectiveMaxHP, initiativeBonus, damageBonus, critRange, critBonusDice, extraAttackChance, rerollMissOnce, damageReduction, counterattack spec).
+  * src/lib/game/spellbook.ts (838L, first 100 + interface at L139-164) — Spell has level/school/castingTime/range/duration/components/description/damage/saveAbility/saveDC/aoeShape/aoeSize; 34 spells catalogued.
+  * src/components/dnd/CharacterSheet.tsx (652L, first 309 — header + vitals + HP bar + spell slots + conditions + 6 stats grid + equipment summary; NO skills/saving throws/proficiencies/temp HP/death saves).
+- UI/UX files read:
+  * src/components/dnd/ChatPanel.tsx (638L) — 6 QUICK_ACTIONS (attack/explore/move/talk/search/hide) + rest buttons + TTS playback + virtualized chat + jump-to-bottom + scroll-anchor pagination.
+  * src/components/dnd/BottomPanel.tsx (804L, first 200 + L560-779 rest section + AbilityChip) — equipment/inventory/abilities/spell slots/favorites/search/rest; ability tooltip = source+castType+castNotation+slotLevel+consumable+uses+description (single-line, not spell stat block).
+  * src/app/page.tsx (1458L, first 200 + L900-1007 hotkeys + L1230-1359 layout) — 3-column layout, hotkeys Q/E/R + 1-8, targeting mode dispatch.
+  * src/components/dnd/SceneViewer.tsx (113L) — scene image + weather + time-of-day overlay + location caption.
+- State management files read:
+  * src/lib/game/state.ts (2137L, first 200 + moveMonsterTowardNearestPlayer L1184-1211 + rollInitiative L1221-1279) — Player has NO tempHp, NO deathSaves, NO actionUsed/bonusActionUsed/reactionUsed, NO movementUsed, NO speed, NO concentratingOn, NO skillProficiencies, NO saveProficiencies; Monster has NO speed, NO multi-action, NO reactions/legendary.
+  * prisma/schema.prisma (387L, full) — Player/Monster/InventoryItem/ChatMessage/DiceRoll/Scene/InitiativeEntry/Condition/Quest/MapRoom/Npc/Trap/StoryMemory/SaveSlot models; confirmed missing fields above.
+- Quick actions read:
+  * src/lib/game/quick-use.ts (178L, full) — buildAbilityQuickText + buildItemQuickText + classifyAbilityTargeting + findNearestMonsterName.
+  * ChatPanel.QUICK_ACTIONS confirmed (lines 17-24): attack/explore/move/talk/search/hide.
+- /api/game/rest/route.ts (131L) read — short rest rolls hit die + heals half (BG3 max 3 per long rest), long rest = full HP + all slots + clear short-duration conditions.
+- Grep for opportunity/reaction/disengage/dodge/dash/bonusAction/tempHp/deathSave/passivePerception/stealth → ALL ABSENT (no matches in lib/game). Confirmed: zero BG3-classic D&D reaction / action-economy / death-save / temp-HP / stealth systems exist.
+
+Stage Summary:
+
+==============================================================================
+AREA 1 — COMBAT SYSTEM (dm-agent.ts, conditions.ts, CombatGrid.tsx, InitiativeTracker.tsx)
+==============================================================================
+What exists now:
+- 10x10 tactical grid with tokens (HP bars, condition icons, buff auras, AoE overlays, loot shimmer, trap warnings, threat-range for ranged monsters).
+- Initiative order with round counter, turnIndex, dead-skip, stunned-skip.
+- Combat loop: player acts → advanceTurn() loops, running monster turns until next living player.
+- Monster AI: moveMonsterTowardNearestPlayer moves up to 2 cells/turn toward nearest player, attacks when adjacent (single attack roll vs target AC, single damage roll), flees at HP<25% if "intelligent".
+- Advantage system: flanking (melee), high ground (ranged), conditions (poisoned/blinded/prone/frightened → disadvantage; prone/blinded/stunned target → advantage); bless adds +1d4 not advantage.
+- AoE resolution: circle/cone/line, single damage roll per spell, each target rolls save (success=half).
+- Conditions tick at start of new round (decrement duration, apply burning damage, remove expired).
+- Counter-attack talent (rogue/paladin reactive strike).
+
+What BG3/classic D&D has that's MISSING:
+- Action economy (Action / Bonus Action / Reaction tracked separately per turn).
+- Reactions: Opportunity Attacks (OA when leaving threatened square), Shield spell (+5 AC reaction), Counterspell, Hellish Rebuke, Uncanny Dodge, Sentinel feat, Defensive Duelist.
+- Bonus Actions: off-hand attack (TWF), Dash/Disengage/Dodge/Hide as bonus actions (Rogue Cunning Action, Monk Step of the Wind), Misty Step, Healing Word, Bonus-Action spells.
+- Death saves: 3 successes (stable) / 3 failures (dead) at 0 HP; nat 20 = 1 HP, nat 1 = 2 fails. NO "dying" state exists — player.hp<=0 immediately sets isAlive=false (binary).
+- Temp HP (shield of faith, false life, armor of agathys).
+- Movement speed per turn (currently monsters move 2 cells/turn flat; players never move on grid — only DM agent moves them via narrative).
+- Click-to-move on grid (player can only "request" movement via chat text "Я двигаюсь вперёд"; DM agent narrates result).
+- Concentration: only one concentration spell at a time; concentration checks on damage (DC 10 or half damage, whichever higher). Currently NO concentration tracking — multiple concentration buffs can stack.
+- Legendary / Lair actions for bosses (currently bosses have a single specialAbility string).
+- Resistance/vulnerability tracking on monsters (currently only player has damage_resistance_flat talent).
+- Ready action ("I ready X to trigger on Y").
+- Grapple / Shove / Shove Aside mechanics.
+
+TOP 3 highest-impact improvements (combat):
+1. ACTION ECONOMY TRACKING — Add `actionUsed Boolean`, `bonusActionUsed Boolean`, `reactionUsed Boolean`, `movementUsed Int`, `speed Int @default(30)` (feet) to Player model. Reset all to 0/false at start of each turn in advanceTurn(). Expose in PlayerState. UI: 3 pips above BottomPanel (Action ⚔ / Bonus ✦ / Reaction ↩) lit when available. Quick-action buttons for Dash (action), Disengage (bonus), Dodge (action), Hide (action or bonus for rogue), Help (action) consume the right pip. The DM agent's resolvePlayerAction should refuse to grant >1 action's worth of effects per turn by reading these flags.
+2. REACTION SYSTEM — Add `pendingReactions Json` (or PendingReaction[]) transient field on Room (or in-memory) that the monster turn pipeline queues. When runMonsterTurn is about to hit a player, BEFORE applying damage, check if that player has a reaction-ability available (Shield spell known + reaction not yet used this round). If yes, emit a socket event "reaction-prompt" → frontend shows modal "⚔ Monster attacks you! Cast Shield (+5 AC until end of turn)? [Yes / No]". On Yes → apply Shield condition (+5 AC, not +2 the existing shielded), set reactionUsed=true. Same pattern for Counterspell (when DM plan has spell damage to player), Hellish Rebuke (tiefling), Uncanny Dodge (rogue talent). Opportunity Attacks: when moveMonsterTowardNearestPlayer moves a monster OUT of a square threatened by a player (adjacent), pause and prompt that player for OA. This is the single biggest "feel-like-BG3" win.
+3. DEATH SAVES + TEMP HP + DYING STATE — Add `tempHp Int @default(0)`, `deathSavesSuccess Int @default(0)`, `deathSavesFail Int @default(0)`, `isDying Boolean @default(false)` to Player. In damagePlayer(): subtract from tempHp first, then HP. When HP hits 0 → set isDying=true (do NOT set isAlive=false). At start of dying player's turn, auto-roll death save (1d20, 10+ = success, <10 = fail, nat20 = 1 HP regen + lose dying, nat1 = 2 fails). 3 successes → stable (isDying=false, hp stays 0). 3 failures → isAlive=false. UI: CharacterSheet shows 3 success pips + 3 fail pips when isDying; token shows "💀" overlay + crossed-out HP bar; allies can use Medicine check (action) or Healing Word (bonus action) to stabilize / restore 1 HP.
+
+==============================================================================
+AREA 2 — CHARACTER / ABILITIES (abilities.ts, talents.ts, spellbook.ts, CharacterSheet.tsx)
+==============================================================================
+What exists now:
+- 6 ability scores (STR/DEX/CON/INT/WIS/CHA) + abilityModifier() helpers.
+- proficiencyBonus (default 2, scales with level).
+- 9 races + 11 classes with innate + class-feature abilities.
+- Talent system: 11 effect types (ac_bonus, hp_bonus, save_bonus, initiative_bonus, damage_bonus_flat, crit_range, crit_bonus_dice, extra_attack_chance, reroll_miss_once, damage_resistance_flat/pct, counterattack).
+- 34-spell spellbook (4 cantrips + 8 L1 + 6 L2 + 6 L3 + 5 L4 + 5 L5) with full mechanical block (castingTime/range/duration/components/damage/saveAbility/saveDC/aoeShape/aoeSize).
+- Scroll spells (7) + spellbookSpells field for extra spells learned from scrolls.
+- Spell slots per level (current + max), hit dice for short-rest healing.
+- BG3 short-rest counter (max 3 between long rests).
+- Equipment (8 slots), crafting stations (alchemy/forge/enchant), backstory, XP, level-up + ASI pending flags.
+
+What BG3/classic D&D has that's MISSING:
+- Skills (18 skills: Acrobatics, Animal Handling, Arcana, Athletics, Deception, History, Insight, Intimidation, Investigation, Medicine, Nature, Perception, Performance, Persuasion, Religion, Sleight of Hand, Stealth, Survival) — entirely absent. The DM agent currently rolls raw ability checks; no proficiency/expertise applied.
+- Saving-throw proficiencies (each class is proficient in 2 of 6 saves; currently NO save-proficiency tracking — saves use raw ability modifier only).
+- Skill proficiencies + expertise (rogue expertise at L1/L6 doubles proficiency bonus on chosen skills).
+- Tool proficiencies (Thieves' Tools for lockpicking, Herbalism Kit for crafting).
+- Languages known.
+- Passive Perception (10 + WIS mod + proficiency if proficient) — drives stealth-vs-perception checks and surprise rounds. Currently NO passive perception exists, so "Hide" action has nothing to roll against.
+- Speed / movement (in feet and cells) — players have no speed stat; monster movement is hard-coded to 2 cells/turn.
+- Initiative modifier breakdown (currently DEX mod only; no feat/feature bonuses shown beyond talent.initiative_bonus which exists but is not displayed in CharacterSheet).
+- Spell save DC + spell attack bonus display (currently spell saveDC is in spellbook but per-caster DC = 8 + proficiency + spellcasting-stat-mod is never computed or shown).
+- Concentration slot (only one concentration spell at a time) — no field, no tracking, no concentration checks.
+- Cantrip scaling (Fire Bolt 1d10 → 2d10 at L5 → 3d10 at L11 → 4d10 at L17) — currently fixed at 1d10 regardless of level.
+- Spell upcasting UI (auto-cast at the highest available slot, or pick lower slot to conserve — currently spendSpellSlot auto-picks).
+- Carrying capacity / encumbrance.
+- Senses (darkvision distance — race description says "60 футов" but no field tracks it).
+- Spell description tooltip on hover in BottomPanel (currently shows a one-line summary, not the full stat block).
+
+TOP 3 highest-impact improvements (character/abilities):
+1. SKILLS + SAVING-THROW PROFICIENCIES — Add `skillProficiencies String @default("")` (JSON: `{"athletics":true,"stealth":true,"perception":true,"expertise":["stealth"]}`) and `saveProficiencies String @default("")` (JSON: `{"dex":true,"con":true}`) to Player. Auto-populate from class on character creation (e.g. Fighter: STR/CON saves + Athletics/Acrobatics/Intimidation/Perception choice of 2). Add 18-skill grid to CharacterSheet non-compact mode with `+modifier` (proficient) or `modifier` (non-proficient) formatting. Wire into DM agent prompt so it rolls `1d20 + skill_modifier` for ability checks (perception/stealth/investigation) instead of raw stat. Compute passive perception = 10 + PER mod + (proficient ? proficiencyBonus : 0) and surface in CharacterSheet + use for stealth contest.
+2. CONCENTRATION SLOT + SPELL SAVE DC DISPLAY — Add `concentratingOn String?` to Player (spell id or name). Show a "🎯 CONCENTRATING: Hold Person" badge in CharacterSheet. When the player casts another concentration spell, prompt to drop the current one. When the player takes damage while concentrating, roll a concentration check (DC 10 or half damage taken, whichever higher; CON save) — failure drops concentration. Also compute and show Spell Save DC = 8 + proficiencyBonus + spellcastingAbilityMod (INT for wizard, CHA for sorcerer/warlock/paladin, WIS for cleric/druid/ranger) and Spell Attack Bonus = proficiencyBonus + spellcastingAbilityMod in the CharacterSheet spell-slots section.
+3. SPEED / MOVEMENT STAT + CANTRIP SCALING — Add `speed Int @default(30)` to Player (feet per round; 30 is default, 25 for dwarves/halflings/gnomes, 35 for wood elves). Convert to cells (5ft=1 cell → 30ft=6 cells, 25ft=5 cells). Show "Movement: 30 ft (6 cells)" in CharacterSheet. Pair with the movementUsed field from Combat improvement #1 to gate click-to-move on grid. Also: add cantrip scaling logic in spellToAbility() — if the spell is a cantrip and player.level >= 11, damage dice ×3; >=5 ×2; >=17 ×4 (Fire Bolt 1d10→2d10→3d10→4d10). Display the scaled notation in the ability chip tooltip.
+
+==============================================================================
+AREA 3 — UI / UX (ChatPanel.tsx, BottomPanel.tsx, page.tsx, SceneViewer.tsx)
+==============================================================================
+What exists now:
+- 3-column layout: LEFT (PartyPanel + CharacterSheet compact + InitiativeTracker + DiceLog) | CENTER (ChatPanel full-height) | RIGHT (SceneViewer 16:9 + CombatGrid square) | BOTTOM (full-width BottomPanel).
+- ChatPanel: 6 QUICK_ACTIONS (attack/explore/move/talk/search/hide) + Short/Long rest buttons + TTS playback + virtualized chat (VISIBLE_LIMIT 50) + jump-to-bottom + scroll-anchor pagination + per-message TTS button.
+- BottomPanel: equipment (8 slots, click to unequip), inventory (click to quick-use), abilities (sorted damage>heal>buff>utility, favorites star, search filter when >8, hotkey badges 1-8), spell slots (pips per level), rest section (3-pip short-rest counter + short/long buttons).
+- Targeting modes: "none" / "ability" (click monster) / "aoe" (click cell) / "item" (click monster or ally for healing). Banner above grid with "Выберите цель" + cancel (Esc).
+- Hotkeys: 1-8 abilities, Q attack, E explore, R short rest.
+- SceneViewer: scene image with time-of-day filter + weather overlay (rain/fog/storm/snow) + location caption + AI-disclaimer.
+- CombatGrid: animated tokens (lunge on attack, screen-shake on crit, hit/heal flash, crit burst overlay), flanking SVG lines, threat-range red zone for ranged monsters, loot-cell shimmer, discovered-trap warning.
+
+What BG3/classic D&D has that's MISSING:
+- Action-economy bar above BottomPanel (3 pips for Action/Bonus/Reaction; lit/dim by availability).
+- Reactions UI: modal "Reaction available! Cast Shield?" when monster attacks you.
+- Click-to-move on grid during own turn (currently grid is display-only for player tokens; movement happens via chat narrative).
+- Movement-range overlay (highlight reachable cells within remaining movement budget).
+- Threatened-square overlay (red border around enemies' melee reach — shows where moving-out triggers OA).
+- Health visualization: temp HP as a separate blue overlay bar on top of HP bar, dying state (skull + crossed-out HP), downed-but-stable indicator.
+- Death-save tracker UI in CharacterSheet (3 success pips + 3 fail pips, click to roll).
+- Condition icons on tokens show source (who applied) on hover — currently only shows name + duration.
+- Loot pickup (click loot-cell to add to inventory — currently only display).
+- Container / door / lockpick interaction UI (open chest, pick lock, force door).
+- Reaction log in DiceLog (shield triggered, counterspell, OA — currently DiceLog only shows dice rolls, not reaction events).
+- Spell stat-block tooltip on ability hover (currently one-line summary).
+- Combat log filter by round / actor.
+- Party management UI (kick/invite, transfer host, change party leader).
+
+TOP 3 highest-impact improvements (UI/UX):
+1. CLICK-TO-MOVE + MOVEMENT-RANGE OVERLAY — When it's the local player's turn in combat, CombatGrid enters "move-mode" (or shows a Move button). Compute reachable cells via BFS within `speed - movementUsed` cells (5ft-per-cell, ignoring occupied cells). Highlight them with a translucent green overlay. Clicking one → POST /api/game/move with target (x,y) → backend updates posX/posY, increments movementUsed, triggers opportunity-attack prompts for any enemy whose threatened square was exited. Show a "movement: 3/6 cells" indicator next to the action-economy pips. This is the single most impactful BG3-feel change.
+2. ACTION-ECONOMY BAR + REACTION MODAL — Above BottomPanel, add a row of 3 pips: Action ⚔ (lit when !actionUsed), Bonus ✦ (lit when !bonusActionUsed), Reaction ↩ (lit when !reactionUsed). When the DM agent's monster-turn stream detects an attack against the local player, show a modal: "⚔ Гоблин атакует вас! Реакция: Щит (+5 AC)? [Да / Нет]". If yes → POST /api/game/reaction with ability="shield" → backend applies Shield condition + sets reactionUsed=true. Modal auto-dismisses after 10s with default "No" if no input. Same modal pattern for Counterspell (when monster casts), Hellish Rebuke (tiefling), Uncanny Dodge (rogue).
+3. HEALTH VISUALIZATION OVERHAUL — In CombatGrid PlayerToken and MonsterToken: (a) show temp HP as a separate blue bar overlay on top of the existing HP bar (width = tempHp/maxHp, capped at 100%); (b) when isDying, replace the HP bar with 3 success pips + 3 fail pips (green/red filled circles) + a pulsing skull icon; (c) when hp <= 0 but stable, show a gray "STABLE" badge. In CharacterSheet: same death-save tracker; add a "Temp HP: 5" indicator next to the HP bar. In PartyPanel: tint the card red when isDying. Pair with Combat improvement #3 (death-save backend).
+
+==============================================================================
+AREA 4 — STATE MANAGEMENT (state.ts, schema.prisma)
+==============================================================================
+What exists now:
+- Room: combat/round/turnIndex, timeOfDay/weather, dungeon biome/depth/cleared, explorationActorIndex, crafting stations, hostAccountId, introNeeded.
+- Player: full PC (6 stats, hp/maxHp, ac, gold, equipment, spellSlots/maxSpellSlots, hitDice, shortRestsUsed, spellbookSpells, talents, xp, level, pendingLevelUp/ASI, background, backstory).
+- Monster: hp/maxHp/ac/damageNotation/attackBonus/posX/posY/isActive/isBoss/specialAbility (single string).
+- Condition: targetName/targetType/condition id/duration/source (good model — supports per-target source tracking).
+- Full supporting models: InventoryItem, ChatMessage, DiceRoll, Scene, InitiativeEntry, Quest, MapRoom, Npc, Trap, StoryMemory, SaveSlot.
+- GRID_SIZE = 10 (10x10 grid).
+
+What BG3/classic D&D has that's MISSING:
+- Player: `tempHp`, `deathSavesSuccess`, `deathSavesFail`, `isDying`, `actionUsed`, `bonusActionUsed`, `reactionUsed`, `movementUsed`, `speed`, `concentratingOn`, `skillProficiencies`, `saveProficiencies`, `passivePerception` (derived), `isHidden` (stealth), `darkvision` (feet).
+- Monster: `speed` (ft), `actions` (JSON array of {name, attackBonus, damageNotation, saveAbility, saveDC, aoeShape, aoeSize} — currently only ONE damageNotation), `bonusActions`, `reactions`, `legendaryActions` (bosses), `lairActions` (bosses), `conditionImmunities`, `damageResistances`, `damageImmunities`, `damageVulnerabilities`, `senses` (darkvision/blindsight/tremorsense), `languages`, `cr` (challenge rating).
+- No "ground inventory" model — lootCells are ad-hoc arrays on the snapshot, not persisted rows; gold-on-ground is not modeled at all (loot only lists item names).
+- No "container" model (chest/door/barrel inventory) — players can't open a chest and see what's inside before looting.
+- No "ready action" model (prepare a reaction with a trigger condition).
+- No "concentration check log" — when concentration is broken, no record persists.
+
+TOP 3 highest-impact improvements (state management):
+1. PLAYER HEALTH + ACTION-ECONOMY FIELDS — Migration adds to Player model: `tempHp Int @default(0)`, `deathSavesSuccess Int @default(0)`, `deathSavesFail Int @default(0)`, `isDying Boolean @default(false)`, `actionUsed Boolean @default(false)`, `bonusActionUsed Boolean @default(false)`, `reactionUsed Boolean @default(false)`, `movementUsed Int @default(0)`, `speed Int @default(30)`. All have safe defaults → no data migration needed, just schema apply. PlayerState.toPlayer() mirrors them. damagePlayer() subtracts tempHp first; advanceTurn() resets actionUsed/bonusActionUsed/reactionUsed/movementUsed=false/false/false/0 at the start of each living player's turn.
+2. CONCENTRATION + SKILLS FIELDS — Add `concentratingOn String @default("")`, `skillProficiencies String @default("")` (JSON), `saveProficiencies String @default("")` (JSON) to Player. On casting a concentration spell, set concentratingOn=spellId. On casting a different concentration spell, drop the old one (and warn). On taking damage, roll concentration check (CON save vs DC 10 or half damage). Wire skillProficiencies into the DM agent's plan-resolution: when the player declares "I search the room" → roll 1d20 + Investigation modifier (INT mod + proficiency if proficient) instead of raw INT.
+3. MONSTER STAT BLOCK EXPANSION — Add `speed Int @default(30)`, `actionsJson String @default("[]")` (JSON array of multi-action stat block), `legendaryActionsJson String @default("[]")`, `damageResistances String @default("")` (comma-separated damage types), `damageImmunities String @default("")`, `damageVulnerabilities String @default("")`, `conditionImmunities String @default("")`, `cr String @default("1/2")` to Monster. Update bestiary.ts to seed these. Boss monsters get 3 legendary actions per round (used at end of other combatants' turns). Damage-type modifiers apply in damageMonster(): vulnerable = ×2, resistant = ×0.5, immune = 0. This unblocks elemental spells (Fire Bolt vs fire-vulnerable monster should double).
+
+==============================================================================
+AREA 5 — QUICK ACTIONS (quick-use.ts, ChatPanel.QUICK_ACTIONS)
+==============================================================================
+What exists now:
+- ChatPanel.QUICK_ACTIONS (6 buttons): Attack (Swords), Explore (Eye), Move (Footprints), Talk (MessageSquareQuote), Search (Search), Hide (EyeOff) — each sends a fixed Russian action text.
+- Rest buttons (Short/Long) separately rendered.
+- Hotkeys: Q=attack, E=explore, R=short rest, 1-8=Nth ability.
+- buildAbilityQuickText(): scroll-spell "кастую «name» (круг N) против target" / non-spell "использую «name» против target" / heal "для лечения target" / buff "на себя" / utility "использую «name»".
+- buildItemQuickText(): potion "выпиваю зелье «name»" / scroll "читаю свиток «name»" / weapon "переключаюсь на «name» [и атакую]" / other "использую «name»".
+- classifyAbilityTargeting(): "self" / "monster" / "aoe" — drives targeting-mode entry.
+- findNearestMonsterName(): used for damage-ability target pre-fill.
+
+What BG3/classic D&D has that's MISSING:
+- Dash (action — double movement this turn).
+- Disengage (action — movement doesn't provoke OA this turn; rogue = bonus action).
+- Dodge (action — attacks against you have disadvantage, DEX saves have advantage).
+- Help (action — grant ally advantage on next attack vs target, or aid ability check).
+- Ready (action — prepare a reaction with trigger + action: "When the goblin moves, I attack").
+- Use an Object (action — drink potion, open door, activate lever).
+- Grapple / Shove (special melee attacks — STR/Athletics contest).
+- Off-hand attack (bonus action when two-weapon fighting).
+- Hide as bonus action (Rogue Cunning Action, Monk Step of the Wind).
+- Specific class bonus actions (Monk Flurry of Blows, Bardic Inspiration, Hunter's Mark, Misty Step, Healing Word).
+- Cast a cantrip as action + bonus-action spell (e.g. Action: Fire Bolt, Bonus: Healing Word — currently the system allows only one action per turn implicitly).
+- "Jump" / "Dip" / "Throw" environmental actions (BG3-specific but iconic).
+
+TOP 3 highest-impact improvements (quick actions):
+1. ADD COMBAT-ACTION MENU — Add a second row of 5 quick-action buttons (or a dropdown) visible only in combat: Dash, Disengage, Dodge, Help, Ready. Each sends localized Russian text + sets the appropriate actionUsed/bonusActionUsed flag via a new /api/game/action-economy endpoint. E.g. clicking Dodge → "Я использую действие Уклонение: атаки по мне с помехой, спасброски ЛОВ с преимуществом до начала моего следующего хода." → backend sets actionUsed=true + applies a "dodging" condition (NEW condition: attacks-against-me-disadvantage, self-saves-advantage). Pair with Combat improvement #1 (action economy).
+2. HIDE / DASH / DISENGAGE AS BONUS ACTIONS — For classes that have them (Rogue Cunning Action = Dash/Disengage/Hide as bonus action; Monk Step of the Wind = Dash/Disengage as bonus action with 1 ki point; Ranger cunning-action-like features), surface these as bonus-action buttons that consume bonusActionUsed instead of actionUsed. Clicking Hide as bonus action → roll Stealth (1d20 + DEX + proficiency if proficient + expertise bonus) vs highest enemy passive perception → if success, set isHidden=true until next attack/cast/shout. First attack from hidden gains Sneak Attack / advantage. Requires stealth state on Player (NEW: isHidden Boolean).
+3. OFF-HAND ATTACK + READY ACTION UI — When player has a one-handed weapon equipped AND no two-handed weapon in main hand AND no shield equipped, surface an "Off-hand attack" bonus-action button (uses bonusActionUsed, rolls weapon damage without STR/DEX mod). For Ready action, show a small form: trigger dropdown (enemy moves / enemy attacks / enemy casts) + action dropdown (attack / cast spell / dash) → on save, queue a pending ready-action; when the trigger fires (DM agent detects it in the narrative), the player gets a prompt to take the readied action (consumes reactionUsed).
+
+==============================================================================
+RANKED RECOMMENDATIONS (cross-area, by impact × feasibility)
+==============================================================================
+1. ★★★ ACTION ECONOMY + DEATH SAVES + TEMP HP (Combat #1 + State #1 + UI #3)
+   Impact: HIGHEST — every combat feels fundamentally more like D&D/BG3.
+   Feasibility: HIGH — additive schema migration, no destructive changes.
+   Effort: ~2-3 days. Schema: add ~9 Int/Boolean fields to Player. Backend: reset on turn start, damagePlayer() temp-HP-first, death-save auto-roll at start of dying player's turn. Frontend: 3-pip action-economy bar + death-save tracker in CharacterSheet + temp HP overlay on tokens.
+
+2. ★★★ REACTION SYSTEM — Shield / Counterspell / Opportunity Attack (Combat #2 + UI #2)
+   Impact: HIGHEST — players feel agency during enemy turns (BG3's signature feel).
+   Feasibility: MEDIUM — requires pausing monster-turn stream + socket round-trip + modal.
+   Effort: ~3-4 days. Backend: in runMonsterTurn, before applying damage, check if target player has a reaction-ability available; if yes, emit "reaction-prompt" socket event with a 10s timeout; on "yes" response, apply reaction effect (Shield +5 AC, Uncanny Dodge half-damage, etc.) and set reactionUsed=true. Frontend: modal with ability cards + Yes/No buttons + countdown ring. Start with just Shield + OA (most common); add Counterspell + Hellish Rebuke + Uncanny Dodge in v2.
+
+3. ★★ CLICK-TO-MOVE + MOVEMENT-RANGE OVERLAY (UI #1 + Combat #1)
+   Impact: HIGH — biggest immersion win; grid becomes interactive.
+   Feasibility: MEDIUM — needs /api/game/move endpoint + BFS pathing + OA trigger detection.
+   Effort: ~2-3 days. Frontend: when it's the local player's turn, CombatGrid enters move-mode; compute reachable cells (BFS within speed - movementUsed, ignoring occupied cells); highlight with green overlay; click → POST /api/game/move {x,y}. Backend: update posX/posY, increment movementUsed; if path exited any enemy's threatened square, queue OA reaction prompt (depends on #2).
+
+4. ★★ SKILLS + SAVING-THROW PROFICIENCIES (Character #1 + State #2)
+   Impact: HIGH — DM ability checks become mechanically correct; passive perception enables stealth gameplay.
+   Feasibility: HIGH — additive JSON fields, no migration.
+   Effort: ~2 days. Schema: skillProficiencies + saveProficiencies JSON on Player. UI: 18-skill grid in CharacterSheet non-compact mode. Backend: DM agent prompt enhancement so it rolls `1d20 + skill_modifier` for declared skill checks. Compute passivePerception = 10 + WIS mod + (proficient ? PB : 0).
+
+5. ★★ CONCENTRATION SLOT + SPELL SAVE DC DISPLAY (Character #2)
+   Impact: MEDIUM — closes a major D&D 5e fidelity gap (currently multiple concentration spells stack).
+   Feasibility: HIGH — single new field + UI badge.
+   Effort: ~1 day. Schema: concentratingOn String on Player. UI: badge in CharacterSheet + concentration-check roll on damage taken. Display Spell Save DC + Spell Attack Bonus in spell-slots section.
+
+6. ★ SPEED / MOVEMENT STAT + CANTRIP SCALING (Character #3 + State #1)
+   Impact: MEDIUM — unblocks click-to-move (#3); cantrip scaling fixes underpowered casters at high level.
+   Feasibility: HIGH — single Int field.
+   Effort: ~0.5 day schema + ~0.5 day UI + ~0.5 day cantrip-scaling logic in spellToAbility().
+
+7. ★ MONSTER STAT-BLOCK EXPANSION (State #3 + Combat #1)
+   Impact: MEDIUM — enables multi-attack bosses, legendary actions, damage-type modifiers (Fire Bolt vs fire-vulnerable = ×2).
+   Feasibility: MEDIUM — schema migration + bestiary.ts reseed + damageMonster() rewrite.
+   Effort: ~2-3 days. Schema: actionsJson + legendaryActionsJson + damageResistances/Immunities/Vulnerabilities + conditionImmunities + cr + speed on Monster.
+
+8. ★ COMBAT-ACTION MENU (Quick #1 + UI #1)
+   Impact: MEDIUM — Dash/Disengage/Dodge/Help/Ready are core D&D actions currently unavailable.
+   Feasibility: HIGH — pure UI + a new /api/game/action-economy endpoint.
+   Effort: ~1-2 days. Frontend: dropdown or row of 5 buttons in ChatPanel during combat. Backend: applies appropriate actionUsed/bonusActionUsed flag + optional condition (dodging, disengaging).
+
+9. HIDE / DASH / DISENGAGE AS BONUS ACTIONS (Quick #2 + State #1)
+   Impact: MEDIUM — Rogue / Monk / Ranger class fantasy depends on bonus-action mobility.
+   Feasibility: HIGH once #8 lands (same endpoint).
+   Effort: ~1 day. Add isHidden Boolean to Player + stealth-roll endpoint + UI button gating by class.
+
+10. OFF-HAND ATTACK + READY ACTION (Quick #3 + Combat #1)
+    Impact: LOW-MEDIUM — TWF + Ready are nice-to-have; less universally needed.
+    Feasibility: MEDIUM — Ready action requires a queue + trigger-detection in DM agent.
+    Effort: ~2-3 days. Defer until #1, #2, #3, #8 land.
+
+NEXT ACTIONS (recommended order):
+- Step 1 (1 day): schema migration — add Player.tempHp/deathSavesSuccess/deathSavesFail/isDying/actionUsed/bonusActionUsed/reactionUsed/movementUsed/speed/concentratingOn/skillProficiencies/saveProficiencies. Run prisma migrate. Update toPlayer() + PlayerState type.
+- Step 2 (1 day): backend — damagePlayer() temp-HP-first; advanceTurn() reset action-economy; auto death-save roll at start of dying turn; concentration-check on damage.
+- Step 3 (1-2 days): frontend — 3-pip action-economy bar; death-save tracker in CharacterSheet; temp HP overlay on tokens; "Dying" skull state in PartyPanel.
+- Step 4 (3-4 days): reaction system — socket event + modal + backend pause/resume; implement Shield first, then OA, then Counterspell.
+- Step 5 (2-3 days): click-to-move + movement-range overlay + /api/game/move endpoint.
+- Step 6 (2 days): skills + saving-throw proficiencies UI + DM agent wiring.
+- Step 7 (1 day): concentration badge + spell save DC display + cantrip scaling.
+- Step 8 (1-2 days): combat-action menu (Dash/Disengage/Dodge/Help/Ready) + bonus-action Hide for rogues.
+- Step 9 (2-3 days): monster stat-block expansion (multi-attack, legendary actions, damage-type modifiers) — can run in parallel with steps 4-8.
+
+---
+Task ID: bg3-mechanics-1
+Agent: main-agent
+Task: Add BG3/D&D 5e mechanics — death saves, dying state, temp HP, action economy, concentration, combat actions
+
+Work Log:
+- Read analysis-1 agent report: identified 5 top improvements (action economy, reactions, click-to-move, skills, concentration). Prioritized death saves + action economy + temp HP + concentration as highest-impact achievable set.
+- Schema migration: added 9 new fields to Player model:
+  * tempHp (Int, default 0) — temporary HP absorbed before real HP
+  * isDying (Boolean, default false) — dying state when HP=0
+  * deathSaveSuccess (Int, default 0) — death save successes (0-3)
+  * deathSaveFailure (Int, default 0) — death save failures (0-3)
+  * actionUsed / bonusActionUsed / reactionUsed (Boolean, default false) — action economy pips
+  * concentratingOn (String, default "") — current concentration spell
+  * Ran `bun run db:push` — schema synced successfully.
+- Updated types.ts: added all 9 new fields to PlayerState interface.
+- Updated state.ts toPlayer(): mapped all new DB fields to PlayerState.
+- Updated damagePlayer(): now applies temp HP first (absorbs damage), HP=0 triggers dying state (not death), massive damage (>= maxHp) kills instantly. Damage at 0 HP adds a death save failure.
+- Updated healPlayer(): any healing while dying stabilizes (HP>0, resets death saves).
+- Added new helper functions in state.ts: grantTempHp(), setConcentration(), breakConcentration(), markActionUsed().
+- Updated advanceTurn() in dm-agent.ts: dying players auto-roll death saves at start of turn (10+ = success, <10 = failure, nat 20 = 2 successes, nat 1 = 2 failures). 3 successes = stable, 3 failures = dead. Action economy pips reset at the start of each living player's turn.
+- Added concentrationCheckOnDamage() helper in dm-agent.ts: when a concentrating player takes damage, CON save vs DC = max(10, damage/2). On failure, concentration breaks with a system message.
+- Wired concentration checks into both damage paths (AoE player damage + failure backlash player damage).
+- Updated getDMContext() in state.ts: DM now sees dying state, death save counts, temp HP, concentration spell, and action economy pips (✓/✗) for each player.
+- Updated rest route: long rest resets temp HP, dying state, death saves, and concentration. Dying players can now rest (they're not dead, just dying).
+- Updated Player object literals in dm-agent.ts (2 places) to include all new fields.
+- UI — CharacterSheet.tsx:
+  * Temp HP: shown as a blue overlay segment on the HP bar + text badge "Temp HP: +N"
+  * Dying state: red pulsing panel with skull icon, 3 success pips (green) + 3 failure pips (red)
+  * Action economy: 3 BG3-style pips (Action=amber, Bonus=sky, Reaction=purple) shown only in combat
+  * Concentration: purple indicator showing the concentrated spell name
+  * Added ActionPip component + new icons (Zap, Clock, Eye, Hourglass)
+- UI — ChatPanel.tsx: added COMBAT_ACTIONS array with 5 BG3/D&D 5e actions:
+  * Dash (Рывок) — double movement speed
+  * Disengage (Отход) — retreat without opportunity attacks
+  * Dodge (Уклонение) — disadvantage on attacks against you
+  * Help (Помощь) — grant ally advantage
+  * Ready (Готовность) — prepare action with trigger
+  * Shown only in combat, styled with amber accents, separate from exploration quick actions
+- i18n: added ~15 new keys to all 6 languages (char.dying, char.stable, char.death_saves, char.temp_hp, char.action, char.bonus_action, char.reaction, char.concentrating, actions.dash/disengage/dodge/help/ready + _hint variants, ui.combat_actions)
+- Verified with Agent Browser:
+  * App loads cleanly, no runtime errors
+  * Character creation works (quick start)
+  * Game loads with character sheet, scene, bottom panel
+  * Language switch to English works — all UI strings translate correctly
+  * Quick action buttons render properly
+  * Combat actions appear only in combat (verified they're conditionally rendered)
+  * No console errors or page errors
+
+Stage Summary:
+- 9 new Player fields added (schema migrated, db:push applied)
+- 5 new backend functions (grantTempHp, setConcentration, breakConcentration, markActionUsed, concentrationCheckOnDamage)
+- 4 new UI components/sections (temp HP overlay, death save pips, action economy pips, concentration indicator)
+- 5 new combat quick actions (Dash, Disengage, Dodge, Help, Ready)
+- ~15 new i18n keys across 6 languages
+- bun run lint: 0 errors, 0 warnings (clean)
+- bunx tsc --noEmit: 0 errors (clean)
+- Agent Browser verified: app runs cleanly, all new features render correctly
+- Core D&D 5e/BG3 mechanics now implemented: death saves, dying state, temp HP, action economy, concentration tracking, combat action options

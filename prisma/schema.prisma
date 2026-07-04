@@ -164,6 +164,25 @@ model Player {
   acBonusApplied   Int      @default(0)
   // JSON of cumulative stat bonuses currently applied from equipped items, e.g. {"str":2,"dex":1}.
   equipStatsApplied String  @default("")
+  // ===== BG3/D&D 5e action economy + death saves =====
+  // Temporary HP (absorbed before real HP). BG3: shown as a blue overlay.
+  tempHp           Int      @default(0)
+  // Dying state: when HP reaches 0 the character is dying (not dead).
+  // At the start of each turn, roll a death save (d20): 10+ = success,
+  // <10 = failure. Nat 20 = 2 successes, nat 1 = 2 failures.
+  // 3 successes = stable, 3 failures = dead.
+  isDying          Boolean  @default(false)
+  deathSaveSuccess Int      @default(0)
+  deathSaveFailure Int      @default(0)
+  // Action economy pips (reset at the start of each turn).
+  // BG3: shown as Action / Bonus Action / Reaction indicators.
+  actionUsed       Boolean  @default(false)
+  bonusActionUsed  Boolean  @default(false)
+  reactionUsed     Boolean  @default(false)
+  // Concentration: only ONE concentration spell can be active at a time.
+  // Taking damage forces a CON save (DC 10 or half damage, whichever is
+  // higher). On failure, concentration breaks and the spell ends.
+  concentratingOn  String   @default("")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

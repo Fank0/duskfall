@@ -228,6 +228,23 @@ export interface PlayerState {
     accessory1: string | null;
     accessory2: string | null;
   };
+  // ===== BG3/D&D 5e action economy + death saves =====
+  /** Temporary HP (absorbed before real HP). */
+  tempHp: number;
+  /** Dying state: when HP reaches 0 the character is dying (not dead). */
+  isDying: boolean;
+  /** Death save successes (0-3). 3 = stable. */
+  deathSaveSuccess: number;
+  /** Death save failures (0-3). 3 = dead. */
+  deathSaveFailure: number;
+  /** Action used this turn (reset at turn start). */
+  actionUsed: boolean;
+  /** Bonus action used this turn (reset at turn start). */
+  bonusActionUsed: boolean;
+  /** Reaction used this round (reset at turn start). */
+  reactionUsed: boolean;
+  /** Spell name currently concentrating on (empty = none). */
+  concentratingOn: string;
 }
 
 export interface MonsterState {

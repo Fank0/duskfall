@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, ChevronDown, Volume2, Square, Search, EyeOff,
+  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, ChevronDown, Volume2, Square, Search, EyeOff, Wind, ShieldOff, Shield, Heart, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ChatMessageState } from "@/lib/game/types";
@@ -21,6 +21,16 @@ const QUICK_ACTIONS = [
   { labelKey: "actions.talk", icon: MessageSquareQuote, text: "Я осматриваюсь и обращаюсь к любому, кто может меня услышать." },
   { labelKey: "actions.search", icon: Search, text: "Я обыскиваю помещение — ищу тайники, записки, спрятанные предметы." },
   { labelKey: "actions.hide", icon: EyeOff, text: "Я пытаюсь укрыться в тенях и двигаюсь бесшумно." },
+];
+
+/** BG3/D&D 5e combat actions — Dash, Disengage, Dodge, Help, Ready.
+ *  These use your Action and are only available in combat. */
+const COMBAT_ACTIONS = [
+  { labelKey: "actions.dash", icon: Wind, text: "Я использую действие «Рывок» — удваиваю скорость передвижения в этом ходу." },
+  { labelKey: "actions.disengage", icon: ShieldOff, text: "Я использую действие «Отход» — отступаю, не провоцируя атак по возможности." },
+  { labelKey: "actions.dodge", icon: Shield, text: "Я использую действие «Уклонение» — все атаки по мне до моего следующего хода с помехой, бонусы к Ловкости тоже." },
+  { labelKey: "actions.help", icon: Heart, text: "Я использую действие «Помощь» — помогаю союзнику, давая ему преимущество на следующую атаку по врагу." },
+  { labelKey: "actions.ready", icon: Clock, text: "Я использую действие «Готовность» — готовлю действие, которое сработает при определённом условии." },
 ];
 
 /** How many messages to render initially (item 24: chat virtualization). */
@@ -460,31 +470,54 @@ export const ChatPanel = memo(function ChatPanel({
             {tt(q.labelKey)}
           </button>
         ))}
-        {onRest && (
-          <>
-            <button
-              type="button"
-              disabled={combatActive || isThinking || isDead}
-              onClick={() => onRest("short")}
-              title={tt("rest.short_rest_hint")}
-              className="flex items-center gap-1 rounded-full border border-sky-800/60 bg-sky-950/40 px-2.5 py-1 text-[11px] text-sky-200 transition-colors hover:bg-sky-950/60 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Bed className="h-3 w-3" />
-              {tt("rest.short_rest")}
-            </button>
-            <button
-              type="button"
-              disabled={combatActive || isThinking || isDead}
-              onClick={() => onRest("long")}
-              title={tt("rest.long_rest_hint")}
-              className="flex items-center gap-1 rounded-full border border-indigo-800/60 bg-indigo-950/40 px-2.5 py-1 text-[11px] text-indigo-200 transition-colors hover:bg-indigo-950/60 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Moon className="h-3 w-3" />
-              {tt("rest.long_rest")}
-            </button>
-          </>
-        )}
       </div>
+
+      {/* BG3/D&D 5e combat actions — Dash, Disengage, Dodge, Help, Ready.
+          Only shown in combat. These use your Action (D&D 5e action economy). */}
+      {combatActive && (
+        <div className="flex flex-wrap gap-1.5 border-t border-border/30 px-3 pt-1.5">
+          <span className="text-[9px] font-semibold uppercase text-muted-foreground/60 self-center mr-1">{tt("ui.combat_actions")}</span>
+          {COMBAT_ACTIONS.map((q) => (
+            <button
+              key={q.labelKey}
+              type="button"
+              disabled={!canAct}
+              onClick={() => submit(q.text)}
+              title={tt(q.labelKey + "_hint")}
+              className="flex items-center gap-1 rounded-full border border-amber-700/40 bg-amber-950/20 px-2 py-1 text-[10px] text-amber-200 transition-colors hover:border-amber-500/60 hover:bg-amber-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <q.icon className="h-3 w-3" />
+              {tt(q.labelKey)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Rest buttons */}
+      {onRest && (
+        <div className="flex flex-wrap gap-1.5 border-t border-border/30 px-3 pt-1.5">
+          <button
+            type="button"
+            disabled={combatActive || isThinking || isDead}
+            onClick={() => onRest("short")}
+            title={tt("rest.short_rest_hint")}
+            className="flex items-center gap-1 rounded-full border border-sky-800/60 bg-sky-950/40 px-2.5 py-1 text-[11px] text-sky-200 transition-colors hover:bg-sky-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Bed className="h-3 w-3" />
+            {tt("rest.short_rest")}
+          </button>
+          <button
+            type="button"
+            disabled={combatActive || isThinking || isDead}
+            onClick={() => onRest("long")}
+            title={tt("rest.long_rest_hint")}
+            className="flex items-center gap-1 rounded-full border border-indigo-800/60 bg-indigo-950/40 px-2.5 py-1 text-[11px] text-indigo-200 transition-colors hover:bg-indigo-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Moon className="h-3 w-3" />
+            {tt("rest.long_rest")}
+          </button>
+        </div>
+      )}
 
       {/* Input */}
       <div className="flex items-end gap-2 p-3">

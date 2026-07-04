@@ -43,6 +43,9 @@ import {
   learnSpell,
   parseSpellSlots,
   addStoryMemory,
+  breakConcentration,
+  setConcentration,
+  grantTempHp,
 } from "./state";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
 import { extractJson } from "./json";
@@ -72,6 +75,38 @@ import type {
   PlannedCondition,
 } from "./types";
 import { llmLangName, type Lang, defaultLang } from "./i18n";
+
+
+// ---------- BG3/D&D 5e: concentration checks on damage ----------
+/** When a concentrating character takes damage, they must make a CON save
+ *  with DC = max(10, damage/2) or lose concentration. This helper rolls
+ *  the save and breaks concentration on failure.
+ *  Returns true if concentration was broken. */
+async function concentrationCheckOnDamage(
+  roomId: string,
+  playerName: string,
+  damageAmount: number
+): Promise<boolean> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p || !p.concentratingOn) return false;
+  const dc = Math.max(10, Math.floor(damageAmount / 2));
+  const conMod = abilityModifier(p.con);
+  const roll = Math.floor(Math.random() * 20) + 1;
+  const total = roll + conMod;
+  const saved = total >= dc;
+  if (!saved) {
+    const spellName = p.concentratingOn;
+    await breakConcentration(roomId, playerName);
+    await db.chatMessage.create({
+      data: {
+        roomId, role: "system", speaker: "",
+        content: `💫 ${playerName} теряет концентрацию на «${spellName}» (спасбросок ${total} vs DC ${dc}).`,
+      },
+    });
+    return true;
+  }
+  return false;
+}
 
 
 // ---------- Positional advantage: flanking & high ground ----------
@@ -811,6 +846,8 @@ async function resolvePlayerAction(
     pendingASI: false,
     spellSlots: {}, maxSpellSlots: {}, hitDice: 8, shortRestsUsed: 0, pendingLevelUps: 0,
     equipment: { weapon: null, shield: null, head: null, chest: null, legs: null, hands: null, accessory1: null, accessory2: null },
+    tempHp: 0, isDying: false, deathSaveSuccess: 0, deathSaveFailure: 0,
+    actionUsed: false, bonusActionUsed: false, reactionUsed: false, concentratingOn: "",
   };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
@@ -1064,8 +1101,12 @@ async function resolvePlayerAction(
         });
         damageDealtToPlayer += dmg;
         if (!damagedPlayer) damagedPlayer = p.name;
+        // BG3/D&D 5e: concentration check on damage.
+        await concentrationCheckOnDamage(roomId, p.name, dmg);
         if (r.died) {
           aoeLog.push(`${p.name} пал в зоне заклинания!`);
+        } else if (r.isDying) {
+          aoeLog.push(`${p.name} повержен и при смерти!`);
         } else {
           aoeLog.push(`${p.name}: ${dmg} урона${saved ? " (спас, половина)" : ""}.`);
         }
@@ -1153,7 +1194,15 @@ async function resolvePlayerAction(
       label: "Урон по герою" + (total < dmg.total ? ` (−${dmg.total - total} сопр.)` : ""),
       notation: branch.playerDamage.notation, modifier: 0, result: dmg.raw, total, purpose: "player_damage",
     });
-    await damagePlayer(roomId, actorName, total);
+    const r = await damagePlayer(roomId, actorName, total);
+    // BG3/D&D 5e: concentration check on damage.
+    await concentrationCheckOnDamage(roomId, actorName, total);
+    if (r.isDying && !r.died) {
+      await db.chatMessage.create({
+        data: { roomId, role: "system", speaker: "", round,
+          content: `${actorName} повержен и при смерти! Нужны спасброски смерти.` },
+      });
+    }
   }
 
   if (branch.healing) {
@@ -1453,6 +1502,14 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
       accessory1: (target as any).eqAccessory1 ?? null,
       accessory2: (target as any).eqAccessory2 ?? null,
     },
+    tempHp: (target as any).tempHp ?? 0,
+    isDying: Boolean((target as any).isDying),
+    deathSaveSuccess: (target as any).deathSaveSuccess ?? 0,
+    deathSaveFailure: (target as any).deathSaveFailure ?? 0,
+    actionUsed: Boolean((target as any).actionUsed),
+    bonusActionUsed: Boolean((target as any).bonusActionUsed),
+    reactionUsed: Boolean((target as any).reactionUsed),
+    concentratingOn: (target as any).concentratingOn ?? "",
   };
   // Check for shielded condition (+2 AC) — effectiveAC only checks talents, not conditions
   const targetConds = await db.condition.findMany({ where: { roomId, targetName: target.name } });
@@ -1590,6 +1647,49 @@ async function advanceTurn(
         await db.initiativeEntry.updateMany({ where: { id: current.id }, data: { isAlive: false } });
         continue;
       }
+      // BG3/D&D 5e: dying player auto-rolls a death save at the start of
+      // their turn. 10+ = success, <10 = failure, nat 20 = 2 successes,
+      // nat 1 = 2 failures. 3 successes = stable, 3 failures = dead.
+      if (p.isDying) {
+        const dsRoll = Math.floor(Math.random() * 20) + 1;
+        let succ = p.deathSaveSuccess ?? 0;
+        let fail = p.deathSaveFailure ?? 0;
+        if (dsRoll === 20) succ += 2;
+        else if (dsRoll === 1) fail += 2;
+        else if (dsRoll >= 10) succ += 1;
+        else fail += 1;
+        let died = false;
+        let stabilized = false;
+        if (succ >= 3) { stabilized = true; succ = 3; }
+        if (fail >= 3) { died = true; fail = 3; }
+        await db.player.update({
+          where: { id: p.id },
+          data: {
+            deathSaveSuccess: succ,
+            deathSaveFailure: fail,
+            isAlive: !died,
+            isDying: !died && !stabilized,
+          },
+        });
+        const dsMsg = died
+          ? `💀 ${current.combatantName}: спасбросок смерти ${dsRoll} — 3 провала. Герой погиб!`
+          : stabilized
+          ? `✨ ${current.combatantName}: спасбросок смерти ${dsRoll} — 3 успеха. Стабилизирован!`
+          : `${current.combatantName}: спасбросок смерти ${dsRoll} (${dsRoll >= 10 ? "успех" : "провал"}). Успехи: ${succ}/3, Провалы: ${fail}/3`;
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round: room.round, content: dsMsg },
+        });
+        if (died) {
+          await db.initiativeEntry.updateMany({ where: { id: current.id }, data: { isAlive: false } });
+          continue; // skip to next combatant
+        }
+        // Stabilized or still dying — player loses their turn but stays in initiative.
+        if (!stabilized) {
+          continue; // still dying, skip to next combatant
+        }
+        // Stabilized: player regains turn next round but can't act this round (0 HP).
+        continue;
+      }
       // Check if player is stunned — skip their turn
       const stunned = await db.condition.findFirst({
         where: { roomId, targetName: current.combatantName, condition: "stunned" },
@@ -1601,6 +1701,15 @@ async function advanceTurn(
         });
         continue; // skip to next combatant
       }
+      // BG3: reset action economy at the start of the player's turn.
+      await db.player.update({
+        where: { id: p.id },
+        data: {
+          actionUsed: false,
+          bonusActionUsed: false,
+          reactionUsed: false,
+        },
+      });
       return { ended: false, monsterTurns, nextTurnName: current.combatantName, nextTurnType: "player" };
     }
 

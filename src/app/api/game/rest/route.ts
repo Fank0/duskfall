@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (!player) {
       return NextResponse.json({ ok: false, error: "Герой не найден." }, { status: 404 });
     }
-    if (!player.isAlive || player.hp <= 0) {
+    if (!player.isAlive) {
       return NextResponse.json(
         { ok: false, error: "Павший герой не может отдыхать." },
         { status: 400 }
@@ -99,8 +99,18 @@ export async function POST(req: NextRequest) {
       lines.push(`Долгий отдых: HP восстановлены до ${player.maxHp}.`);
       await restoreAllSpellSlots(room.id, playerName);
       lines.push("Все ячейки заклинаний восстановлены.");
-      // Reset short rest counter
-      await db.player.update({ where: { id: player.id }, data: { shortRestsUsed: 0 } });
+      // Reset short rest counter + BG3/D&D 5e fields
+      await db.player.update({
+        where: { id: player.id },
+        data: {
+          shortRestsUsed: 0,
+          tempHp: 0,
+          isDying: false,
+          deathSaveSuccess: 0,
+          deathSaveFailure: 0,
+          concentratingOn: "",
+        },
+      });
       lines.push(`Короткие отдыхи восстановлены: 0/${MAX_SHORT_RESTS}.`);
       // Clear short-duration conditions (duration <= 3); keep long curses.
       const conds = await db.condition.findMany({ where: { roomId: room.id, targetName: playerName } });

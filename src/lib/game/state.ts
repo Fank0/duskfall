@@ -106,6 +106,15 @@ function toPlayer(p: any): PlayerState {
       accessory1: p.eqAccessory1 ?? null,
       accessory2: p.eqAccessory2 ?? null,
     },
+    // BG3/D&D 5e fields
+    tempHp: p.tempHp ?? 0,
+    isDying: Boolean(p.isDying),
+    deathSaveSuccess: p.deathSaveSuccess ?? 0,
+    deathSaveFailure: p.deathSaveFailure ?? 0,
+    actionUsed: Boolean(p.actionUsed),
+    bonusActionUsed: Boolean(p.bonusActionUsed),
+    reactionUsed: Boolean(p.reactionUsed),
+    concentratingOn: p.concentratingOn ?? "",
   };
 }
 
@@ -508,7 +517,15 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
   lines.push(`=== Группа (${alivePlayers.length} в строю) ===`);
   for (const p of snap.players) {
     const mod = (k: number) => abilityModifier(k);
-    const status = p.isAlive && p.hp > 0 ? `HP ${p.hp}/${p.maxHp}` : "ПАЛ";
+    let status: string;
+    if (!p.isAlive) {
+      status = "ПАЛ";
+    } else if (p.isDying) {
+      status = `ПРИ СМЕРТИ (HP 0, спасброски: ✓${p.deathSaveSuccess}/3 ✗${p.deathSaveFailure}/3)`;
+    } else {
+      status = `HP ${p.hp}/${p.maxHp}`;
+      if (p.tempHp > 0) status += ` (+${p.tempHp} врем.)`;
+    }
     const slotEntries = Object.entries(p.maxSpellSlots).filter(([, v]) => v > 0);
     const slotInfo =
       slotEntries.length > 0
@@ -516,8 +533,12 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
             .map(([lv, max]) => `ур.${lv}:${p.spellSlots[lv] ?? 0}/${max}`)
             .join(", ")}`
         : "";
+    const concInfo = p.concentratingOn ? ` | Концентрация: ${p.concentratingOn}` : "";
+    const actionInfo = snap.combatActive
+      ? ` | Действия: ${p.actionUsed ? "✗" : "✓"}${p.bonusActionUsed ? "/✗" : "/✓"}${p.reactionUsed ? "/✗" : "/✓"}`
+      : "";
     lines.push(
-      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo} | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
     );
     // Backstory (player-authored): let the DM weave the hero's history into
     // the narrative — call back to NPCs, places, oaths, regrets.
@@ -1001,12 +1022,42 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
 
 export async function damagePlayer(roomId: string, name: string, amount: number) {
   const p = await db.player.findFirst({ where: { name, roomId } });
-  if (!p) return { hp: 0, died: false };
-  const newHp = Math.max(0, p.hp - amount);
-  const died = newHp <= 0;
+  if (!p) return { hp: 0, died: false, tempHpAbsorbed: 0, isDying: false };
+  // BG3/D&D 5e: temp HP absorbs damage first.
+  let remaining = amount;
+  let tempHpAbsorbed = 0;
+  let newTempHp = p.tempHp ?? 0;
+  if (newTempHp > 0) {
+    tempHpAbsorbed = Math.min(newTempHp, remaining);
+    newTempHp -= tempHpAbsorbed;
+    remaining -= tempHpAbsorbed;
+  }
+  const newHp = Math.max(0, p.hp - remaining);
+  // D&D 5e: HP=0 = dying (not dead). Only death-save failures or massive
+  // damage (>= maxHp in one hit) kills instantly.
+  const massiveDamage = remaining >= p.maxHp;
+  let isDying = false;
+  let died = false;
+  if (newHp <= 0) {
+    if (massiveDamage) {
+      died = true;
+    } else {
+      isDying = true;
+    }
+  }
   await db.player.update({
     where: { id: p.id },
-    data: { hp: newHp, isAlive: !died },
+    data: {
+      hp: newHp,
+      tempHp: newTempHp,
+      isDying,
+      isAlive: !died,
+      // On death, clear concentration.
+      concentratingOn: died ? "" : p.concentratingOn,
+      // Reset death saves when taking damage while already stable/dying
+      // (a "critical fail" on death saves from taking damage at 0 HP).
+      deathSaveFailure: isDying && !p.isDying ? (p.deathSaveFailure ?? 0) + 1 : (p.deathSaveFailure ?? 0),
+    },
   });
   if (died) {
     await db.initiativeEntry.updateMany({
@@ -1015,19 +1066,83 @@ export async function damagePlayer(roomId: string, name: string, amount: number)
     });
   }
   invalidateSnapshotCache(roomId);
-  return { hp: newHp, died };
+  return { hp: newHp, died, tempHpAbsorbed, isDying };
 }
 
 export async function healPlayer(roomId: string, name: string, amount: number) {
   const p = await db.player.findFirst({ where: { name, roomId } });
   if (!p) return 0;
   const newHp = Math.min(p.maxHp, p.hp + amount);
+  // D&D 5e: any healing while dying stabilizes (HP > 0 = no longer dying).
+  const wasDying = Boolean(p.isDying);
   await db.player.update({
     where: { id: p.id },
-    data: { hp: newHp, isAlive: true },
+    data: {
+      hp: newHp,
+      isAlive: true,
+      // Healing wakes a dying character (BG3: any healing > 0 HP).
+      isDying: newHp > 0 ? false : p.isDying,
+      // Reset death saves when stabilized/healed above 0.
+      deathSaveSuccess: wasDying && newHp > 0 ? 0 : (p.deathSaveSuccess ?? 0),
+      deathSaveFailure: wasDying && newHp > 0 ? 0 : (p.deathSaveFailure ?? 0),
+    },
   });
   invalidateSnapshotCache(roomId);
   return newHp;
+}
+
+/**
+ * BG3/D&D 5e: grant temporary HP to a player. Temp HP doesn't stack — the
+ * higher value wins (player chooses, but we auto-pick the larger).
+ */
+export async function grantTempHp(roomId: string, name: string, amount: number): Promise<number> {
+  const p = await db.player.findFirst({ where: { name, roomId } });
+  if (!p || amount <= 0) return p?.tempHp ?? 0;
+  const newTemp = Math.max(p.tempHp ?? 0, amount);
+  await db.player.update({ where: { id: p.id }, data: { tempHp: newTemp } });
+  invalidateSnapshotCache(roomId);
+  return newTemp;
+}
+
+/**
+ * D&D 5e concentration: set the spell a player is concentrating on.
+ * Breaks any previous concentration spell first (clears its conditions).
+ */
+export async function setConcentration(roomId: string, name: string, spellName: string): Promise<void> {
+  const p = await db.player.findFirst({ where: { name, roomId } });
+  if (!p) return;
+  await db.player.update({ where: { id: p.id }, data: { concentratingOn: spellName } });
+  invalidateSnapshotCache(roomId);
+}
+
+/**
+ * Break concentration (e.g. on damage CON save failure, or casting another
+ * concentration spell). Clears the concentratingOn field.
+ */
+export async function breakConcentration(roomId: string, name: string): Promise<void> {
+  const p = await db.player.findFirst({ where: { name, roomId } });
+  if (!p || !p.concentratingOn) return;
+  await db.player.update({ where: { id: p.id }, data: { concentratingOn: "" } });
+  invalidateSnapshotCache(roomId);
+}
+
+/**
+ * BG3 action economy: mark a player's Action / Bonus Action / Reaction as used.
+ * The advanceTurn logic resets these at the start of each player's turn.
+ */
+export async function markActionUsed(
+  roomId: string,
+  name: string,
+  kind: "action" | "bonus" | "reaction"
+): Promise<void> {
+  const p = await db.player.findFirst({ where: { name, roomId } });
+  if (!p) return;
+  const data: Record<string, boolean> = {};
+  if (kind === "action") data.actionUsed = true;
+  else if (kind === "bonus") data.bonusActionUsed = true;
+  else data.reactionUsed = true;
+  await db.player.update({ where: { id: p.id }, data });
+  invalidateSnapshotCache(roomId);
 }
 
 export async function moveToken(

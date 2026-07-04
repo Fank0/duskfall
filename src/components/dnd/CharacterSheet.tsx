@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, ScrollText, Shirt, Hammer } from "lucide-react";
+import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, ScrollText, Shirt, Hammer, Zap, Clock, Eye, Hourglass } from "lucide-react";
 import type { PlayerState, InventoryItemState, ConditionState, EquipmentSlot } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
@@ -184,12 +184,107 @@ export const CharacterSheet = memo(function CharacterSheet({
           <Vital icon={<Coins className="h-3 w-3" />} label={tt("character.gold_short")} value={`${player.gold}`} accent="text-amber-300" />
         </div>
 
-        {/* HP bar */}
+        {/* HP bar + Temp HP overlay (BG3: temp HP shown as blue segment on top) */}
         <div className="mt-2">
-          <div className="h-2 w-full overflow-hidden rounded-full border border-border/60 bg-stone-900/80">
+          <div className="relative h-2 w-full overflow-hidden rounded-full border border-border/60 bg-stone-900/80">
             <div className={cn("h-full rounded-full bg-gradient-to-r transition-all duration-500", hpColor)} style={{ width: `${hpPct}%` }} />
+            {/* Temp HP overlay — shown as a blue extension to the right of real HP */}
+            {player.tempHp > 0 && (
+              <div
+                className="absolute top-0 h-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all duration-500"
+                style={{
+                  left: `${hpPct}%`,
+                  width: `${Math.min(100 - hpPct, (player.tempHp / player.maxHp) * 100)}%`,
+                }}
+                title={`${tt("char.temp_hp")}: ${player.tempHp}`}
+              />
+            )}
           </div>
+          {/* Temp HP text badge */}
+          {player.tempHp > 0 && (
+            <div className="mt-0.5 flex items-center gap-1 text-[9px] text-sky-300">
+              <Shield className="h-2.5 w-2.5" />
+              {tt("char.temp_hp")}: +{player.tempHp}
+            </div>
+          )}
         </div>
+
+        {/* Dying state + Death saves (BG3: 3 success / 3 failure pips) */}
+        {player.isDying && (
+          <div className="mt-2 rounded border border-red-500/50 bg-red-950/40 px-2 py-1.5 animate-pulse">
+            <div className="mb-1 flex items-center gap-1.5">
+              <Skull className="h-3 w-3 text-red-400" />
+              <span className="text-[10px] font-bold text-red-300 uppercase">{tt("char.dying")}</span>
+              <span className="ml-auto text-[9px] text-red-300/70">{tt("char.death_saves")}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Successes (green) */}
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-emerald-400">✓</span>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <span
+                    key={`ds-s-${i}`}
+                    className={cn(
+                      "h-2.5 w-2.5 rounded-full border transition-colors",
+                      i < player.deathSaveSuccess
+                        ? "border-emerald-400 bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.7)]"
+                        : "border-border/60 bg-stone-800/80"
+                    )}
+                  />
+                ))}
+              </div>
+              {/* Failures (red) */}
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-red-400">✗</span>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <span
+                    key={`ds-f-${i}`}
+                    className={cn(
+                      "h-2.5 w-2.5 rounded-full border transition-colors",
+                      i < player.deathSaveFailure
+                        ? "border-red-400 bg-red-600 shadow-[0_0_4px_rgba(220,38,38,0.7)]"
+                        : "border-border/60 bg-stone-800/80"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action economy pips (BG3: Action / Bonus / Reaction) — only in combat */}
+        {combatActive && !player.isDying && (
+          <div className="mt-2 flex items-center gap-1.5">
+            <ActionPip
+              icon={<Zap className="h-2.5 w-2.5" />}
+              label={tt("char.action")}
+              used={player.actionUsed}
+              color="amber"
+            />
+            <ActionPip
+              icon={<Clock className="h-2.5 w-2.5" />}
+              label={tt("char.bonus_action")}
+              used={player.bonusActionUsed}
+              color="sky"
+            />
+            <ActionPip
+              icon={<Eye className="h-2.5 w-2.5" />}
+              label={tt("char.reaction")}
+              used={player.reactionUsed}
+              color="purple"
+            />
+          </div>
+        )}
+
+        {/* Concentration indicator (BG3: shows the spell you're concentrating on) */}
+        {player.concentratingOn && (
+          <div className="mt-1.5 flex items-center gap-1 rounded border border-purple-500/40 bg-purple-950/30 px-1.5 py-0.5">
+            <Hourglass className="h-2.5 w-2.5 shrink-0 text-purple-300" />
+            <span className="text-[9px] text-purple-200 truncate">
+              {tt("char.concentrating")}: {localizeAbility(lang, player.concentratingOn)}
+            </span>
+          </div>
+        )}
 
         {/* Spell slots (casters only) — shown in both compact and full modes */}
         {isCaster && slotLevels.length > 0 && (
@@ -631,6 +726,29 @@ function Vital({ icon, label, value, accent }: { icon: React.ReactNode; label: s
         {label}
       </div>
       <div className="text-xs font-bold font-mono">{value}</div>
+    </div>
+  );
+}
+
+/** BG3-style action economy pip: shows Action / Bonus Action / Reaction availability.
+ *  Filled = available, dimmed/used = spent. */
+function ActionPip({ icon, label, used, color }: { icon: React.ReactNode; label: string; used: boolean; color: "amber" | "sky" | "purple" }) {
+  const colorClasses = {
+    amber: used ? "border-amber-800/40 bg-amber-950/20 text-amber-700/50" : "border-amber-500/60 bg-amber-950/40 text-amber-300",
+    sky: used ? "border-sky-800/40 bg-sky-950/20 text-sky-700/50" : "border-sky-500/60 bg-sky-950/40 text-sky-300",
+    purple: used ? "border-purple-800/40 bg-purple-950/20 text-purple-700/50" : "border-purple-500/60 bg-purple-950/40 text-purple-300",
+  };
+  return (
+    <div
+      className={cn(
+        "flex flex-1 items-center justify-center gap-0.5 rounded border px-1 py-0.5 text-[8px] font-semibold uppercase transition-all",
+        colorClasses[color],
+        !used && "shadow-[0_0_4px_rgba(251,191,36,0.2)]"
+      )}
+      title={`${label}: ${used ? "✓" : "доступно"}`}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
     </div>
   );
 }
