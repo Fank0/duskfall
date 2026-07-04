@@ -14,6 +14,7 @@
 
 import { db } from "@/lib/db";
 import { chatComplete, chatStream } from "./llm";
+import { GRID_SIZE } from "./state";
 import {
   getDMContext,
   getSnapshot,
@@ -46,6 +47,7 @@ import {
   breakConcentration,
   setConcentration,
   grantTempHp,
+  markActionUsed,
 } from "./state";
 import { coverAcBonus, highGroundAdvantage, hasLineOfSight, getTerrainCells, type TerrainCellState } from "./terrain";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
@@ -226,8 +228,18 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Игры для d20 fantas
 DC зависит от уровня группы и ситуации:
 - Уровень 1-2: лёгкие 6-8, средние 10-12, сложные 14-16.
 - Уровень 3-5: лёгкие 8-10, средние 12-14, сложные 16-18.
-- Контекстные модификаторы: ночь/туман → +2 к DC восприятия; дождь → +2 к DC дальних атак; усталость → +2 к DC всех проверок.
+- Контекстные модификаторы: ночь/туман → +2 к DC восприяния; дождь → +2 к DC дальних атак; усталость → +2 к DC всех проверок.
 - Провал проверки характеристик: НЕ просто "не получилось" — опиши конкретное последствие (упал, сломал предмет, привлек внимание врага, получил урон).
+
+=== СМЕРТЬ И СПАСБРОСКИ СМЕРТИ (D&D 5e) ===
+В контексте под каждым героем видно: "ПРИ СМЕРТИ (HP 0, спасброски: ✓N/3 ✗N/3)" или статус "Действия: ✓/✓/✓" (Action/Bonus/Reaction).
+1. HP = 0 → герой ПРИ СМЕРТИ (не мёртв!). Он не может действовать, но жив.
+2. В начале каждого хода при смерти — автоматический спасбросок d20: 10+ успех, <10 провал, 20 = 2 успеха, 1 = 2 провала.
+3. 3 успеха → стабилизирован (HP 0, но не умирает). 3 провала → НАВСЕГДА МЁРТВ.
+4. Лечение (любое > 0 HP) выводит из состояния смерти и сбрасывает спасброски.
+5. Массивный урон (>= maxHp за один удар) = мгновенная смерть.
+6. Action economy: каждый ход герой имеет 1 Действие, 1 Бонусное действие, 1 Реакцию. В контексте видно "Действия: ✓/✓/✓" (доступно) или "✗/✗/✗" (использовано). Учитывай это — если действие использовано, герой не может атаковать снова до след. хода.
+7. Концентрация: если концентрирующийся герой получает урон — спасбросок ТЕЛ (DC 10 или половина урона). Провал = концентрация прервана, заклинание рассеивается.
 
 === NPC ОТНОШЕНИЯ ===
 - В контексте указано [friendly/neutral/hostile] для каждого NPC.
@@ -247,7 +259,7 @@ DC зависит от уровня группы и ситуации:
 - КАК НАХОДИТЬ ЦЕЛЬ В КОНТЕКСТЕ: Когда игрок говорит "атакую гоблина", найди в контексте монстра с именем "Гоблин" (или "Гоблин 1", "Гоблин 2" если их несколько). В success.monsterDamage.target укажи ТОЧНОЕ имя из контекста. Если игрок не указал цель, выбери ближайшего к нему монстра (по позиции из контекста) и укажи его имя. Контекст содержит ВСЮ информацию — не выдумывай предметы, монстров или NPC, которых нет в контексте. Сверяй имя цели по строкам вида "Монстр: <Имя> (HP x/y, AC n, позиция X,Y) — <описание>" и используй ИМЕННО это имя в target.
 - success.monsterDamage.target — ТОЛЬКО имя МОНСТРА из контекста. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО указывать здесь имя игрока (другого героя или самого действующего). Дружественный огонь невозможен. Если герой пытается атаковать союзника — это invalid.
 - В failure.playerDamage — урон контратаки врага, если уместно (иначе null).
-- tokenMoves двигай ТОЛЬКО действующего героя. Координаты 0..9.
+- tokenMoves двигай ТОЛЬКО действующего героя. Координаты 0..15 (сетка 16×16).
 - Лечение: healing.notation (например "2d4+2"). target — имя героя.
 
 СОСТОЯНИЯ (Conditions):
@@ -326,7 +338,7 @@ NPC (неигровые персонажи):
   · line — линия длиной aoeSize клеток от aoeOrigin в направлении aoeDirection (Молния: line, size 8, direction {x:0,y:-1} или {x:1,y:0} и т.п.).
   · cone — конус глубиной aoeSize клеток от aoeOrigin вдоль aoeDirection (Конус холода: cone, size 4).
 - "aoeSize": целое число клеток (обычно 2-4 для круга/конуса, 6-8 для линии).
-- "aoeOrigin": { "x": <0..9>, "y": <0..9> } — точка-центр (для круга) или начало (для линии/конуса). Ближайшая к врагу клетка от позиции героя.
+- "aoeOrigin": { "x": <0..15>, "y": <0..15> } — точка-центр (для круга) или начало (для линии/конуса). Ближайшая к врагу клетка от позиции героя. Сетка 16×16.
 - "aoeDirection": { "x": <-1|0|1>, "y": <-1|0|1> } — вектор направления линии/конуса. Для круга не нужен.
 - "saveAbility": "ЛОВ" (уклонение, огонь/молния), "ТЕЛ" (холод/яд/кислота), "МУД" (очарование), "СИЛ" (сила). По умолчанию "ТЕЛ".
 - "saveDC": класс сложности спасброска (8 + бонус мастерства + мод. характеристики заклинателя). Обычно 12-16 для ур.1-3.
@@ -680,16 +692,20 @@ async function findMonsterByTargetName(
     );
   }
 
-  // 5. Fallback: nearest active monster to (0,0) — keeps combat flowing
-  //    even when the DM gives a vague target name.
+  // 5. Fallback: nearest active monster to the ACTOR (not corner 0,0).
+  //    This ensures the correct monster takes damage when the DM gives a
+  //    vague target name — the monster closest to the attacking player.
   if (!m) {
-    const near = await nearestActiveMonster(roomId, 0, 0);
+    const actor = await db.player.findFirst({ where: { name: actorName, roomId } });
+    const ax = actor?.posX ?? 0;
+    const ay = actor?.posY ?? 0;
+    const near = await nearestActiveMonster(roomId, ax, ay);
     if (near) {
       const fallback = await db.monster.findFirst({ where: { id: near.monster.id, roomId } });
       if (fallback) {
         m = fallback;
         console.warn(
-          `[DM] findMonsterByTargetName: no match for "${raw}" — falling back to nearest monster "${m.name}"`
+          `[DM] findMonsterByTargetName: no match for "${raw}" — falling back to nearest monster to actor "${m.name}"`
         );
       }
     }
@@ -1442,15 +1458,15 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     const players = await db.player.findMany({ where: { roomId, isAlive: true } });
     const alive = players.filter((p) => p.hp > 0);
     if (alive.length > 0) {
-      // Move in opposite direction from nearest player
+      // Move in opposite direction from NEAREST player (not farthest!)
       let nearestP = alive[0];
-      let bestDist = 0;
+      let bestDist = Infinity;
       for (const p of alive) {
         const d = Math.max(Math.abs(p.posX - m.posX), Math.abs(p.posY - m.posY));
-        if (d > bestDist) { bestDist = d; nearestP = p; }
+        if (d < bestDist) { bestDist = d; nearestP = p; }
       }
-      const fleeX = Math.max(0, Math.min(9, m.posX + (m.posX > nearestP.posX ? 1 : -1)));
-      const fleeY = Math.max(0, Math.min(9, m.posY + (m.posY > nearestP.posY ? 1 : -1)));
+      const fleeX = Math.max(0, Math.min(GRID_SIZE - 1, m.posX + (m.posX > nearestP.posX ? 1 : -1)));
+      const fleeY = Math.max(0, Math.min(GRID_SIZE - 1, m.posY + (m.posY > nearestP.posY ? 1 : -1)));
       await db.monster.update({ where: { id: m.id }, data: { posX: fleeX, posY: fleeY } });
       invalidateSnapshotCache(roomId);
       return {
@@ -1745,7 +1761,7 @@ async function advanceTurn(
         monsterName: result.monsterName!,
         moved: result.moved,
         targetName: result.damagedPlayer ?? null,
-        hit: result.damageToPlayer > 0 ? true : result.narrativeLine.includes("промах") ? false : (result.moved ? null : false),
+        hit: result.damageToPlayer > 0 ? true : (result.rolls[0]?.success === false ? false : (result.moved ? null : false)),
         damage: result.damageToPlayer,
         attackTotal: result.rolls[0]?.total ?? null,
         ac: result.rolls[0]?.target ?? null,
@@ -2167,6 +2183,15 @@ export async function resolvePlayerMechanics(
     const snap2 = await getSnapshot(roomCode);
     nextTurnName = snap2?.currentExplorerName ?? null;
     nextTurnType = nextTurnName ? "player" : null;
+  }
+
+  // BG3 action economy: mark the player's Action as used when they perform a
+  // combat action (attack, spell, Dash, etc.). The pips reset at the start of
+  // their next turn (handled in advanceTurn).
+  if (wasCombatActive && !combatEnded && res.category === "combat") {
+    try {
+      await markActionUsed(roomId, actorName, "action");
+    } catch {}
   }
 
   // Final snapshot for round reporting.

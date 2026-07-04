@@ -447,10 +447,12 @@ export const CombatGrid = memo(function CombatGrid({
                 preserveAspectRatio="none"
               >
                 {flankingLines.map((ln, i) => {
-                  const x1 = (ln.from.x + 0.5) * 10;
-                  const y1 = (ln.from.y + 0.5) * 10;
-                  const x2 = (ln.to.x + 0.5) * 10;
-                  const y2 = (ln.to.y + 0.5) * 10;
+                  // GRID_SIZE=16, so each cell = 100/16 = 6.25 units in the 0..100 viewBox.
+                  const cellUnit = 100 / GRID_SIZE;
+                  const x1 = (ln.from.x + 0.5) * cellUnit;
+                  const y1 = (ln.from.y + 0.5) * cellUnit;
+                  const x2 = (ln.to.x + 0.5) * cellUnit;
+                  const y2 = (ln.to.y + 0.5) * cellUnit;
                   return (
                     <line
                       key={i}
@@ -537,7 +539,7 @@ export const CombatGrid = memo(function CombatGrid({
                   {/* D&D 5e terrain features */}
                   {terrainType === "difficult" && (
                     <div
-                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-amber-950/40"
+                      className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center rounded-[2px] bg-amber-950/40"
                       title={t(settings.lang, "terrain.difficult")}
                     >
                       <span className="text-[8px] opacity-60">〰️</span>
@@ -545,7 +547,7 @@ export const CombatGrid = memo(function CombatGrid({
                   )}
                   {terrainType === "water" && (
                     <div
-                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-blue-950/50"
+                      className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center rounded-[2px] bg-blue-950/50"
                       title={t(settings.lang, "terrain.water")}
                     >
                       <span className="text-[8px] opacity-70">🌊</span>
@@ -553,7 +555,7 @@ export const CombatGrid = memo(function CombatGrid({
                   )}
                   {terrainType === "half_cover" && (
                     <div
-                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-stone-700/60 border border-stone-500/40"
+                      className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center rounded-[2px] bg-stone-700/60 border border-stone-500/40"
                       title={t(settings.lang, "terrain.half_cover")}
                     >
                       <span className="text-[10px] opacity-80">🌳</span>
@@ -561,7 +563,7 @@ export const CombatGrid = memo(function CombatGrid({
                   )}
                   {terrainType === "full_cover" && (
                     <div
-                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-stone-800/90 border-2 border-stone-600/60"
+                      className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center rounded-[2px] bg-stone-800/90 border-2 border-stone-600/60"
                       title={t(settings.lang, "terrain.full_cover")}
                     >
                       <span className="text-[10px]">🪨</span>
@@ -569,7 +571,7 @@ export const CombatGrid = memo(function CombatGrid({
                   )}
                   {terrainType === "high_ground" && (
                     <div
-                      className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center rounded-[2px] bg-amber-600/30 border border-amber-400/40"
+                      className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center rounded-[2px] bg-amber-600/30 border border-amber-400/40"
                       title={t(settings.lang, "terrain.high_ground")}
                     >
                       <span className="text-[8px] opacity-80">⬆️</span>

@@ -408,7 +408,6 @@ export default function Home() {
                   const damage = Math.max(ev.damageDealtToMonster, ev.damageDealtToPlayer);
                   let targetName: string | null = null;
                   if (ev.monsterThatDied) targetName = ev.monsterThatDied;
-                  else if (ev.damageDealtToMonster > 0) targetName = ev.damagedPlayer ? null : null;
                   else if (ev.damagedPlayer) targetName = ev.damagedPlayer;
                   else if (ev.healedPlayer) targetName = ev.healedPlayer;
                   // If we dealt monster damage but didn't kill, target is "the monster the actor attacked".

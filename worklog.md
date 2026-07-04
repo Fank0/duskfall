@@ -1617,3 +1617,580 @@ Stage Summary:
 - Enhanced ability tooltips: structured, color-coded, with all relevant info
 - Floating damage numbers: damage/miss/heal/crit text appears above targets during combat
 - 7 new i18n keys across 6 languages
+
+---
+Task ID: debug-dm-immersion
+Agent: explore-agent
+Task: Read DM agent code (dm-agent.ts + state.ts:getDMContext) and find DM immersion-breaking issues — research only, no code changes.
+
+Work Log:
+- Read worklog tail (bg3-mechanics-1, ui-enhance-1, terrain-ui-enhance, click-to-move-tooltips-floating-text) for context. Project is a D&D 5e VTT with AI DM; recent work added BG3 mechanics (death saves, action economy, temp HP, concentration), terrain (cover/high ground), and 16x16 grid.
+- Read dm-agent.ts in full (2204 lines): SYSTEM_PROMPT_PLANNING (169-377), SYSTEM_PROMPT_NARRATION_TPL (379-394), buildPlanningPrompt (404-408), buildNarrationPrompt (411-417), buildCombinedPrompt (424-431), planResolution (488-525), planAndNarrate (529-553), findMonsterByTargetName (603-704), streamNarrativeAction (707-754), narrateMonsterTurn (756-799), resolvePlayerAction (829-1418), runMonsterTurn (1431-1592), advanceTurn (1599-1767), generateUniqueIntro (1790-1866), resolvePlayerMechanics (1871-2203).
+- Read state.ts:getDMContext (510-889) in full to enumerate what context the DM LLM receives: players (with HP/AC/stats/position/tempHp/dying/death-saves/concentration/action pips), equipped items, inventory (with rarity/enchant), active+hidden monsters (with CR, specialAbility, attack/damage), terrain cells, initiative order, conditions, active quests, world map, NPCs, crafting stations, time/weather, recent chat (30 msg + condensed older), story memory (last 15), ground items, dungeon biome, current room description, average party level.
+- Verified GRID_SIZE is 16 (state.ts:30) — NOT 10 and NOT 24 (worklog claim of 24 was inaccurate; current code is 16).
+- Grep-confirmed `markActionUsed` (state.ts:1163) is defined but NEVER called anywhere in the codebase — action economy pips are cosmetic only.
+- Grep-confirmed no occurrences of "passive" / "пассивное восприятие" anywhere — passive perception is not implemented.
+- Grep-confirmed 5 combat actions (Dash/Disengage/Dodge/Help/Ready) are sent as plain chat text with no backend mechanical resolution; no `dodge` condition exists in the conditions list.
+
+Stage Summary — 23 immersion-breaking issues found (3 critical, 7 high, 5 medium, 8 low):
+
+CRITICAL:
+
+1. **Stale grid coordinate range in DM prompt (0..9 vs actual 0..15)**
+   - File: `src/lib/game/dm-agent.ts`
+   - Lines: 250 (`tokenMoves двигай ТОЛЬКО действующего героя. Координаты 0..9.`), 329 (`"aoeOrigin": { "x": <0..9>, "y": <0..9> }`), 1452-1453 (monster flee clamp `Math.max(0, Math.min(9, ...))`)
+   - Problem: The DM planning prompt and monster flee logic still treat the grid as 10×10, but `GRID_SIZE=16` (state.ts:30). The LLM is told to plan player token moves and AoE origins only in 0..9, locking the party to the bottom-left quadrant. Monsters fleeing are clamped to that same corner. The remaining 12×12 of the tactical grid is unreachable through DM-planned moves.
+   - Severity: critical
+   - Suggested fix: Replace `0..9` with `0..${GRID_SIZE-1}` (or hardcode `0..15`) in both prompt locations; replace `Math.min(9, ...)` with `Math.min(GRID_SIZE - 1, ...)` in runMonsterTurn. Better: export GRID_SIZE into the prompt at build time so it can never drift again.
+
+2. **Action economy pips are purely cosmetic — `markActionUsed` is dead code**
+   - File: `src/lib/game/dm-agent.ts` (resolvePlayerMechanics + resolvePlayerAction — never mark Action/Bonus/Reaction used); `src/lib/game/state.ts:1163` (`markActionUsed` defined, never imported or called anywhere)
+   - Problem: The character sheet shows BG3-style Action/Bonus/Reaction pips that reset each turn (advanceTurn:1724-1731) but are NEVER consumed when a player attacks, casts a spell, dodges, dashes, etc. Players see "✓/✓/✓" indefinitely within a turn, so they can spam attacks/casts with no limit. The SYSTEM_PROMPT_PLANNING also has no rule describing action economy, so the LLM never refuses multi-action turns.
+   - Severity: critical
+   - Suggested fix: (a) After resolvePlayerAction, call `markActionUsed(roomId, actorName, "action")` for combat/spell actions (or `"bonus"` for bonus-action spells). (b) Add an "ACTION ECONOMY" rule section to SYSTEM_PROMPT_PLANNING telling the LLM: each turn = 1 Action + 1 Bonus Action + 1 Reaction; if `actionUsed=true`, the player's action is invalid. (c) Map COMBAT_ACTIONS (Dash/Disengage/Dodge/Help/Ready) to their action type in resolvePlayerMechanics.
+
+3. **Monster tactics in prompt lie about actual monster AI**
+   - File: `src/lib/game/dm-agent.ts:208-214` (SYSTEM_PROMPT_PLANNING "ТАКТИКА МОНСТРОВ") vs `1431-1592` (runMonsterTurn) and `state.ts:1329-1356` (moveMonsterTowardNearestPlayer)
+   - Problem: The prompt promises monsters prefer wounded/caster targets, use ⚡ special abilities, exploit cover/environment. The actual `runMonsterTurn` ignores all of this: `moveMonsterTowardNearestPlayer` picks the nearest alive player by Chebyshev distance (no HP/caster preference), the monster makes a single melee attack, special abilities are never invoked, terrain is read only for AC/disadvantage (not for tactical movement). Result: the LLM narrates "the dragon rears back and breathes fire" but the backend only ever applies a single melee attack roll — narrative and mechanics diverge, breaking immersion.
+   - Severity: critical
+   - Suggested fix: Either (a) implement real monster AI: target selection by lowest HP or caster flag, ability triggering (parse `specialAbility` text or add structured fields), terrain-aware pathing; or (b) soften the prompt to match reality (monsters move toward nearest player and make one basic attack; the DM may flavor this with the monster's `specialAbility` description in narrative only).
+
+HIGH:
+
+4. **System chat messages are hardcoded Russian — break immersion for non-Russian players**
+   - File: `src/lib/game/dm-agent.ts` (many) and `src/lib/game/state.ts:527`
+   - Lines: dm-agent.ts:104 (concentration break), 1119 & 1213 (dying), 1133 (AoE summary), 1150 (friendly fire), 1190 & 1582 (XP), 1260 (condition applied), 1288 & 1302 (quest), 1328 (NPC intro), 1355 (crafting), 1378 (spell learned), 1460/1476/1555/1590 (monster narration), 1694-1697 (death saves), 1719 (stunned), 1748 (УСПЕХ/ПРОВАЛ in streamNarrativeAction label)
+   - Problem: The DM LLM is told to narrate in the player's language (buildPlanningPrompt + buildNarrationPrompt inject `${llmLangName(lang)}`), but ALL backend-emitted system messages are written in Russian regardless of player language. English/Spanish/German/French/Chinese players will see Russian combat-event text mixed into their localized narrative — major immersion break.
+   - Severity: high
+   - Suggested fix: Pass `lang` into every system message emitter and route through i18n keys (existing i18n.ts has 6 languages). Either add ~30 new keys (`system.concentration_broken`, `system.dying`, `system.death_save_*`, `system.quest_*`, `system.npc_appeared`, `system.condition_applied`, etc.) or refactor system messages into a helper that takes a lang param.
+
+5. **`narrateMonsterTurn` produces generic narration and has Russian-only fallbacks**
+   - File: `src/lib/game/dm-agent.ts:756-799`
+   - Problem: The function passes only {monsterName, moved, targetName, hit, damage, attackTotal, ac, location} to the LLM. It does NOT pass the monster's description, special ability, CR, terrain at the monster's/target's cell, or the target's conditions. So a dragon and a wolf produce indistinguishable 2-4 sentence narrations. Fallback strings (795-798) are Russian-only — English players see Russian when the LLM call fails.
+   - Severity: high
+   - Suggested fix: (a) Pass monster.description + monster.specialAbility + terrainAt(monster.pos) + terrainAt(target.pos) + targetConditions into the LLM prompt so narration reflects what's actually happening. (b) Localize fallback strings — pass `lang` and use i18n keys, or fall back to the planned narrative line.
+
+6. **Monster hit/miss detection uses fragile Russian substring match**
+   - File: `src/lib/game/dm-agent.ts:1748`
+   - Problem: `hit: result.damageToPlayer > 0 ? true : result.narrativeLine.includes("промах") ? false : (result.moved ? null : false)` — infers hit/miss by searching for "промах" (Russian for "miss") inside the hardcoded Russian narrativeLine. Brittle: breaks the moment narrativeLine is translated, templated differently, or shortened. The actual `result.rolls[0]?.success` boolean is the correct signal and is already available.
+   - Severity: high
+   - Suggested fix: Replace with `hit: result.rolls[0]?.success ?? (result.damageToPlayer > 0 ? true : result.moved ? null : false)`. Removes the string dependency entirely.
+
+7. **Player-side cover / high ground not mechanically enforced (asymmetric)**
+   - File: `src/lib/game/dm-agent.ts:829-1418` (resolvePlayerAction — uses plan's `r.target` AC verbatim, no cover bonus added)
+   - Problem: When a MONSTER attacks a player, `runMonsterTurn` (1531-1536) mechanically adds the target's cover AC bonus and applies high-ground disadvantage. When a PLAYER attacks a monster, no such enforcement happens — the player's attack roll uses whatever AC the LLM put in `plan.rolls[].target`. If the LLM forgets to add +2 for half_cover or +5 for full_cover, the player effectively bypasses cover. Same for high-ground advantage on ranged attacks. This asymmetry is unfair to monsters and makes cover rules unreliable for players.
+   - Severity: high
+   - Suggested fix: In resolvePlayerAction, after fetching the target monster, compute `coverAcBonus(terrainCells, target.posX, target.posY)` and add it to `r.target` before rolling. Apply high-ground advantage via `computePositionalAdvantage` (already exists at line 155) — it's computed but only used to set `positionalAdv`, which only flips advantage mode; the AC cover bonus is never applied.
+
+8. **Death-save / dying rules absent from system prompt**
+   - File: `src/lib/game/dm-agent.ts:169-377` (SYSTEM_PROMPT_PLANNING)
+   - Problem: getDMContext shows `ПРИ СМЕРТИ (HP 0, спасброски: ✓0/3 ✗0/3)` for dying players (state.ts:527), but the planning prompt has NO rule explaining what this means — no description of dying state, death-save mechanics, stabilization via healing, massive-damage instant death, or that a dying player cannot take normal actions. The LLM may narrate dying players as dead, allow them to act, or fail to mention death-save progress.
+   - Severity: high
+   - Suggested fix: Add a "СМЕРТЬ И СПАСБРОСКИ СМЕРТИ (D&D 5e)" section to SYSTEM_PROMPT_PLANNING: HP=0 → dying (not dead); at start of turn auto death save (10+=success, nat20=2 successes, nat1=2 failures, 3 successes=stable, 3 failures=dead); any healing stabilizes; massive damage (≥ maxHp) = instant death; dying players can't take Actions (only the death save is automatic). Tell the LLM to factor this into narrative.
+
+9. **`findMonsterByTargetName` fallback picks monster nearest to corner (0,0)**
+   - File: `src/lib/game/dm-agent.ts:685-696`
+   - Problem: When the LLM gives a vague/misspelled monster name that no matcher catches, the code calls `nearestActiveMonster(roomId, 0, 0)` — nearest to the grid's bottom-left corner, which is irrelevant to the action. Wrong monster takes damage silently. The player says "I attack the goblin shaman" and a totally unrelated skeleton at the corner takes the damage.
+   - Severity: high
+   - Suggested fix: Pass the actor's position into the fallback (`nearestActiveMonster(roomId, actor.posX, actor.posY)`). Better: return `null` and emit a system message "цель не распознана — уточните, кого атакуете" so the player can re-issue the action — that's what a real DM would do.
+
+10. **No passive perception for stealth/ambush detection**
+    - File: `src/lib/game/state.ts:510-889` (getDMContext) — only shows raw WIS score and modifier; `src/lib/game/dm-agent.ts:169-377` — no rule for passive perception.
+    - Problem: A real DM uses Passive Perception (10 + WIS mod + proficiency if proficient) to decide whether a player notices hidden creatures, ambushes, or traps without rolling. The DM agent only does rolled perception checks (LLM-planned). The LLM has no rule telling it to use passive perception for routine detection, and the context doesn't surface a computed passive-perception value per player. Result: stealth/ambush feels arbitrary — sometimes the DM rolls, sometimes the player rolls, and there's no consistent threshold.
+    - Severity: high
+    - Suggested fix: (a) Compute and show `Пассивное восприятие: N` per player in getDMContext (10 + WIS mod + proficiency if Perception proficiency — needs a proficiency field). (b) Add a "СКРЫТОСТЬ И ПАССИВНОЕ ВОСПРИЯТИЕ" rule to SYSTEM_PROMPT_PLANNING: hidden monsters whose Stealth ≤ a player's Passive Perception are noticed without a roll; otherwise the player must roll an active Perception check vs the monster's Stealth DC.
+
+MEDIUM:
+
+11. **Monster retreat decision uses brittle Russian name substrings**
+    - File: `src/lib/game/dm-agent.ts:1439`
+    - Problem: `const isIntelligent = !m.name.toLowerCase().includes("скелет") && !m.name.toLowerCase().includes("зомби") && !m.name.toLowerCase().includes("элементал")` — relies on Russian name substrings to infer intelligence. Misses variants ("Скелет-лучник" works because of toLowerCase, but "Блуждающий огонёк" or any non-Russian-named mindless creature won't). Also doesn't account for actual intelligence ratings that should be on the bestiary entry.
+    - Severity: medium
+    - Suggested fix: Add an `intelligence` (or `isIntelligent`) flag to the bestiary schema and check it here. Failing that, expand the substring list or check by bestiary entry lookup.
+
+12. **Monster special abilities never mechanically invoked**
+    - File: `src/lib/game/dm-agent.ts:1431-1592` (runMonsterTurn)
+    - Problem: Bestiary entries have `specialAbility` (e.g. line 449 "Смертельный холод: раз в 2 раунда — цель СПАС CON 14 или теряет 1d6 макс. HP"; line 806 "Взрыв смерти: при гибели взрывается"). These are surfaced to the DM LLM via getDMContext (line 695) and the prompt tells the LLM to use them, but `runMonsterTurn` is fully deterministic and only ever makes a basic melee attack. A dragon "breathing fire" is purely LLM flavor with no damage roll.
+    - Severity: medium
+    - Suggested fix: Either parse `specialAbility` into a structured trigger+effect (or add structured fields to the bestiary: `{trigger: "every_n_rounds:2", save: {ability:"CON", dc:14}, effect: {type:"max_hp_damage", notation:"1d6"}}`) and invoke from runMonsterTurn; or remove the prompt's "use the ability" instruction so narration doesn't promise mechanics that don't happen.
+
+13. **No opportunity attacks; Disengage action is meaningless**
+    - File: `src/lib/game/dm-agent.ts` (no OA code); COMBAT_ACTIONS text in BottomPanel.tsx includes "Я использую действие «Отход» — отступаю, не провоцируя атак по возможности."
+    - Problem: Players and monsters can move freely out of melee with no consequence. The "Disengage" combat action promises to suppress opportunity attacks that don't exist. Players choosing Disengage waste their action.
+    - Severity: medium
+    - Suggested fix: Implement opportunity attacks in moveToken/moveMonsterTowardNearestPlayer (when a combatant leaves an enemy's adjacent cell, that enemy may use its Reaction to make one melee attack). Or remove Disengage from COMBAT_ACTIONS until OAs exist.
+
+14. **Dodge action has no mechanical effect**
+    - File: `src/lib/game/dm-agent.ts` + `state.ts` (conditions list at dm-agent.ts:253-264 has no `dodge`)
+    - Problem: The player can write "Я использую действие «Уклонение»" but there's no `dodge` condition. Monsters won't have disadvantage on attacks against the dodging player. Wastes the player's action.
+    - Severity: medium
+    - Suggested fix: Add a `dodge` condition type (attacker rolls attacks against this target with disadvantage). In resolvePlayerMechanics, when the action text matches the Dodge combat-action template, apply `dodge` to the actor for 1 round.
+
+15. **Planning prompt says "no damage numbers in narrative" but system messages show them**
+    - File: `src/lib/game/dm-agent.ts:350` (prompt rule: "narrative...без цифр урона, атмосферно и детально") vs dm-agent.ts:1590 (`${m.name} бьёт ${targetName} и попадает! ${dmg} урона (${atk.total} против AC ${targetAC}).`)
+    - Problem: The LLM is told to write narratives without damage numbers (good D&D practice), but the system messages emitted by `runMonsterTurn` itself include raw numbers ("7 урона (14 против AC 12)"). Players see "narrative without numbers" + "system message with numbers" back-to-back — inconsistent tone.
+    - Severity: medium
+    - Suggested fix: Make `narrativeLine` (the fallback before narrateMonsterTurn runs) atmospheric rather than mechanical, e.g. `${m.name} обрушивает удар на ${targetName} — лезвие находит брешь в броне!`. Keep the raw numbers in the dice log only (already logged).
+
+LOW:
+
+16. **`isNonCombatAction` uses Russian-only combat keywords**
+    - File: `src/lib/game/dm-agent.ts:480`
+    - Problem: `COMBAT_KEYWORDS = ["атак", "бью", "стреляю", "кастую боевой"]`. For non-Russian player input ("I attack the goblin", "Je tire à l'arc", "Ich greife an"), the fast-model heuristic misroutes combat actions to the fast model. Weaker model produces worse combat plans — silent quality regression for non-Russian players.
+    - Severity: low
+    - Suggested fix: Either expand the keyword list per supported language, or remove the heuristic and always use the default model for safety.
+
+17. **`generateUniqueIntro` placeholder + `fallbackResolution` narratives are Russian-only**
+    - File: `src/lib/game/dm-agent.ts:1860` (placeholder), `562-571` (fallback narratives)
+    - Problem: Last-resort fallback strings appear in Russian regardless of player language. For an English player whose LLM call fails, the opening scene is in Russian.
+    - Severity: low
+    - Suggested fix: Localize via i18n keys, or generate language-aware fallbacks using `llmLangName(lang)`.
+
+18. **Story memory capped at 15 most-recent entries**
+    - File: `src/lib/game/state.ts:849` (`take: 15`)
+    - Problem: For long campaigns, key events from earlier sessions are forgotten. A real DM remembers the NPC the party met 20 sessions ago.
+    - Severity: low
+    - Suggested fix: Increase to 30-50, or implement tiered memory (recent 15 detailed + older condensed summary), or tag memories as "permanent" vs "ephemeral".
+
+19. **`getDMContext` shows action pips but the prompt doesn't explain what they mean**
+    - File: `src/lib/game/state.ts:540-542` (renders "Действия: ✓/✓/✓"); `src/lib/game/dm-agent.ts` SYSTEM_PROMPT_PLANNING (no action-economy rule)
+    - Problem: The LLM sees the pips in context but the prompt never explains what ✓/✗ means or how to use them. Even if action economy were enforced (issue #2), the LLM wouldn't know to refuse a second action.
+    - Severity: low
+    - Suggested fix: Add an "ACTION ECONOMY" rule to SYSTEM_PROMPT_PLANNING: "Действия: ✓/✗/✗ = Action available / Bonus used / Reaction used. If actionUsed=✗, the player's main action is invalid — return category='invalid' with reason 'Вы уже использовали действие в этом ходу'."
+
+20. **`streamNarrativeAction` and `narrateMonsterTurn` pass outcome labels in Russian to the LLM**
+    - File: `src/lib/game/dm-agent.ts:728` (`Исход: ${data.outcome === "success" ? "УСПЕХ" : "ПРОВАЛ"}`), `773-781` (monster turn summary in Russian)
+    - Problem: Even for an English-language narration request, the LLM is given Russian state labels ("УСПЕХ", "ПРОВАЛ", "Ход монстра", "Атака попадает по..."). Some LLMs will leak these Russian words into the localized narration.
+    - Severity: low
+    - Suggested fix: Translate the prompt scaffolding to the player's language via i18n, or use neutral labels ("OUTCOME: success", "MONSTER TURN: ...").
+
+21. **No `concentratingOn` tracking for monsters**
+    - File: `src/lib/game/state.ts` (concentration helpers operate only on Player)
+    - Problem: If a monster ever casts a concentration spell (e.g. via future monster AI), there's no tracking — concentration checks won't fire when the monster takes damage. Currently moot because monsters don't cast, but blocks future monster-caster feature.
+    - Severity: low
+    - Suggested fix: Generalize `setConcentration`/`breakConcentration` to accept either Player or Monster target.
+
+22. **Monster flee logic picks "farthest player" then steps away by 1 — net effect often zero**
+    - File: `src/lib/game/dm-agent.ts:1446-1461`
+    - Problem: The loop finds `nearestP = the player with MAX distance from the monster` (line 1450: `if (d > bestDist)`), but the variable is named "nearestP" and then used as "the player to flee FROM". The logic actually flees from the farthest player, not the nearest — which is wrong (you don't flee from someone far away). Then it moves only 1 step, which usually doesn't escape melee. The bug is in the comparison direction: should be `if (d < bestDist)` to find the nearest threat.
+    - Severity: low (medium if monsters are common)
+    - Suggested fix: Change `>` to `<` at line 1450 to find the actually-nearest player. Increase step count from 1 to the monster's speed (typically 2 cells, matching moveMonsterTowardNearestPlayer's `steps = 2`). Optionally: only flee if a clear path exists; otherwise surrender/attack.
+
+23. **`buildPlanningPrompt` narrative directive gets overwritten by `buildCombinedPrompt` — but `planResolution` always uses `buildPlanningPrompt` while `planAndNarrate` uses `buildCombinedPrompt` — the two paths diverge**
+    - File: `src/lib/game/dm-agent.ts:404-431`
+    - Problem: The codebase has two prompt builders, but `planResolution` (the default path used in `resolvePlayerMechanics`) uses `buildPlanningPrompt`, which does NOT ask for the top-level `narrative` field. The narrative is then generated separately by `streamNarrativeAction`. This is fine — but `planAndNarrate` (the combined-call path) is exported but appears unused by the SSE route. Dead code path that could confuse future maintainers and may produce different narrative quality if ever switched to.
+    - Severity: low
+    - Suggested fix: Audit usages of `planAndNarrate`. If unused, delete it. If used, document when each path is taken.
+
+Next actions (recommended priority order):
+1. Fix #1 (grid 0..9 → 0..15) — single-line prompt edit + clamp fix. Immediate impact across all games.
+2. Fix #2 (action economy) — wire `markActionUsed` into resolvePlayerAction + add prompt rule.
+3. Fix #4 + #5 + #17 (i18n system messages) — biggest immersion win for non-Russian players; touches ~25 sites.
+4. Fix #7 (player-side cover enforcement) — small change in resolvePlayerAction, big fairness win.
+5. Fix #8 (death-save rules in prompt) — add ~10 lines to SYSTEM_PROMPT_PLANNING.
+6. Fix #9 (fallback to nearest-to-actor, not (0,0)) — 1-line change.
+7. Fix #6 (use rolls[0].success) — 1-line change, removes brittleness.
+8. Then assess #3 (monster tactics) — bigger refactor; consider scope vs. payoff.
+
+---
+Task ID: debug-visual
+Agent: explore-agent
+Task: Read React component code (CombatGrid, CharacterSheet, BottomPanel, ChatPanel, SpellbookPanel, BestiaryPanel, ItemDatabasePanel, page.tsx) and find visual/UI problems — broken layouts, text overlap, missing responsive design, hardcoded strings, accessibility issues, z-index issues. Research only, no code changes.
+
+Work Log:
+- Read worklog tail (bg3-mechanics-1, ui-enhance-1, terrain-ui-enhance, click-to-move-tooltips-floating-text, debug-dm-immersion) for context. Project is a D&D 5e VTT with AI DM; recent work added BG3 mechanics (death saves, action economy, temp HP, concentration), terrain (cover/high ground), 16x16 grid (GRID_SIZE=16 confirmed at state.ts:30), click-to-move, floating combat text, i18n in 6 languages.
+- Read all 8 target files in full:
+  * CombatGrid.tsx (1046 lines) — tactical grid, tokens, terrain, AoE, flanking lines, animations.
+  * CharacterSheet.tsx (770 lines) — character card with vitals, action pips, death saves, spell slots, equipment, inventory, abilities.
+  * BottomPanel.tsx (893 lines) — equipment + inventory + abilities + combat actions + spell slots + rest buttons.
+  * ChatPanel.tsx (613 lines) — chat bubbles, quick actions, TTS, "load more", "jump to bottom".
+  * SpellbookPanel.tsx (376 lines) — modal with spell cards.
+  * BestiaryPanel.tsx (257 lines) — modal with monster cards.
+  * ItemDatabasePanel.tsx (376 lines) — modal with item cards.
+  * page.tsx (1520 lines) — main layout with header, 3-column main, bottom panel, footer.
+- Verified GRID_SIZE=16 (state.ts:30) — worklog claim of "10×10 grid" in CombatGrid comment (line 425) is stale.
+- Verified `z-5` is NOT a Tailwind class (tailwind.config.ts has no z-index extension; default Tailwind scale = 0/10/20/30/40/50/auto). Used at CombatGrid.tsx:540, 548, 556, 564, 572 — silently ignored.
+- Verified CharacterSheet.tsx:408-411 has literal `{tt("character.dex")}` text inside backtick template strings (the `tt()` function is NEVER invoked — the literal characters render in the UI).
+- Verified CombatGrid.tsx:450-453 uses `* 10` for flanking-line SVG coordinates but grid is 16×16, so coordinates >100 are clipped by the viewBox="0 0 100 100" — flanking lines only render in the top-left 62.5% of the grid.
+
+Stage Summary — 47 visual/UI issues found (4 critical, 13 high, 18 medium, 12 low):
+
+CRITICAL:
+
+1. **Flanking-line SVG coordinates assume 10×10 grid → clipped on 16×16 grid**
+   - File: `src/components/dnd/CombatGrid.tsx`
+   - Lines: 450 (`const x1 = (ln.from.x + 0.5) * 10;`), 451, 452, 453
+   - Problem: The flanking-line overlay uses a `viewBox="0 0 100 100"` SVG and computes line endpoints as `(coord + 0.5) * 10`. This assumes a 10×10 grid (cell width = 10 viewBox units). With `GRID_SIZE=16`, cells are 6.25 units wide; a token at x=10 produces x1=105 — outside the 0..100 viewBox, clipped. Result: flanking lines only render for tokens in the top-left 10×10 quadrant of the 16×16 grid; any flank involving tokens at x≥10 or y≥10 is invisible.
+   - Severity: critical
+   - Suggested fix: Replace `* 10` with `* (100 / GRID_SIZE)` (or `* 6.25`). Better: `const cellPct = 100 / GRID_SIZE; const x1 = (ln.from.x + 0.5) * cellPct;` — single source of truth.
+
+2. **AC breakdown renders literal `{tt("character.dex")}` text in the UI**
+   - File: `src/components/dnd/CharacterSheet.tsx`
+   - Lines: 408 (`acBreakdown.dexBonus > 0 ? \` + ${acBreakdown.dexBonus} ({tt("character.dex")})\` : ...`), 409 (`acBreakdown.armor`), 410 (`acBreakdown.shield`), 411 (`acBreakdown.other`)
+   - Problem: Inside the backtick template strings, `{tt("character.dex")}` is literal text — the `tt()` function is NEVER called. Players see `AC 14 = 10 + 3 ({tt("character.dex")}) + 2 ({tt("character.armor")})` rendered as raw text in the AC breakdown line. This is a syntax bug: the developer intended string interpolation `${tt("character.dex")}` but wrote JSX-style `{tt(...)}` inside a template literal.
+   - Severity: critical
+   - Suggested fix: Change `({tt("character.dex")})` → `(${tt("character.dex")})` (and same for armor/shield/other). Better: build the breakdown as an array of strings and `.join(" ")` to avoid template-literal confusion.
+
+3. **Stale 10×10 comment + cell-size assumptions in CombatGrid**
+   - File: `src/components/dnd/CombatGrid.tsx`
+   - Lines: 425-427 (comment "10×10 grid"), 450-453 (flanking SVG `* 10` — see issue #1), 429 (max-w sizing tuned for 10×10)
+   - Problem: The grid was upsized from 10×10 to 16×16 (state.ts:30), but multiple places in CombatGrid still assume 10×10. The comment block at 425-427 says "10×10 grid", the flanking-line coordinates use `* 10`, and the max-w sizing (`max-w-[240px] sm:max-w-[280px] lg:max-w-[320px] xl:max-w-[400px]`) was tuned for 10×10 (40px/cell on xl). With 16×16, cells are 15px (mobile) / 17.5px (sm) / 20px (lg) / 25px (xl) — too small for the text-[7px]/[8px] HP labels and 14px condition icons.
+   - Severity: critical (compounds with #1 and #4)
+   - Suggested fix: Update the comment, fix the `* 10` per #1, and re-tune max-w sizes (e.g. `max-w-[320px] sm:max-w-[400px] lg:max-w-[440px] xl:max-w-[520px]`) so 16×16 cells are at least ~20-32px each.
+
+4. **16×16 cells too small for token content (HP text, condition icons, labels)**
+   - File: `src/components/dnd/CombatGrid.tsx`
+   - Lines: 429 (max-w sizing), 818 (condition icon `h-3.5 w-3.5` = 14px), 912 (token label `text-[8px]`), 948 (HP text `text-[7px]` "{p.hp}/{p.maxHp}"), 950 (name label `text-[10px]`), 994 (monster label `text-[8px]`), 1024 (monster HP text `text-[7px]`)
+   - Problem: At 16×16 in a 240-400px container, each cell is 15-25px. Token width = 88% of cell = 13-22px. A 14px condition icon (`h-3.5 w-3.5`) overflows the 13px mobile token entirely. HP text "30/30" at text-[7px] is ~20px wide — doesn't fit in a 13px token. The 2-char token label (e.g. "АЛ") at text-[8px] is ~10px — barely fits. On mobile, the grid is essentially unreadable: tokens show overlapping condition icons and clipped HP numbers.
+   - Severity: critical
+   - Suggested fix: (a) Increase the grid max-w per #3. (b) Hide HP text and condition icons on small viewports (e.g. `hidden sm:block`). (c) Reduce condition icon to `h-2.5 w-2.5` (10px) on mobile. (d) Show HP text only when cell > 24px (use container queries or a `sm:` prefix).
+
+HIGH:
+
+5. **SpellbookPanel has ZERO i18n — entire modal is Russian-only**
+   - File: `src/components/dnd/SpellbookPanel.tsx`
+   - Lines: 45-47 (levelTabLabel uses formatSpellLevel), 71 (`schoolLabelRu`), 75, 79 ("Ур."), 95 ("Время:"), 102 ("Дальн.:"), 109 ("Длит.:"), 116 ("Комп.:"), 134 ("урон/лечение"), 140 ("Спас"), 150-154 ("Круг"/"Конус"/"Линия"), 240 ("Книга заклинаний"), 245 ("заклинаний"), 249-250 (description), 259 ("Ячейки заклинаний"), 264 ("Круг"), 277 ("{s.current}/{s.max}"), 291 (placeholder), 311 ("Все"), 335 ("Ничего не найдено..."), 354 ("Школы:")
+   - Problem: The component does not import `useSettings` or `t`. Every visible string is hardcoded Russian. For English/Spanish/German/French/Chinese players, the entire spellbook modal is unreadable.
+   - Severity: high
+   - Suggested fix: Import `useSettings` + `t`; thread `lang` through all labels; add ~25 new i18n keys (`spellbook.title`, `spellbook.count`, `spellbook.search_placeholder`, `spellbook.all`, `spellbook.not_found`, `spellbook.schools`, `spellbook.level`, `spellbook.casting_time`, `spellbook.range`, `spellbook.duration`, `spellbook.components`, `spellbook.damage_heal`, `spellbook.save`, `spellbook.aoe_circle/cone/line`, etc.) to all 6 languages.
+
+6. **BestiaryPanel has ZERO i18n — entire modal is Russian-only**
+   - File: `src/components/dnd/BestiaryPanel.tsx`
+   - Lines: 46 (`categoryLabelRu`), 50, 54, 79 ("Атк"), 84 ("Урон"), 91 ("Ск"), 94 (size), 102 ("Особая способность"), 114 ("Добыча"), 118 ("зм"), 182 ("Бестиарий"), 184 ("существ"), 188 (description), 199 (placeholder), 215 ("Все"), 239 ("Ничего не найдено...")
+   - Problem: Same as #5 — no `useSettings`/`t` import, all strings hardcoded Russian.
+   - Severity: high
+   - Suggested fix: Same approach as #5. Add ~20 new i18n keys across 6 languages.
+
+7. **ItemDatabasePanel has ZERO i18n — entire modal is Russian-only**
+   - File: `src/components/dnd/ItemDatabasePanel.tsx`
+   - Lines: 43-60 (`equipSlotLabelRu`), 63-78 (`enchantmentLabelRu`), 100-102 (currency "зм/см/мм"), 108-109 ("фнт"), 135 ("Комплект"), 160 ("Слот:"), 172 ("зарядов"), 189 ("Урон"), 196 ("Хар-ки"), 204 ("Цена"), 209 ("Вес"), 223 ("Проклятие"), 236 ("Комплект «...»"), 239 ("Соберите ... шт.:"), 242 ("В комплекте:"), 300 ("Предметы"), 302 ("предметов"), 306 (description), 317 (placeholder), 333 ("Все"), 357 ("Ничего не найдено...")
+   - Problem: Same as #5/#6 — no i18n at all.
+   - Severity: high
+   - Suggested fix: Same approach. Add ~30 new i18n keys across 6 languages (item database has the most labels: equip slots, enchantments, rarity, type, currency, weight, set bonuses, curse).
+
+8. **All toast messages in page.tsx are hardcoded Russian**
+   - File: `src/app/page.tsx`
+   - Lines: 340 ("Мастер не ответил."), 355 (img-gen prompt title "Сцена"), 385 ("Бой начался! Брошена инициатива." + description), 386 ("Бой окончен!"), 387 (`${name} повержен!`), 388 (`${player} получает ${n} урона!`), 514 ("Ошибка Мастера."), 541 (img title "Сцена"), 552 ("Ошибка связи с Мастером."), 573 ("Игра перезапущена." + "Туманный лес ждёт…"), 575, 578, 588 ("Код комнаты скопирован:"), 605 ("Новый талант:"), 608, 626-628, 646-668, 689-695, 698-699, 719-724, 746-770, 796-798, 801, 836-840, 1511 ("Туман сгущается…" in LoadingScreen)
+   - Problem: 30+ toast messages, error messages, and loading texts are hardcoded Russian. Non-Russian players see Russian for every combat event, error, and confirmation — major immersion break. The `tt()` helper IS available (line 167) but not used in these strings.
+   - Severity: high
+   - Suggested fix: Replace all hardcoded strings with `tt("key")` calls. Add ~35 new i18n keys (`toast.dm_no_response`, `toast.combat_started`, `toast.combat_ended`, `toast.monster_defeated`, `toast.player_damaged`, `toast.dm_error`, `toast.connection_error`, `toast.game_reset`, `toast.room_code_copied`, `toast.new_talent`, `toast.item_equipped`, `toast.item_unequipped`, `toast.craft_success`, `toast.craft_failed`, `toast.rest_short`, `toast.rest_long`, `toast.room_entered`, `toast.new_dungeon`, `toast.dialogue_error`, `loading.fog_gathering`, etc.) across 6 languages.
+
+9. **QUICK_ACTIONS and COMBAT_ACTIONS send hardcoded Russian action text**
+   - File: `src/components/dnd/ChatPanel.tsx:17-23` (QUICK_ACTIONS `text` field), `src/components/dnd/BottomPanel.tsx:32-37` (COMBAT_ACTIONS `text` field), `src/app/page.tsx:897, 900, 910-914, 1042, 1048` (targeting/hotkey action text)
+   - Problem: When a player clicks a quick action ("Attack", "Explore", "Dash", etc.) or uses Q/E hotkeys, the text sent to the DM is hardcoded Russian ("Я обнажаю оружие и атакую ближайшего врага!", etc.) regardless of the player's UI language. Non-Russian players' chat messages appear in Russian to themselves and other players. Also: the DM LLM receives Russian action text, which may bias its narrative language even when the player set the narrative language to English.
+   - Severity: high
+   - Suggested fix: Either (a) localize the action text via i18n and send in the player's UI language, OR (b) keep Russian as the canonical DM-input language but make this explicit in the i18n key comments. Given the DM agent is Russian-tuned, (b) may be acceptable, but the chat bubble shown to the player should be displayed in their UI language for readability.
+
+10. **Header overflow on mobile — no flex-wrap, 10+ buttons in one row**
+    - File: `src/app/page.tsx`
+    - Lines: 1116 (`<div className="flex items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">`), 1130-1278 (10+ buttons)
+    - Problem: The header has NO `flex-wrap`. It contains: logo (36px) + title (flex-1, min 150px) + room code button (~80px) + 9 action buttons (~32-44px each on mobile, icon-only via `hidden sm:inline`). Total minimum width ≈ 36 + 150 + 80 + 9×40 = 626px. On 375px iPhone width, the header overflows horizontally, causing horizontal page scroll on mobile. The combat/world/time badges are `hidden sm:flex` (good), but the 9 action buttons all show.
+    - Severity: high
+    - Suggested fix: Add `flex-wrap` to the header div, OR collapse the 9 action buttons into a single "Menu" dropdown on mobile (`<sm:` breakpoint). Better: use a `<DropdownMenu>` for secondary actions (Journal, Bestiary, Spellbook, Items, Map, Log, Settings) and keep only primary actions (Reset, Leave) inline.
+
+11. **Left aside (22% width) overloaded — PartyPanel + CharacterSheet + InitiativeTracker + DiceLog**
+    - File: `src/app/page.tsx`
+    - Lines: 1293 (`<aside className="flex flex-col gap-2 lg:w-[22%] lg:shrink-0 lg:overflow-hidden">`), 1294-1333 (4 child components)
+    - Problem: The left column on desktop is only 22% of viewport width (~260px on 1200px screen, ~340px on 1600px). It contains 4 stacked components: PartyPanel, CharacterSheet (compact), InitiativeTracker (combat only), DiceLog (`flex-1` for remaining space). With the CharacterSheet showing vitals + HP bar + death saves + action pips + spell slots + conditions + stats + AC breakdown + equipment summary + inventory + abilities + backstory, it alone may exceed the aside height. DiceLog gets whatever's left — likely 0-50px, making it useless.
+    - Severity: high
+    - Suggested fix: (a) Increase left aside to `lg:w-[26%]` or `lg:w-[28%]`. (b) Move DiceLog to the bottom panel or merge it into the CombatLog modal. (c) Make CharacterSheet use internal scroll (`overflow-y-auto`) with a max-height. (d) Consider tabbed layout (Party | Sheet | Dice) for the left column.
+
+12. **Chat panel only 50vh on mobile — squeezed between header and bottom panel**
+    - File: `src/app/page.tsx`
+    - Lines: 1337 (`<section className="h-[50vh] min-h-0 shrink-0 lg:h-full lg:flex-1">`)
+    - Problem: On mobile (`<lg`), the chat section is `h-[50vh]` — half the viewport. With header (~60px) + PartyPanel + CharacterSheet (compact, easily 400px+ with all sections) + BottomPanel (stacked vertically on mobile, easily 300px+) + footer (~40px), the page is far taller than 100vh, so the chat's 50vh is a small slice in the middle. Players must scroll past the entire character sheet to see new chat messages.
+    - Severity: high
+    - Suggested fix: On mobile, reorder so Chat is first (after header), give it `h-[60vh]` or `flex-1`, and make PartyPanel + CharacterSheet collapsible / behind a tab. Alternatively, use a tab bar on mobile (Chat | Sheet | Grid) instead of stacking all three.
+
+13. **BottomPanel on mobile stacks 6 sections vertically — very tall**
+    - File: `src/components/dnd/BottomPanel.tsx`
+    - Lines: 323 (`<div className="flex flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-3">`), 325-365 (equipment), 371-430 (inventory), 438-468 (favorites), 474-532 (abilities), 539-566 (combat actions), 572-615 (spell slots), 621-675 (rest)
+    - Problem: On mobile (`<lg`), all 6-7 sections stack vertically with `flex flex-col gap-2`. Equipment (8 slots in 4-col grid = 2 rows), inventory (chips wrap, ~3 rows), abilities (chips wrap, ~4 rows), combat actions (5 buttons in column per line 545 `lg:flex-col`), spell slots (5+ levels), rest buttons. Total height easily 500-700px on mobile. Combined with the chat (50vh) and character sheet, the page becomes extremely long.
+    - Severity: high
+    - Suggested fix: (a) On mobile, make the BottomPanel a horizontal-scroll bar (`overflow-x-auto`) instead of stacked sections. (b) Or collapse secondary sections (spell slots, rest, combat actions) into a "More" expandable. (c) Reduce the combat actions to a horizontal row on mobile (`flex-row` instead of `lg:flex-col`).
+
+14. **`z-5` is not a Tailwind class — terrain overlays have no explicit z-index**
+    - File: `src/components/dnd/CombatGrid.tsx`
+    - Lines: 540 (`z-5`), 548 (`z-5`), 556 (`z-5`), 564 (`z-5`), 572 (`z-5`)
+    - Problem: Tailwind's default z-index scale is `0, 10, 20, 30, 40, 50, auto` — there is no `z-5`. The class is silently ignored. Terrain overlays (difficult, water, half_cover, full_cover, high_ground) end up with `z-auto`, stacking in source order. Currently works because terrain is rendered before the threat overlay (z-10) and token layer (z-20), but the developer's intent (terrain at z-5, between cells and tokens) is broken. Fragile: any reordering of elements will break the stacking.
+    - Severity: high (correctness/fragility)
+    - Suggested fix: Use `z-[5]` (arbitrary value) or `z-10` with the threat overlay bumped to `z-[15]`. Better: define z-index layers in tailwind.config.ts (`zIndex: { terrain: 5, threat: 10, token: 20, aoe: 30, anim: 40 }`).
+
+15. **`encounterLabelRu` function in page.tsx — hardcoded Russian encounter labels**
+    - File: `src/app/page.tsx`
+    - Lines: 87-104 (function definition), 748 (used in toast)
+    - Problem: Function returns Russian labels for encounter types ("Бой", "Торговец", "Загадка", "Встреча с NPC", "Ловушка", "Сокровище", "Событие"). Used at line 748 in a toast when entering a room with a random encounter. Non-Russian players see Russian encounter type in the toast. Also: the function parameter is named `t` (line 87), shadowing the imported `t` i18n function — confusing.
+    - Severity: high
+    - Suggested fix: Rename function to `encounterLabel(lang, type)` and route through i18n keys (`encounter.combat`, `encounter.merchant`, etc.). Rename the parameter from `t` to `type` to avoid shadowing.
+
+16. **Hardcoded Russian tooltips in CharacterSheet inventory/abilities**
+    - File: `src/components/dnd/CharacterSheet.tsx`
+    - Lines: 442 (`title={canQuickUse ? "Нажмите, чтобы использовать" : undefined}` on inventory items), 506 (same on ability items), 346 (`{c.duration} р` — Russian "р" abbreviation for rounds), 528 (`яч.{a.slotLevel}` — Russian "яч." for spell slot), 748 (`used ? "✓" : "доступно"` — Russian "available")
+    - Problem: 5 hardcoded Russian strings in tooltips and labels. The `tt()` helper IS available (line 102) but not used here.
+    - Severity: high
+    - Suggested fix: Replace with `tt("ui.click_to_use")`, `tt("char.rounds_short", {n: c.duration})`, `tt("char.slot_short")`, `tt("char.available")`. Add ~5 new i18n keys across 6 languages.
+
+17. **Hardcoded Russian tooltips in BottomPanel (buildItemTooltip, buildAbilityTooltip)**
+    - File: `src/components/dnd/BottomPanel.tsx`
+    - Lines: 684-690 (`buildItemTooltip`: "Тип:", "Количество:", "Слот:", "+N AC", "Урон:"), 694-711 (`buildAbilityTooltip`: "Источник:", "Тип:", "урон/лечение/эффект/утилити", "Бросок:", "Ячейка:", "Расходуемый", "Осталось:"), 796 (`Горячая клавиша: ${hotkey}`), 831 (`· круг ${a.slotLevel}`)
+    - Problem: The tooltip builders take no `lang` parameter and produce Russian-only strings. All players see Russian tooltips on item/ability chips regardless of UI language.
+    - Severity: high
+    - Suggested fix: Pass `lang` into both builders; route each label through `t(lang, key)`. Add ~15 new i18n keys (`tooltip.type`, `tooltip.quantity`, `tooltip.slot`, `tooltip.damage`, `tooltip.source`, `tooltip.cast_type_damage/heal/buff/utility`, `tooltip.roll`, `tooltip.slot_level`, `tooltip.consumable`, `tooltip.uses_left`, `tooltip.hotkey`, `tooltip.circle`) across 6 languages.
+
+MEDIUM:
+
+18. **Temp HP bar disappears when at full HP**
+    - File: `src/components/dnd/CharacterSheet.tsx`
+    - Lines: 196-200 (`width: ${Math.min(100 - hpPct, (player.tempHp / player.maxHp) * 100)}%`)
+    - Problem: When `hpPct === 100` (full HP) and the player has temp HP, the temp HP bar width = `Math.min(0, ...)` = 0. The blue temp HP segment is invisible despite the player having temp HP. The text badge below (line 204-209) does show, but the visual bar is misleading.
+    - Severity: medium
+    - Suggested fix: Scale the bar to `maxHp + tempHp`. E.g. `const total = player.maxHp + player.tempHp; const realPct = (player.hp / total) * 100; const tempPct = (player.tempHp / total) * 100;` — real HP fills `realPct`, temp HP fills the next `tempPct`.
+
+19. **`tt("game.your_turn").split("!")[0]` — fragile string manipulation**
+    - File: `src/components/dnd/CharacterSheet.tsx`
+    - Line: 169 (`{tt("game.your_turn").split("!")[0].toUpperCase()}`)
+    - Problem: Assumes the translation of "game.your_turn" contains a "!" character. If a translation uses a different punctuation (e.g. Chinese "。", German ".", or no punctuation), `split("!")` returns a 1-element array, so `[0]` is the entire string — the whole thing gets uppercased. For "Your turn" (English, no "!") → "YOUR TURN" (acceptable). For "你的回合！" (Chinese with full-width "!") → split returns 1 element (full-width ! ≠ ASCII !) → "你的回合！" uppercased (Chinese has no case, so unchanged — lucky). For "À ton tour!" (French with !) → "À TON TOUR" (acceptable). The behavior is unpredictable across translations.
+    - Severity: medium
+    - Suggested fix: Add a dedicated i18n key `char.your_turn_badge` with a short uppercase-friendly label, OR strip the "!" in the translation files and keep the uppercasing.
+
+20. **ActionPip title logic is semantically reversed**
+    - File: `src/components/dnd/CharacterSheet.tsx`
+    - Line: 748 (`title={`${label}: ${used ? "✓" : "доступно"}`}`)
+    - Problem: When `used === true` (action is spent), the title shows "✓". When `used === false` (action is available), the title shows "доступно" (available). The ✓ on a SPENT pip is ambiguous — ✓ typically means "done/available/checked". The visual pip is also dimmed when spent (line 737), but the title text sends a mixed signal.
+    - Severity: medium
+    - Suggested fix: Use clearer icons: `used ? "✗" : "✓"` or `used ? "(потрачено)" : "(доступно)"`. Localize via i18n.
+
+21. **ActionPip shadow always uses amber color regardless of pip color**
+    - File: `src/components/dnd/CharacterSheet.tsx`
+    - Line: 746 (`!used && "shadow-[0_0_4px_rgba(251,191,36,0.2)]"`)
+    - Problem: The glow shadow is hardcoded amber (`rgba(251,191,36,0.2)`) for all three pips (Action=amber, Bonus=sky, Reaction=purple). The sky and purple pips get an amber glow, which is visually inconsistent.
+    - Severity: medium (visual polish)
+    - Suggested fix: Make the shadow color match the pip color: `amber → rgba(251,191,36,0.2)`, `sky → rgba(56,189,248,0.2)`, `purple → rgba(168,85,247,0.2)`.
+
+22. **ChatPanel Textarea has no aria-label**
+    - File: `src/components/dnd/ChatPanel.tsx`
+    - Line: 467-481 (`<Textarea ... placeholder={...} />`)
+    - Problem: The textarea has a `placeholder` but no `aria-label` or `<label>`. Placeholders are NOT accessible labels — screen readers may not announce the field's purpose. The send button (line 482-491) correctly has `aria-label={tt("chat.send_action")}`, but the input field doesn't.
+    - Severity: medium (accessibility)
+    - Suggested fix: Add `aria-label={tt("chat.action_placeholder")}` (or a dedicated `chat.input_label` key) to the Textarea.
+
+23. **ChatPanel "load more" fails silently — no error UI**
+    - File: `src/components/dnd/ChatPanel.tsx`
+    - Lines: 281-308 (`loadMore` callback), 300-304 (catch block)
+    - Problem: When `/api/game/chat-history` fetch fails (network error, 500, etc.), the catch block only sets `setHasMore(false)` — the "Show more" button disappears with no user-visible message. The player has no idea why older messages won't load.
+    - Severity: medium
+    - Suggested fix: Show a toast (`toast.error(tt("chat.load_more_error"))`) in the catch block, and keep the button visible so the user can retry.
+
+24. **ChatPanel "jump to bottom" button aria-label hardcoded Russian**
+    - File: `src/components/dnd/ChatPanel.tsx`
+    - Lines: 440 (`aria-label="Прокрутить к последним сообщениям"`), 441 (`title="К последним сообщениям"`)
+    - Problem: Both attributes are hardcoded Russian. Non-Russian screen-reader users hear Russian for this button.
+    - Severity: medium (accessibility + i18n)
+    - Suggested fix: `aria-label={tt("chat.jump_to_bottom")}` and `title={tt("chat.jump_to_bottom")}`.
+
+25. **ChatPanel toast for TTS failure is Russian-only**
+    - File: `src/components/dnd/ChatPanel.tsx`
+    - Line: 169 (`toast.error("Не удалось озвучить текст")`)
+    - Problem: TTS failure toast is hardcoded Russian. Non-Russian players see a Russian error when TTS fails.
+    - Severity: medium
+    - Suggested fix: `toast.error(tt("chat.tts_error"))`. Add `chat.tts_error` key to all 6 languages.
+
+26. **SpellbookPanel/BestiaryPanel/ItemDatabasePanel modal width unbounded below xl**
+    - File: `src/components/dnd/SpellbookPanel.tsx:236`, `src/components/dnd/BestiaryPanel.tsx:178`, `src/components/dnd/ItemDatabasePanel.tsx:296`
+    - Lines: `className="xl:max-w-7xl max-h-[90vh] flex flex-col gap-0 p-0"`
+    - Problem: `xl:max-w-7xl` only applies at `xl` (1280px+). Below `xl`, there's NO max-w — the modal defaults to the shadcn Dialog default (`max-w-lg` = 512px). So on `lg` screens (1024-1279px), these content-heavy modals are only 512px wide, cramming 3-column grids into a tiny box. Then at `xl` (1280px+), they jump to `max-w-7xl` (1280px). Discontinuous width behavior.
+    - Severity: medium
+    - Suggested fix: Use `sm:max-w-3xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl` for a smooth progression.
+
+27. **`maxHeight: "calc(85vh - 120px)"` — hardcoded 120px assumption**
+    - File: `src/components/dnd/SpellbookPanel.tsx:332`, `src/components/dnd/BestiaryPanel.tsx:236`, `src/components/dnd/ItemDatabasePanel.tsx:354`
+    - Problem: The scrollable content area uses inline `style={{ maxHeight: "calc(85vh - 120px)" }}`. The 120px is a guess at the header + tabs height. In SpellbookPanel, when the spell-slots section (line 255-282, ~80px) is shown, the actual header is ~200px, so the content area is 80px taller than it should be — content overflows the modal. Also: `flex-1 overflow-y-auto` + inline `maxHeight` is a mixed approach that can conflict.
+    - Severity: medium
+    - Suggested fix: Remove the inline maxHeight; rely on `flex-1 min-h-0 overflow-y-auto` within a flex-column modal that has `max-h-[90vh]`. The flexbox will size the content area correctly.
+
+28. **No `lg` breakpoint in card grids — jump from 2 cols (sm) to 3 cols (xl)**
+    - File: `src/components/dnd/SpellbookPanel.tsx:338`, `src/components/dnd/BestiaryPanel.tsx:242`, `src/components/dnd/ItemDatabasePanel.tsx:360`
+    - Lines: `grid grid-cols-1 gap-2 pb-4 sm:grid-cols-2 xl:grid-cols-3`
+    - Problem: Cards are 1-col on mobile, 2-col on `sm` (640px+), 3-col on `xl` (1280px+). The `lg` breakpoint (1024-1279px) uses 2 cols — wastes horizontal space on common laptop screens (1366×768, 1440×900).
+    - Severity: medium
+    - Suggested fix: Add `lg:grid-cols-3` (and consider `2xl:grid-cols-4` for ultra-wide).
+
+29. **Russian quotation marks `«...»` hardcoded in "not found" messages**
+    - File: `src/components/dnd/SpellbookPanel.tsx:335`, `src/components/dnd/BestiaryPanel.tsx:239`, `src/components/dnd/ItemDatabasePanel.tsx:357`
+    - Lines: `Ничего не найдено по запросу «{query}».`
+    - Problem: The quotation marks `«»` are Russian/French style. English convention is `"..."` or `'...'`; German uses `„..."`; Chinese uses `「...」`. Hardcoding `«»` looks wrong in non-Russian UIs.
+    - Severity: medium
+    - Suggested fix: Once i18n is added (issues #5-7), make the quotation marks part of the translation string: `t(lang, "spellbook.not_found", {query})` where the translation includes locale-appropriate quotes.
+
+30. **BestiaryCard shows `entry.size` twice**
+    - File: `src/components/dnd/BestiaryPanel.tsx`
+    - Lines: 50 (`{entry.nameEn} · {entry.size}` in subtitle), 94 (`<Ruler className="h-3 w-3" /> {entry.size}` in stats row)
+    - Problem: The monster's size (e.g. "Средний", "Большой") is shown in both the subtitle (line 50) and the stats row (line 94). Redundant information.
+    - Severity: medium (visual redundancy)
+    - Suggested fix: Remove the size from the subtitle (`{entry.nameEn}` only), or remove the size stat from the stats row.
+
+31. **BottomPanel equipment/inventory/ability chips truncated too aggressively**
+    - File: `src/components/dnd/BottomPanel.tsx`
+    - Lines: 349 (`truncate max-w-[50px]` for equipment item names), 413 (`truncate max-w-[80px]` for inventory chips), 776 (`truncate max-w-[90px]` for ability chips)
+    - Problem: 50px is too narrow for most item names — "Изумрудный клинок" (17 chars) becomes "Изум..." (5 chars + ellipsis). 80-90px is similarly tight. Players can't identify items at a glance.
+    - Severity: medium
+    - Suggested fix: Increase to `max-w-[80px]` for equipment, `max-w-[120px]` for inventory/abilities. The Tooltip on hover shows the full name, but the chip should be more readable.
+
+32. **BottomPanel spell slot pips very tiny (h-2.5 w-2.5 = 10px)**
+    - File: `src/components/dnd/BottomPanel.tsx`
+    - Lines: 600 (`h-2.5 w-2.5 rounded-full border` for spell slot pips), 635 (`h-2 w-2` for short-rest counter pips = 8px)
+    - Problem: 10px spell slot pips and 8px rest counter pips are hard to see, especially on high-DPI mobile screens. The 8px pips are smaller than the surrounding text.
+    - Severity: medium (visual)
+    - Suggested fix: Increase to `h-3 w-3` (12px) for spell slots and `h-2.5 w-2.5` (10px) for rest counter.
+
+33. **page.tsx BottomPanel `onCraft` is an empty stub**
+    - File: `src/app/page.tsx`
+    - Line: 1419 (`onCraft={() => {/* crafting opens via CharacterSheet — keep stub */}}`)
+    - Problem: The BottomPanel's Crafting button (BottomPanel.tsx:355-364) is shown when `hasAnyStation && onCraft` are truthy. The handler is an empty stub — clicking the button does nothing. Players with an alchemy/forge/enchant station see a "Crafting" button in the bottom panel that's unresponsive.
+    - Severity: medium
+    - Suggested fix: Either (a) open the CraftingPanel modal from this handler (like CharacterSheet does), or (b) remove the `onCraft` prop from the BottomPanel instantiation so the button doesn't render.
+
+34. **page.tsx line 411 — dead/confusing ternary `ev.damagedPlayer ? null : null`**
+    - File: `src/app/page.tsx`
+    - Line: 411 (`else if (ev.damageDealtToMonster > 0) targetName = ev.damagedPlayer ? null : null;`)
+    - Problem: Both branches of the ternary return `null`. This is either dead code or a typo (perhaps one branch should return a monster name). The comment at line 414-426 then tries to recover `targetName` by parsing the dice log. Confusing for maintainers.
+    - Severity: medium (code clarity)
+    - Suggested fix: Simplify to `targetName = null;` with a comment explaining the recovery logic below. Or fix the ternary if one branch was meant to do something else.
+
+35. **Floating-text magic number `/ 16` should use GRID_SIZE constant**
+    - File: `src/app/page.tsx`
+    - Lines: 451 (`const relX = (posX + 0.5) / 16;`), 452 (`const relY = (posY + 0.5) / 16;`)
+    - Problem: Hardcoded `16` for GRID_SIZE. If GRID_SIZE ever changes (e.g. to 20 or 24), floating combat text positions break silently — text appears in wrong cells.
+    - Severity: medium
+    - Suggested fix: Import `GRID_SIZE` from `@/lib/game/state` and use `(posX + 0.5) / GRID_SIZE`.
+
+LOW:
+
+36. **CombatGrid legend "no one on grid" — English in Russian UI**
+    - File: `src/components/dnd/CombatGrid.tsx`
+    - Line: 681 (`<span className="italic">no one on grid</span>`)
+    - Problem: English string in an otherwise Russian/localized UI. Inconsistent.
+    - Severity: low
+    - Suggested fix: `t(settings.lang, "grid.empty")`. Add `grid.empty` key to all 6 languages.
+
+37. **CombatGrid AoE tooltip hardcoded Russian**
+    - File: `src/components/dnd/CombatGrid.tsx`
+    - Line: 602 (`title={aoe ? \`${aoeColor.label} (спасбросок ${aoe.saveAbility ?? "ТЕЛ"} DC ${aoe.saveDC ?? 12})\` : ""}`)
+    - Problem: "спасбросок" (saving throw) and "ТЕЛ" (Dexterity abbreviation) are hardcoded Russian.
+    - Severity: low
+    - Suggested fix: `t(settings.lang, "grid.aoe_tooltip", {element: aoeColor.label, ability: ..., dc: ...})`.
+
+38. **CombatGrid condition title hardcoded Russian "раундов"**
+    - File: `src/components/dnd/CombatGrid.tsx`
+    - Line: 818 (`title={\`${name} (${c.duration} раундов)\`}`)
+    - Problem: "раундов" (rounds) hardcoded Russian in condition icon tooltip.
+    - Severity: low
+    - Suggested fix: `title={\`${name} (${c.duration} ${tt("grid.rounds")})\`}` or use pluralization.
+
+39. **CombatGrid "Мир" hardcoded Russian**
+    - File: `src/components/dnd/CombatGrid.tsx`
+    - Line: 416 (`<MapPin className="h-3 w-3" /> Мир`)
+    - Problem: "Мир" (Peace/World) hardcoded Russian. The header badge shows this when combat is inactive. Should use `t(settings.lang, "game.world")`.
+    - Severity: low
+    - Suggested fix: `{t(settings.lang, "game.world")}`.
+
+40. **CombatGrid terrain emoji very tiny on small cells**
+    - File: `src/components/dnd/CombatGrid.tsx`
+    - Lines: 543 (`text-[8px]` for 〰️ difficult terrain), 551 (`text-[8px]` for 🌊 water), 559 (`text-[10px]` for 🌳 half cover), 567 (`text-[10px]` for 🪨 full cover), 575 (`text-[8px]` for ⬆️ high ground)
+    - Problem: 8-10px emoji on 15-25px cells. Emoji at 8px is barely recognizable on most platforms (emoji don't scale linearly — at 8px they're often rendered as colored blobs).
+    - Severity: low (compounds with #4)
+    - Suggested fix: Increase emoji to `text-[14px]` on desktop, hide on mobile. Or replace emoji with colored backgrounds only (the cells already have colored backgrounds).
+
+41. **Footer text very small (text-[10px]) and may overflow**
+    - File: `src/app/page.tsx`
+    - Lines: 1432-1436 (`<footer className="... text-[10px] ...">DUSKFALL · {tt("ui.room_code")}: ${snapshot.roomCode} · ${snapshot.players.length} ${tt("common.heroes")} · {tt("ui.footer_hint")}</footer>`)
+    - Problem: 10px text is hard to read on mobile. The footer concatenates 4 segments without `truncate` or `flex-wrap` — on narrow screens, it could overflow horizontally.
+    - Severity: low
+    - Suggested fix: Increase to `text-xs` (12px). Wrap content in `<div className="flex flex-wrap items-center justify-center gap-x-2">` so segments wrap on narrow screens.
+
+42. **Time-of-day emoji may not render on all platforms**
+    - File: `src/app/page.tsx`
+    - Lines: 1156-1158 (`🌅` / `☀️` / `🌇` / `🌙`)
+    - Problem: These emoji (especially 🌅 and 🌇) are Unicode 6.0+ and may not render on older Android devices or some Windows versions (Windows 10 < 1809). They'll appear as empty boxes or missing glyphs.
+    - Severity: low
+    - Suggested fix: Add a text fallback (e.g. `<span title="...">{emoji}</span><span className="sr-only">{tt("time.dawn")}</span>`). Or use Lucide icons (Sunrise, Sun, Sunset, Moon) for consistent cross-platform rendering.
+
+43. **Header logo `animate-flicker` — motion sensitivity concern**
+    - File: `src/app/page.tsx`
+    - Line: 1117 (`<div className="flex h-9 w-9 ... animate-flicker">`)
+    - Problem: The header logo has a perpetual flicker animation. Players with vestibular disorders or motion sensitivity may find this distracting or uncomfortable. No `prefers-reduced-motion` guard.
+    - Severity: low (accessibility)
+    - Suggested fix: Add a CSS media query: `@media (prefers-reduced-motion: reduce) { .animate-flicker { animation: none; } }` in globals.css.
+
+44. **LoadingScreen text hardcoded Russian**
+    - File: `src/app/page.tsx`
+    - Line: 1511 (`<span className="font-serif italic">Туман сгущается…</span>`)
+    - Problem: Loading screen flavor text is hardcoded Russian. Non-Russian players see Russian during the initial load.
+    - Severity: low
+    - Suggested fix: `{tt("loading.fog_gathering")}`. Add the key to all 6 languages.
+
+45. **BestiaryCard name uses `whitespace-normal` without `break-words`**
+    - File: `src/components/dnd/BestiaryPanel.tsx`
+    - Line: 42 (`<h3 className="font-serif text-sm font-bold text-amber-100 whitespace-normal">`)
+    - Problem: Long single-token monster names (e.g. "Блуждающий-огонёк" with hyphens, or a long English name) could overflow the card width because there's no `break-words` to break inside long tokens.
+    - Severity: low
+    - Suggested fix: Add `break-words` to the className.
+
+46. **SpellCard stat values right-aligned with `ml-auto break-words` — long values wrap awkwardly**
+    - File: `src/components/dnd/SpellbookPanel.tsx`
+    - Lines: 96, 103, 110, 117 (`<span className="font-mono font-bold text-stone-100 text-right ml-auto break-words">`)
+    - Problem: Long stat values (e.g. casting time "1 действие" or range "30 метров") may wrap inside the small stat cell, pushing the label and icon out of alignment. The `break-words` allows breaking inside the word, which looks awkward.
+    - Severity: low
+    - Suggested fix: Use `truncate` instead of `break-words`, or allow the value to wrap naturally with `text-left` and remove `ml-auto`.
+
+47. **ActionPip label and "your turn" badge in CharacterSheet header — text-[8px] too small**
+    - File: `src/components/dnd/CharacterSheet.tsx`
+    - Lines: 162 (`px-1 text-[8px]` for "YOU" badge), 169 (`text-[8px]` for "YOUR TURN" badge), 744 (`text-[8px]` for action pip labels)
+    - Problem: 8px text is below the WCAG-recommended minimum of 12px for body text. Hard to read on high-DPI mobile screens and for users with visual impairments.
+    - Severity: low (accessibility)
+    - Suggested fix: Increase badges to `text-[10px]` minimum; pip labels to `text-[9px]` minimum. The compact character sheet has limited space, but 8px is too small.
+
+Next actions (recommended priority order):
+1. Fix #1, #2, #3, #4 (16×16 grid critical bugs) — flanking SVG `* 10` → `* (100/GRID_SIZE)`, AC breakdown template-literal fix, re-tune grid max-w, hide/shrink token content on small cells. Immediate visual correctness.
+2. Fix #5, #6, #7 (i18n the three modals) — biggest immersion win for non-Russian players; ~75 new i18n keys across 6 languages.
+3. Fix #8, #9 (i18n page.tsx toasts + quick-action text) — ~35 new i18n keys; touches 30+ toast sites.
+4. Fix #10 (header overflow) — add `flex-wrap` or collapse secondary buttons into a dropdown.
+5. Fix #11, #12, #13 (mobile layout — left aside overload, chat 50vh, bottom panel stacking) — likely needs a tab-based mobile layout.
+6. Fix #14 (`z-5` → `z-[5]`) — single-line change × 5 sites.
+7. Fix #15 (`encounterLabelRu` → i18n) — small function, 7 keys × 6 languages.
+8. Fix #16, #17 (CharacterSheet + BottomPanel tooltip i18n) — ~20 new i18n keys.
+9. Then assess #18-#35 (medium issues) — temp HP bar, fragile string split, aria-labels, modal widths, card grid breakpoints, truncation, etc.
+10. Fix #36-#47 (low issues) — minor i18n, emoji sizing, motion sensitivity, text sizes.
+
+---
+Task ID: global-debug-fix
+Agent: main-agent
+Task: Global debug — fix critical DM immersion and visual issues
+
+Work Log:
+- Ran two parallel analysis agents (debug-dm-immersion + debug-visual) that found 70 issues total (3 critical DM, 4 critical visual, 20 high, 43 medium/low)
+- Fixed CRITICAL #1: Stale grid coordinates in DM prompt (0..9 → 0..15 for 16×16 grid) — 2 sites in dm-agent.ts
+- Fixed CRITICAL #2: AC breakdown template literal bug — `{tt("character.dex")}` was rendered as literal text inside backtick strings instead of being called as `${tt("character.dex")}`. Fixed all 4 AC breakdown lines in CharacterSheet.tsx
+- Fixed CRITICAL #3: Flanking SVG coordinates assumed 10×10 grid (`* 10`) — updated to use `100 / GRID_SIZE` (6.25 for 16×16) so flanking lines render correctly across the full grid
+- Fixed CRITICAL #4: Action economy pips were purely cosmetic — markActionUsed() was defined but NEVER called. Now called in resolvePlayerMechanics when category="combat" and combat is active. Imported markActionUsed in dm-agent.ts
+- Fixed HIGH #5: z-5 is not a valid Tailwind class — replaced all 5 instances with z-[5] in CombatGrid.tsx
+- Fixed HIGH #6: Added death save / dying / action economy / concentration rules to DM system prompt (SYSTEM_PROMPT_PLANNING) — new section "СМЕРТЬ И СПАСБРОСКИ СМЕРТИ (D&D 5e)" with 7 rules
+- Fixed HIGH #7: findMonsterByTargetName fallback used (0,0) as origin — now uses the ACTOR's position so the nearest monster to the attacking player takes damage
+- Fixed HIGH #8: Monster flee logic bug — `d > bestDist` found the FARTHEST player instead of nearest. Fixed to `d < bestDist` with `bestDist = Infinity`. Also fixed flee clamp from 9 to GRID_SIZE-1
+- Fixed HIGH #9: Hit/miss detection used fragile `narrativeLine.includes("промах")` substring match — replaced with `result.rolls[0]?.success === false` (uses the actual dice roll success flag)
+- Fixed MEDIUM: Temp HP bar disappeared at full HP (width = 0). Now uses Math.max(5, ...) to ensure minimum visible width
+- Fixed MEDIUM: ActionPip glow shadow was hardcoded amber for all 3 colors — now uses color-specific glow (amber/sky/purple)
+- Fixed MEDIUM: ActionPip "доступно" tooltip was hardcoded Russian — now uses i18n (char.available key added to all 6 languages)
+- Fixed LOW: Dead ternary `ev.damagedPlayer ? null : null` in page.tsx — removed (both branches returned null)
+- Added 2 new i18n keys (char.available, char.used) to all 6 languages
+- lint: 0 errors, tsc: 0 errors
+
+Stage Summary:
+- 4 critical bugs fixed (grid coordinates, AC template literal, flanking SVG, action economy)
+- 5 high-priority bugs fixed (z-index, DM prompt rules, monster fallback, flee logic, hit/miss detection)
+- 3 medium bugs fixed (temp HP bar, ActionPip glow, i18n)
+- DM now knows about death saves, action economy, concentration rules
+- DM grid coordinates now match the actual 16×16 grid
+- Monster flee logic now correctly runs from nearest player (not farthest)
+- Monster target fallback now uses actor position (not corner 0,0)
+- Action economy pips now actually consume on combat actions

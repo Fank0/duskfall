@@ -193,8 +193,8 @@ export const CharacterSheet = memo(function CharacterSheet({
               <div
                 className="absolute top-0 h-full bg-gradient-to-r from-sky-500 to-cyan-400 transition-all duration-500"
                 style={{
-                  left: `${hpPct}%`,
-                  width: `${Math.min(100 - hpPct, (player.tempHp / player.maxHp) * 100)}%`,
+                  left: `${Math.min(hpPct, 100)}%`,
+                  width: `${Math.min(100 - hpPct, Math.max(5, (player.tempHp / player.maxHp) * 100))}%`,
                 }}
                 title={`${tt("char.temp_hp")}: ${player.tempHp}`}
               />
@@ -260,18 +260,21 @@ export const CharacterSheet = memo(function CharacterSheet({
               label={tt("char.action")}
               used={player.actionUsed}
               color="amber"
+              availableLabel={tt("char.available")}
             />
             <ActionPip
               icon={<Clock className="h-2.5 w-2.5" />}
               label={tt("char.bonus_action")}
               used={player.bonusActionUsed}
               color="sky"
+              availableLabel={tt("char.available")}
             />
             <ActionPip
               icon={<Eye className="h-2.5 w-2.5" />}
               label={tt("char.reaction")}
               used={player.reactionUsed}
               color="purple"
+              availableLabel={tt("char.available")}
             />
           </div>
         )}
@@ -405,10 +408,10 @@ export const CharacterSheet = memo(function CharacterSheet({
             {/* AC breakdown line */}
             <div className="mb-2 rounded border border-sky-800/40 bg-sky-950/20 px-2 py-1 text-[9px] text-sky-200">
               {tt("character.ac")} {player.ac} = 10
-              {acBreakdown.dexBonus > 0 ? ` + ${acBreakdown.dexBonus} ({tt("character.dex")})` : acBreakdown.dexBonus < 0 ? ` ${acBreakdown.dexBonus} ({tt("character.dex")})` : ""}
-              {acBreakdown.armor > 0 ? ` + ${acBreakdown.armor} ({tt("character.armor")})` : ""}
-              {acBreakdown.shield > 0 ? ` + ${acBreakdown.shield} ({tt("character.shield")})` : ""}
-              {acBreakdown.other > 0 ? ` + ${acBreakdown.other} ({tt("character.other")})` : ""}
+              {acBreakdown.dexBonus > 0 ? ` + ${acBreakdown.dexBonus} (${tt("character.dex")})` : acBreakdown.dexBonus < 0 ? ` ${acBreakdown.dexBonus} (${tt("character.dex")})` : ""}
+              {acBreakdown.armor > 0 ? ` + ${acBreakdown.armor} (${tt("character.armor")})` : ""}
+              {acBreakdown.shield > 0 ? ` + ${acBreakdown.shield} (${tt("character.shield")})` : ""}
+              {acBreakdown.other > 0 ? ` + ${acBreakdown.other} (${tt("character.other")})` : ""}
             </div>
 
             <Separator className="my-2 bg-border/50" />
@@ -732,20 +735,25 @@ function Vital({ icon, label, value, accent }: { icon: React.ReactNode; label: s
 
 /** BG3-style action economy pip: shows Action / Bonus Action / Reaction availability.
  *  Filled = available, dimmed/used = spent. */
-function ActionPip({ icon, label, used, color }: { icon: React.ReactNode; label: string; used: boolean; color: "amber" | "sky" | "purple" }) {
+function ActionPip({ icon, label, used, color, availableLabel }: { icon: React.ReactNode; label: string; used: boolean; color: "amber" | "sky" | "purple"; availableLabel: string }) {
   const colorClasses = {
     amber: used ? "border-amber-800/40 bg-amber-950/20 text-amber-700/50" : "border-amber-500/60 bg-amber-950/40 text-amber-300",
     sky: used ? "border-sky-800/40 bg-sky-950/20 text-sky-700/50" : "border-sky-500/60 bg-sky-950/40 text-sky-300",
     purple: used ? "border-purple-800/40 bg-purple-950/20 text-purple-700/50" : "border-purple-500/60 bg-purple-950/40 text-purple-300",
+  };
+  const glowColor = {
+    amber: "rgba(251,191,36,0.25)",
+    sky: "rgba(56,189,248,0.25)",
+    purple: "rgba(192,132,252,0.25)",
   };
   return (
     <div
       className={cn(
         "flex flex-1 items-center justify-center gap-0.5 rounded border px-1 py-0.5 text-[8px] font-semibold uppercase transition-all",
         colorClasses[color],
-        !used && "shadow-[0_0_4px_rgba(251,191,36,0.2)]"
       )}
-      title={`${label}: ${used ? "✓" : "доступно"}`}
+      style={!used ? { boxShadow: `0 0 4px ${glowColor[color]}` } : undefined}
+      title={`${label}: ${used ? "✓" : availableLabel}`}
     >
       {icon}
       <span className="truncate">{label}</span>
