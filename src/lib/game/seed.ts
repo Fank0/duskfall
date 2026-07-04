@@ -210,6 +210,20 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       },
     });
   }
+
+  // Auto-equip starting weapon + armor (so the player starts battle-ready).
+  const allItems = await db.inventoryItem.findMany({ where: { roomId, playerName: input.name } });
+  const weapon = allItems.find((it) => it.itemType === "weapon" || it.equipSlot === "weapon");
+  const armor = allItems.find((it) => it.equipSlot === "chest" || it.itemType === "armor" || it.acBonus > 0);
+  const shield = allItems.find((it) => it.equipSlot === "shield");
+  const eqData: Record<string, string> = {};
+  if (weapon) eqData.eqWeapon = weapon.id;
+  if (armor) eqData.eqChest = armor.id;
+  if (shield) eqData.eqShield = shield.id;
+  if (Object.keys(eqData).length > 0) {
+    await db.player.update({ where: { id: player.id }, data: eqData });
+  }
+
   return player;
 }
 
