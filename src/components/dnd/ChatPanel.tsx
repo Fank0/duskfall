@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, ChevronDown, Volume2, Square,
+  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, ChevronDown, Volume2, Square, Search, EyeOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ChatMessageState } from "@/lib/game/types";
@@ -16,9 +16,11 @@ import { cn } from "@/lib/utils";
 
 const QUICK_ACTIONS = [
   { labelKey: "actions.attack", icon: Swords, text: "Я обнажаю оружие и атакую ближайшего врага!" },
-  { labelKey: "actions.explore", icon: Eye, text: "Я внимательно осматриваю местность." },
-  { labelKey: "game.move", icon: Footprints, text: "Я осторожно продвигаюсь вперёд." },
-  { labelKey: "actions.talk", icon: MessageSquareQuote, text: "Я обращаюсь словами." },
+  { labelKey: "actions.explore", icon: Eye, text: "Я внимательно осматриваю местность, ища опасности и подсказки." },
+  { labelKey: "game.move", icon: Footprints, text: "Я осторожно продвигаюсь вперёд, держа оружие наготове." },
+  { labelKey: "actions.talk", icon: MessageSquareQuote, text: "Я осматриваюсь и обращаюсь к любому, кто может меня услышать." },
+  { labelKey: "actions.search", icon: Search, text: "Я обыскиваю помещение — ищу тайники, записки, спрятанные предметы." },
+  { labelKey: "actions.hide", icon: EyeOff, text: "Я пытаюсь укрыться в тенях и двигаюсь бесшумно." },
 ];
 
 /** How many messages to render initially (item 24: chat virtualization). */

@@ -161,6 +161,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     // ===== actions (chat quick actions) =====
     "actions.explore": "Осмотреться",
     "actions.talk": "Говорить",
+    "actions.search": "Обыскать",
+    "actions.hide": "Скрыться",
     "actions.trade": "Торговать",
     "actions.craft": "Крафт",
     "actions.attack": "Атаковать",
@@ -319,6 +321,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     // ===== actions =====
     "actions.explore": "Look around",
     "actions.talk": "Talk",
+    "actions.search": "Search",
+    "actions.hide": "Hide",
     "actions.trade": "Trade",
     "actions.craft": "Craft",
     "actions.attack": "Attack",
@@ -471,6 +475,8 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "actions.explore": "Explorar",
     "actions.talk": "Hablar",
+    "actions.search": "Registrar",
+    "actions.hide": "Esconderse",
     "actions.trade": "Comerciar",
     "actions.craft": "Artesanía",
     "actions.attack": "Atacar",
@@ -619,6 +625,8 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "actions.explore": "Umsehen",
     "actions.talk": "Sprechen",
+    "actions.search": "Durchsuchen",
+    "actions.hide": "Verstecken",
     "actions.trade": "Handeln",
     "actions.craft": "Handwerk",
     "actions.attack": "Angreifen",
@@ -767,6 +775,8 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "actions.explore": "Explorer",
     "actions.talk": "Parler",
+    "actions.search": "Fouiller",
+    "actions.hide": "Se cacher",
     "actions.trade": "Commercer",
     "actions.craft": "Artisanat",
     "actions.attack": "Attaquer",
@@ -917,6 +927,8 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "actions.explore": "环顾",
     "actions.talk": "交谈",
+    "actions.search": "搜查",
+    "actions.hide": "潜行",
     "actions.trade": "交易",
     "actions.craft": "制作",
     "actions.attack": "攻击",
