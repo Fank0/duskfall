@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, Volume2, Square,
+  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, ChevronDown, Volume2, Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ChatMessageState } from "@/lib/game/types";
@@ -74,6 +74,22 @@ export const ChatPanel = memo(function ChatPanel({
   const offsetRef = useRef(0);
   /** Whether the user explicitly asked for older messages (gates the button). */
   const [showLoadMore, setShowLoadMore] = useState(false);
+
+  /**
+   * Scroll-position tracking (Fix 5):
+   *   - atBottomRef: live ref so the scroll handler can update without
+   *     causing re-renders. True when the user is within BOTTOM_THRESHOLD
+   *     pixels of the bottom of the chat list.
+   *   - showJumpBottom: React state that drives the visibility of the
+   *     "scroll to bottom" floating button. Updated only on threshold
+   *     crossings to avoid re-rendering on every scroll event.
+   */
+  const atBottomRef = useRef(true);
+  const [showJumpBottom, setShowJumpBottom] = useState(false);
+  /** Saved scroll height before prepending older messages — used to keep the
+   *  user's viewport anchored to the same message after loadMore(). */
+  const prevScrollHeightRef = useRef<number | null>(null);
+  const BOTTOM_THRESHOLD = 80; // px from bottom considered "at bottom"
 
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
@@ -213,15 +229,60 @@ export const ChatPanel = memo(function ChatPanel({
     setShowLoadMore(messages.length >= VISIBLE_LIMIT);
   }, [messages.length]);
 
-  // Auto-scroll to bottom on new messages / streaming.
+  // Auto-scroll to bottom on new messages / streaming — BUT only if the
+  // user is already at (or near) the bottom of the chat list. If they've
+  // scrolled up to read history, we leave their viewport alone so new
+  // messages don't yank them back down. The "jump to bottom" floating
+  // button appears instead (Fix 5).
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (!el) return;
+    if (atBottomRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, [messages, isThinking, older.length]);
+
+  // Keep atBottomRef + showJumpBottom in sync on every scroll event.
+  // We use a passive listener + rAF debounce so this stays cheap even
+  // during fast wheel scrolling.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        const atBottom = distanceFromBottom <= BOTTOM_THRESHOLD;
+        atBottomRef.current = atBottom;
+        setShowJumpBottom((cur) => (cur !== !atBottom ? !atBottom : cur));
+      });
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  // Smooth-scroll the chat list back to the bottom (Fix 5: "jump to bottom"
+  // floating button when the user has scrolled up to read history).
+  const jumpToBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    atBottomRef.current = true;
+    setShowJumpBottom(false);
+  }, []);
 
   const loadMore = useCallback(async () => {
     if (!roomCode || loadingMore) return;
     setLoadingMore(true);
+    // Remember the current scroll height so we can keep the user's viewport
+    // anchored to the same message after we prepend older ones.
+    const el = scrollRef.current;
+    if (el) prevScrollHeightRef.current = el.scrollHeight;
     try {
       const offset = offsetRef.current;
       const res = await fetch(
@@ -243,6 +304,20 @@ export const ChatPanel = memo(function ChatPanel({
       setLoadingMore(false);
     }
   }, [roomCode, loadingMore]);
+
+  // After older messages are prepended, restore the user's scroll position
+  // so the viewport stays anchored to the same message (instead of jumping
+  // to the top of the newly-loaded older block).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || prevScrollHeightRef.current === null) return;
+    const prev = prevScrollHeightRef.current;
+    const newHeight = el.scrollHeight;
+    // Keep the same distance from the top — older messages pushed the
+    // viewport down by (newHeight - prev) pixels.
+    el.scrollTop = el.scrollTop + (newHeight - prev);
+    prevScrollHeightRef.current = null;
+  }, [older]);
 
   // Input is locked whenever it's not your turn (combat OR exploration),
   // unless you're the only player.
@@ -299,56 +374,73 @@ export const ChatPanel = memo(function ChatPanel({
       )}
 
       {/* Messages */}
-      <div ref={scrollRef} className="fantasy-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-4">
-        {/* "Показать ещё" — fetch older messages via /api/game/chat-history (item 24). */}
-        {showLoadMore && (hasMore === null || hasMore) && (
-          <div className="flex justify-center pb-1">
-            <button
-              type="button"
-              onClick={loadMore}
-              disabled={loadingMore}
-              className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/20 px-3 py-1 text-[11px] text-amber-200 transition-colors hover:bg-stone-800/50 disabled:opacity-50"
-            >
-              {loadingMore ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <ChevronUp className="h-3 w-3" />
-              )}
-              {tt("chat.show_more")}
-            </button>
-          </div>
-        )}
-        {all.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            yourName={yourName}
-            lang={lang}
-            onPlayTTS={playTTS}
-            onStopTTS={stopTts}
-            isTtsLoading={ttsLoadingId === m.id}
-            isTtsPlaying={ttsPlayingId === m.id}
-            anyTtsActive={ttsLoadingId !== null || ttsPlayingId !== null}
-          />
-        ))}
-
-        {isThinking && (
-          <div className="flex items-start gap-2 animate-fade-up">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-700/60 bg-stone-950/80">
-              <Sparkles className="h-4 w-4 text-amber-300 animate-pulse" />
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} className="fantasy-scroll h-full space-y-3 overflow-y-auto p-3 sm:p-4">
+          {/* "Показать ещё" — fetch older messages via /api/game/chat-history (item 24). */}
+          {showLoadMore && (hasMore === null || hasMore) && (
+            <div className="flex justify-center pb-1">
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/20 px-3 py-1 text-[11px] text-amber-200 transition-colors hover:bg-stone-800/50 disabled:opacity-50"
+              >
+                {loadingMore ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ChevronUp className="h-3 w-3" />
+                )}
+                {tt("chat.show_more")}
+              </button>
             </div>
-            <div className="rounded-lg rounded-tl-none border border-border/60 bg-stone-900/60 px-3 py-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-300" />
-                <span className="font-serif italic">{tt("game.dm_thinking")}</span>
-                <span className="flex gap-1">
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.3s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.15s]" />
-                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300" />
-                </span>
+          )}
+          {all.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              yourName={yourName}
+              lang={lang}
+              onPlayTTS={playTTS}
+              onStopTTS={stopTts}
+              isTtsLoading={ttsLoadingId === m.id}
+              isTtsPlaying={ttsPlayingId === m.id}
+              anyTtsActive={ttsLoadingId !== null || ttsPlayingId !== null}
+            />
+          ))}
+
+          {isThinking && (
+            <div className="flex items-start gap-2 animate-fade-up">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-700/60 bg-stone-950/80">
+                <Sparkles className="h-4 w-4 text-amber-300 animate-pulse" />
+              </div>
+              <div className="rounded-lg rounded-tl-none border border-border/60 bg-stone-900/60 px-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-300" />
+                  <span className="font-serif italic">{tt("game.dm_thinking")}</span>
+                  <span className="flex gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.3s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300 [animation-delay:-0.15s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-amber-300" />
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+        </div>
+
+        {/* "Jump to bottom" floating button (Fix 5): shown only when the user
+            has scrolled up away from the latest message. Clicking smooth-scrolls
+            back to the bottom and dismisses the button. */}
+        {showJumpBottom && (
+          <button
+            type="button"
+            onClick={jumpToBottom}
+            aria-label="Прокрутить к последним сообщениям"
+            title="К последним сообщениям"
+            className="absolute bottom-3 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-amber-600/60 bg-stone-900/90 text-amber-200 shadow-lg backdrop-blur transition-all hover:bg-stone-800 hover:text-amber-100 animate-fade-up"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
         )}
       </div>
 

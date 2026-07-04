@@ -1,4 +1,4 @@
-// D&D 5e Conditions system — 10 conditions with gameplay effects.
+// d20 fantasy RPG Conditions system — 10 conditions with gameplay effects.
 //
 // Each condition has a stable `id` (string), a Russian display name, an
 // English name, an emoji icon, a color (for UI hints), a Russian description

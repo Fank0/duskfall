@@ -92,7 +92,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "game.your_turn": "Ваш ход! Действуйте.",
     "game.wait_your_turn": "Дождитесь своей очереди",
     "game.monster_turn": "Ход монстров…",
-    "game.dnd_master": "Мастер Подземелий",
+    "game.dnd_master": "Мастер Игры",
     "game.dm_thinking": "Мастер вершит судьбу…",
     "game.world": "Мир",
 
@@ -173,11 +173,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.dead_placeholder": "Герой пал. Ожидайте новой игры.",
     "chat.waiting_placeholder": "Ожидание хода ({name} действует)…",
     "chat.show_more": "Показать ещё",
-    "chat.master_title": "Мастер Подземелий",
+    "chat.master_title": "Мастер Игры",
 
     // ===== lobby =====
     "lobby.title": "DUSKFALL",
-    "lobby.subtitle": "Кооперативное приключение с ИИ-Мастером Подземелий · D&D 5e",
+    "lobby.subtitle": "Кооперативное приключение с ИИ-Мастером Игры · d20 fantasy RPG",
     "lobby.gather_party": "Соберите отряд",
     "lobby.create_room": "Создать комнату",
     "lobby.create_room_hint": "Стать хостом и пригласить друзей по коду",
@@ -191,7 +191,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.save_no_hero": "Не удалось определить героя в этом сохранении.",
 
     // ===== page header =====
-    "page.header_subtitle": "ИИ Мастер Подземелий · D&D 5e",
+    "page.header_subtitle": "ИИ Мастер Игры · d20 fantasy RPG",
     "page.reset_busy": "Думаю…",
 
     // ===== time of day =====
@@ -233,7 +233,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "game.your_turn": "Your turn! Act now.",
     "game.wait_your_turn": "Wait for your turn",
     "game.monster_turn": "Monsters' turn…",
-    "game.dnd_master": "Dungeon Master",
+    "game.dnd_master": "Game Master",
     "game.dm_thinking": "The DM weaves fate…",
     "game.world": "World",
 
@@ -314,11 +314,11 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.dead_placeholder": "The hero has fallen. Await a new game.",
     "chat.waiting_placeholder": "Waiting for turn ({name} acting)…",
     "chat.show_more": "Show more",
-    "chat.master_title": "Dungeon Master",
+    "chat.master_title": "Game Master",
 
     // ===== lobby =====
     "lobby.title": "DUSKFALL",
-    "lobby.subtitle": "Co-op adventure with an AI Dungeon Master · D&D 5e",
+    "lobby.subtitle": "Co-op adventure with an AI Game Master · d20 fantasy RPG",
     "lobby.gather_party": "Gather your party",
     "lobby.create_room": "Create room",
     "lobby.create_room_hint": "Host a game and invite friends with a code",
@@ -332,7 +332,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.save_no_hero": "Could not identify the hero in this save.",
 
     // ===== page header =====
-    "page.header_subtitle": "AI Dungeon Master · D&D 5e",
+    "page.header_subtitle": "AI Game Master · d20 fantasy RPG",
     "page.reset_busy": "Thinking…",
 
     // ===== time of day =====
@@ -451,7 +451,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.master_title": "Maestro de Mazmorras",
 
     "lobby.title": "DUSKFALL",
-    "lobby.subtitle": "Aventura cooperativa con un DM de IA · D&D 5e",
+    "lobby.subtitle": "Aventura cooperativa con un DM de IA · d20 fantasy RPG",
     "lobby.gather_party": "Reúne tu grupo",
     "lobby.create_room": "Crear sala",
     "lobby.create_room_hint": "Sé anfitrión e invita amigos con un código",
@@ -464,7 +464,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.sign_out_toast": "Has cerrado sesión.",
     "lobby.save_no_hero": "No se pudo identificar al héroe en esta partida guardada.",
 
-    "page.header_subtitle": "DM de IA · D&D 5e",
+    "page.header_subtitle": "DM de IA · d20 fantasy RPG",
     "page.reset_busy": "Pensando…",
 
     "time.dawn": "Amanecer",
@@ -503,7 +503,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "game.your_turn": "Dein Zug! Handle jetzt.",
     "game.wait_your_turn": "Warte auf deinen Zug",
     "game.monster_turn": "Zug der Monster…",
-    "game.dnd_master": "Dungeon Master",
+    "game.dnd_master": "Game Master",
     "game.dm_thinking": "Der DM webt das Schicksal…",
     "game.world": "Welt",
 
@@ -579,10 +579,10 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.dead_placeholder": "Der Held ist gefallen. Warte auf ein neues Spiel.",
     "chat.waiting_placeholder": "Warte auf Zug ({name} handelt)…",
     "chat.show_more": "Mehr anzeigen",
-    "chat.master_title": "Dungeon Master",
+    "chat.master_title": "Game Master",
 
     "lobby.title": "DUSKFALL",
-    "lobby.subtitle": "Kooperatives Abenteuer mit KI-Dungeon-Master · D&D 5e",
+    "lobby.subtitle": "Kooperatives Abenteuer mit KI-Game-Master · d20 fantasy RPG",
     "lobby.gather_party": "Versammle deine Gruppe",
     "lobby.create_room": "Raum erstellen",
     "lobby.create_room_hint": "Host sein und Freunde per Code einladen",
@@ -595,7 +595,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.sign_out_toast": "Du wurdest abgemeldet.",
     "lobby.save_no_hero": "Konnte den Helden in diesem Speicherstand nicht ermitteln.",
 
-    "page.header_subtitle": "KI-Dungeon-Master · D&D 5e",
+    "page.header_subtitle": "KI-Game-Master · d20 fantasy RPG",
     "page.reset_busy": "Denke nach…",
 
     "time.dawn": "Morgendämmerung",
@@ -713,7 +713,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.master_title": "Maître du Donjon",
 
     "lobby.title": "DUSKFALL",
-    "lobby.subtitle": "Aventure coopérative avec un MD IA · D&D 5e",
+    "lobby.subtitle": "Aventure coopérative avec un MD IA · d20 fantasy RPG",
     "lobby.gather_party": "Rassemblez votre groupe",
     "lobby.create_room": "Créer une salle",
     "lobby.create_room_hint": "Être hôte et inviter des amis par code",
@@ -726,7 +726,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.sign_out_toast": "Vous êtes déconnecté.",
     "lobby.save_no_hero": "Impossible d'identifier le héros dans cette sauvegarde.",
 
-    "page.header_subtitle": "MD IA · D&D 5e",
+    "page.header_subtitle": "MD IA · d20 fantasy RPG",
     "page.reset_busy": "Réflexion…",
 
     "time.dawn": "Aube",
@@ -765,7 +765,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "game.your_turn": "你的回合！行动吧。",
     "game.wait_your_turn": "等待你的回合",
     "game.monster_turn": "怪物回合…",
-    "game.dnd_master": "地下城主",
+    "game.dnd_master": "游戏主持",
     "game.dm_thinking": "DM 正在编织命运…",
     "game.world": "世界",
 
@@ -841,10 +841,10 @@ const DICT: Record<Lang, Record<string, string>> = {
     "chat.dead_placeholder": "英雄已倒下。等待新游戏。",
     "chat.waiting_placeholder": "等待回合（{name} 行动中）…",
     "chat.show_more": "显示更多",
-    "chat.master_title": "地下城主",
+    "chat.master_title": "游戏主持",
 
     "lobby.title": "DUSKFALL",
-    "lobby.subtitle": "与 AI 地下城主合作的冒险 · D&D 5e",
+    "lobby.subtitle": "与 AI 游戏主持合作的冒险 · d20 fantasy RPG",
     "lobby.gather_party": "召集你的队伍",
     "lobby.create_room": "创建房间",
     "lobby.create_room_hint": "成为主机并通过代码邀请朋友",
@@ -857,7 +857,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "lobby.sign_out_toast": "您已登出。",
     "lobby.save_no_hero": "无法识别此存档中的英雄。",
 
-    "page.header_subtitle": "AI 地下城主 · D&D 5e",
+    "page.header_subtitle": "AI 游戏主持 · d20 fantasy RPG",
     "page.reset_busy": "思考中…",
 
     "time.dawn": "黎明",

@@ -19,6 +19,11 @@ model Room {
   location     String   @default("Туманный лес, опушка у древних руин")
   turnIndex    Int      @default(0) // index into the initiative order
   introShown   Boolean  @default(false)
+  // dm-context-fix Fix 3: when true, the DM must generate a unique opening
+  // narrative on the first player action (instead of using a hardcoded
+  // template). Set to true in seed.ts; flipped to false after the intro is
+  // generated. Persists across server restarts.
+  introNeeded  Boolean  @default(false)
   explorationActorIndex Int @default(0) // whose turn it is during exploration (index into players by createdAt)
   currentMapX  Int      @default(-1) // world-map x coordinate (-1 = no map yet)
   currentMapY  Int      @default(-1) // world-map y coordinate
@@ -56,6 +61,7 @@ model Room {
   npcs         Npc[]
   traps        Trap[]
   saves        SaveSlot[]
+  storyMemories StoryMemory[]
 }
 
 /// A registered user account (auth-restore). Stores a bcrypt password hash;
@@ -123,6 +129,7 @@ model Player {
   raceName         String   @default("Человек")
   background       String   @default("soldier")
   backgroundName   String   @default("Солдат")
+  backstory        String   @default("")  // player-authored backstory (up to 500 chars)
   xp               Int      @default(0)
   selectedTalents  String   @default("")
   bonusStr         Int      @default(0)
@@ -132,10 +139,12 @@ model Player {
   bonusWis         Int      @default(0)
   bonusCha         Int      @default(0)
   pendingLevelUp   Boolean  @default(false)
+  pendingLevelUps  Int      @default(0) // number of talent picks owed (multi-level jumps)
   pendingASI       Boolean  @default(false) // pending Ability Score Improvement pick (levels 5/9/13/17)
   spellSlots       String   @default("") // JSON {"1":2,"2":0,...}
   maxSpellSlots    String   @default("") // JSON {"1":2,"2":0,...}
   hitDice          Int      @default(8)  // hit die size for short-rest healing
+  shortRestsUsed   Int      @default(0)  // BG3: track short rests between long rests (max 3)
   // ===== Spellbook (spellbook task) =====
   // Comma-separated list of extra spell IDs the player has learned beyond
   // their class base set (e.g. via reading a "scroll of <spell name>" the DM
@@ -362,4 +371,17 @@ model Trap {
   createdAt   DateTime @default(now())
 
   @@index([roomId, mapRoomKey])
+}
+
+/// Persistent story memory — key events, NPC meetings, player choices.
+/// The DM agent reads these to maintain narrative continuity.
+model StoryMemory {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  type      String   @default("event") // event | npc_met | choice | discovery | combat | reward
+  content   String   // what happened (Russian, 1-2 sentences)
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
 }

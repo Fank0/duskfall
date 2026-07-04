@@ -39,14 +39,14 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="font-serif text-sm font-bold text-amber-100 truncate">
+              <h3 className="font-serif text-sm font-bold text-amber-100 whitespace-normal">
                 {entry.name}
               </h3>
               <Badge variant="outline" className={cn("text-[9px] uppercase tracking-wider", colors.badge)}>
                 {categoryLabelRu(entry.category)}
               </Badge>
             </div>
-            <p className="text-[10px] text-muted-foreground italic truncate">
+            <p className="text-xs text-muted-foreground italic whitespace-normal">
               {entry.nameEn} · {entry.size}
             </p>
           </div>
@@ -58,12 +58,12 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
           </div>
         </div>
 
-        <p className="mt-2 text-[11px] leading-snug text-stone-300 line-clamp-3">
+        <p className="mt-2 text-sm leading-snug text-stone-300 whitespace-pre-wrap">
           {entry.description}
         </p>
 
         {/* Stats grid */}
-        <div className="mt-2 grid grid-cols-2 gap-1 text-[10px] sm:grid-cols-4">
+        <div className="mt-2 grid grid-cols-2 gap-1 text-xs sm:grid-cols-4">
           <div className="flex items-center gap-1 rounded bg-stone-950/60 px-1.5 py-1">
             <Heart className="h-3 w-3 text-red-400" />
             <span className="text-muted-foreground">HP</span>
@@ -86,7 +86,7 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
           </div>
         </div>
 
-        <div className="mt-1 flex items-center gap-3 text-[10px] text-muted-foreground">
+        <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <Footprints className="h-3 w-3" /> Ск {entry.speed}
           </span>
@@ -101,7 +101,7 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
             <div className="text-[9px] font-semibold uppercase tracking-wider text-purple-300">
               ⚡ Особая способность
             </div>
-            <p className="mt-0.5 text-[11px] leading-snug text-purple-100">
+            <p className="mt-0.5 text-sm leading-snug text-purple-100">
               {entry.specialAbility}
             </p>
           </div>
@@ -113,7 +113,7 @@ function BestiaryCard({ entry }: { entry: BestiaryEntry }) {
             <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
               <Coins className="h-3 w-3" /> Добыча
             </div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-amber-100">
+            <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-amber-100">
               {entry.loot.gold > 0 && (
                 <span className="font-mono">{entry.loot.gold} зм</span>
               )}
@@ -175,7 +175,7 @@ export function BestiaryPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl xl:max-w-6xl max-h-[90vh] flex flex-col gap-0 p-0">
+      <DialogContent className="xl:max-w-7xl max-h-[90vh] flex flex-col gap-0 p-0">
         <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <BookOpen className="h-5 w-5 text-amber-300" />
@@ -210,7 +210,7 @@ export function BestiaryPanel({
           <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-stone-950/60 p-1">
             <TabsTrigger
               value="all"
-              className="h-7 px-2 text-[10px] data-[state=active]:bg-amber-900/40 data-[state=active]:text-amber-100"
+              className="h-7 px-2 text-xs data-[state=active]:bg-amber-900/40 data-[state=active]:text-amber-100"
             >
               Все ({BESTIARY.length})
             </TabsTrigger>
@@ -221,7 +221,7 @@ export function BestiaryPanel({
                   key={c}
                   value={c}
                   className={cn(
-                    "h-7 px-2 text-[10px] gap-1 data-[state=active]:bg-stone-800",
+                    "h-7 px-2 text-xs gap-1 data-[state=active]:bg-stone-800",
                     "data-[state=active]:text-stone-100"
                   )}
                 >
@@ -233,7 +233,7 @@ export function BestiaryPanel({
           </TabsList>
 
           <TabsContent value={activeCategory} className="mt-2 min-h-0 flex-1 overflow-hidden">
-            <ScrollArea className="h-full pr-2">
+            <div className="flex-1 overflow-y-auto pr-2 fantasy-scroll" style={{ maxHeight: "calc(85vh - 120px)" }}>
               {filtered.length === 0 ? (
                 <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
                   Ничего не найдено по запросу «{query}».
@@ -248,7 +248,7 @@ export function BestiaryPanel({
                   ))}
                 </div>
               )}
-            </ScrollArea>
+            </div>
           </TabsContent>
         </Tabs>
       </DialogContent>

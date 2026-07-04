@@ -15,10 +15,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DUSKFALL — AI Dungeon Master",
+  title: "DUSKFALL — AI Game Master",
   description:
-    "Кооперативный виртуальный стол для D&D 5e с автономным ИИ-Мастером Подземелий. Тёмное фэнтези, тактический бой, живые повествования, игра с друзьями.",
-  keywords: ["D&D", "DnD", "VTT", "AI Dungeon Master", "Baldur's Gate", "dark fantasy"],
+    "Кооперативный виртуальный стол для d20 fantasy RPG с автономным ИИ-Мастером Игры. Тёмное фэнтези, тактический бой, живые повествования, игра с друзьями.",
+  keywords: ["d20 fantasy", "DnD", "VTT", "AI Game Master", "Baldur's Gate", "dark fantasy"],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },

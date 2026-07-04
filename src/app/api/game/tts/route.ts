@@ -9,7 +9,7 @@ export const maxDuration = 60;
 const ttsLimiter = rateLimit({ windowMs: 10 * 60_000, max: 20, label: "tts" });
 
 /**
- * TTS voice narration for the AI Dungeon Master (task tts-voice-dm).
+ * TTS voice narration for the AI Game Master (task tts-voice-dm).
  *
  * POST /api/game/tts
  * Body: { text: string, lang?: "ru"|"en"|"es"|"de"|"fr"|"zh", voice?: "male"|"female"|"narrator" }
@@ -100,18 +100,28 @@ export async function POST(req: NextRequest) {
     const zai = await getZAI();
 
     let audioBuffer: Buffer | null = null;
+    let upstreamContentType = "audio/wav";
     try {
-      // Pass the request AbortSignal so a client disconnect cancels the TTS call.
+      // IMPORTANT: the z-ai-web-dev-sdk TTS engine only supports `wav` and
+      // `pcm` response formats (NOT mp3). The SDK returns the raw Response
+      // object so we can read the upstream Content-Type header to forward it
+      // verbatim — this prevents the browser from refusing to play audio
+      // because of a Content-Type / data mismatch.
+      // The second `{ signal }` arg is silently ignored by the SDK (it only
+      // accepts one body arg) — kept for forward-compat with future SDK versions.
       const response = await zai.audio.tts.create(
         {
           input: prepared,
           voice,
           speed: 1.0,
-          response_format: "mp3",
+          response_format: "wav",
           stream: false,
         },
         { signal: req.signal }
       );
+      // Forward the upstream Content-Type so the browser knows how to decode.
+      const ct = response.headers?.get?.("content-type");
+      if (ct && ct.trim()) upstreamContentType = ct.trim();
       const arrayBuffer = await response.arrayBuffer();
       audioBuffer = Buffer.from(new Uint8Array(arrayBuffer));
     } catch (e: any) {
@@ -133,7 +143,10 @@ export async function POST(req: NextRequest) {
     return new NextResponse(audioBytes, {
       status: 200,
       headers: {
-        "Content-Type": "audio/mpeg",
+        // Forward the actual upstream audio content type (audio/wav or
+        // audio/pcm) — NOT a hard-coded audio/mpeg, which mismatches the wav
+        // data the SDK actually returns and breaks browser playback.
+        "Content-Type": upstreamContentType,
         "Content-Length": audioBuffer.length.toString(),
         "Cache-Control": "no-store, no-cache, must-revalidate",
         "X-TTS-Lang": lang,

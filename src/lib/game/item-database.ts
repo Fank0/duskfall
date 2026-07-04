@@ -3,7 +3,7 @@
 // 108 entries organized by rarity:
 //   Common (45), Uncommon (30), Rare (20), Very Rare (8), Legendary (5).
 // Each entry has Russian primary name + English secondary name, balanced
-// D&D 5e values (gold-piece value, weight, AC bonus, stat bonuses, damage
+// d20 fantasy RPG values (gold-piece value, weight, AC bonus, stat bonuses, damage
 // notation, enchantment type, charges).
 //
 // Includes set items: the three dragon-scale pieces form the "Драконья

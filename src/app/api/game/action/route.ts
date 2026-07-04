@@ -5,6 +5,7 @@ import {
   streamNarrativeAction,
 } from "@/lib/game/dm-agent";
 import { getSnapshot, invalidateSnapshotCache } from "@/lib/game/state";
+import { generateSceneImage } from "@/lib/game/scene-image";
 import { rateLimit, rateLimitedResponse } from "@/lib/game/rate-limit";
 import { validateActionText, validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 import { sanitizeLLMOutput } from "@/lib/game/sanitize";
@@ -123,6 +124,32 @@ export async function POST(req: NextRequest) {
             },
           });
           invalidateSnapshotCache(room.id);
+
+          // dm-context-fix Fix 4: trigger scene image generation on the
+          // SERVER side (fire-and-forget) when the DM's plan requested an
+          // image. This is the primary trigger for the first scene image —
+          // it ensures the first image matches the DM's first description
+          // (the intro's imagePrompt), not a template. page.tsx also fires
+          // /api/game/image as a client-side fallback; if both fire, the
+          // second setActiveScene call simply overwrites the first.
+          if (mech.imageNeeded && mech.imagePrompt) {
+            generateSceneImage(room.id, mech.imagePrompt, "Сцена")
+              .then((url) => {
+                if (url) {
+                  invalidateSnapshotCache(room.id);
+                  logger.info("scene image generated from DM plan", {
+                    roomCode,
+                    imageUrl: url,
+                  });
+                }
+              })
+              .catch((e) => {
+                logger.warn("scene image generation failed", {
+                  roomCode,
+                  err: (e as Error)?.message?.slice(0, 100),
+                });
+              });
+          }
         }
         send({ type: "done" });
         succeeded = true;
@@ -133,14 +160,22 @@ export async function POST(req: NextRequest) {
           logger.info("action stream aborted (client disconnect)", { roomCode, playerName });
           succeeded = true; // not a server fault
         } else {
-          const status = e?.message?.includes("не ваш ход") || e?.message?.includes("Павший") ? 403 : 500;
-          send({ type: "error", error: e?.message ?? "Ошибка Мастера.", status });
+          // Turn enforcement / dead-hero errors return 403 (forbidden);
+          // everything else is a 500 (server fault).
+          const msg: string = e?.message ?? "";
+          const isForbidden =
+            msg.includes("не ваш ход") ||
+            msg.includes("Дождитесь своей очереди") ||
+            msg.includes("Дождитесь своей инициативы") ||
+            msg.includes("Павший");
+          const status = isForbidden ? 403 : 500;
+          send({ type: "error", error: msg || "Ошибка Мастера.", status });
           metrics.recordApiRequest(false);
           metrics.recordError();
           logger.error("action stream failed", {
             roomCode,
             playerName,
-            error: e?.message ?? String(e),
+            error: msg || String(e),
           });
         }
       } finally {

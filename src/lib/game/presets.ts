@@ -1,4 +1,4 @@
-// Playable content for the character creator — D&D 5e / Baldur's Gate 3 style.
+// Playable content for the character creator — d20 fantasy RPG / Baldur's Gate 3 style.
 //
 // 12 classes, 9 races, 10 backgrounds. Stats shown are the class BASE array;
 // the chosen race's bonuses are applied on top at creation time.
@@ -373,7 +373,7 @@ export function applyRaceBonuses(base: Stats, race: RacePreset): Stats {
   return out;
 }
 
-// ---------- Spell slots (D&D 5e SRD, levels 1-5) ----------
+// ---------- Spell slots (d20 fantasy RPG SRD, levels 1-5) ----------
 /** Classes that can cast spells (and thus have spell slots). */
 export const CASTER_CLASSES: Set<string> = new Set([
   "wizard", "sorcerer", "warlock", "cleric", "druid", "bard", "ranger", "paladin",
@@ -384,7 +384,7 @@ export function isCasterClass(classId: string): boolean {
   return CASTER_CLASSES.has(classId.toLowerCase());
 }
 
-/** Full-caster spell slots per level (D&D 5e SRD, levels 1-5). */
+/** Full-caster spell slots per level (d20 fantasy RPG SRD, levels 1-5). */
 const FULL_CASTER_SLOTS: Record<number, Record<string, number>> = {
   1: { "1": 2 },
   2: { "1": 3 },
@@ -420,7 +420,7 @@ export function maxSpellSlotsForLevel(charClass: string, level: number): Record<
   return out;
 }
 
-/** Hit die size per class (D&D 5e SRD). */
+/** Hit die size per class (d20 fantasy RPG SRD). */
 const HIT_DICE: Record<string, number> = {
   fighter: 10, barbarian: 12, paladin: 10, ranger: 10, rogue: 8, monk: 8,
   wizard: 6, sorcerer: 6, warlock: 8, cleric: 8, druid: 8, bard: 8,

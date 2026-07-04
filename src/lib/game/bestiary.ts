@@ -1,4 +1,4 @@
-// DUSKFALL bestiary — a curated catalogue of 50+ D&D 5e monsters grouped
+// DUSKFALL bestiary — a curated catalogue of 50+ d20 fantasy RPG monsters grouped
 // into 7 categories. Each entry carries balanced stats (CR 1/8 → 20) plus
 // optional special abilities and loot tables.
 //
@@ -138,7 +138,7 @@ export interface BestiaryEntry {
   attackBonus: number;
   /** Speed in grid cells per round. */
   speed: number;
-  /** D&D 5e size: Tiny / Small / Medium / Large / Huge / Gargantuan. */
+  /** d20 fantasy RPG size: Tiny / Small / Medium / Large / Huge / Gargantuan. */
   size: string;
   /** Russian description / flavour text. */
   description: string;

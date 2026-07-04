@@ -51,14 +51,6 @@ prompt
 
 server.log
 # Skills directory
-/skills/
-# tool results (agent artifacts)
-tool-results/
-
-# Large binaries — not needed in repo
+/skills/upload/
 download/
-upload/
-preview-*.png
 tool-results/
-dev.log
-*.log

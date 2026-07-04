@@ -1,4 +1,4 @@
-// Shared game types for the D&D 5e VTT AI Dungeon Master (multiplayer).
+// Shared game types for the d20 fantasy RPG VTT AI Game Master (multiplayer).
 
 export type ActionCategory =
   | "combat"
@@ -188,6 +188,8 @@ export interface PlayerState {
   raceName: string;
   background: string;
   backgroundName: string;
+  /** Player-authored backstory (up to 500 chars). Empty string when not set. */
+  backstory: string;
   xp: number;
   selectedTalents: string[];
   bonusStr: number;
@@ -197,6 +199,7 @@ export interface PlayerState {
   bonusWis: number;
   bonusCha: number;
   pendingLevelUp: boolean;
+  pendingLevelUps: number;
   /** When true, the player must pick an ASI (Ability Score Improvement, +2 to a chosen stat) — granted at levels 5/9/13/17. */
   pendingASI: boolean;
   /** Current spell slots per level: {"1":2,"2":0,...} */
@@ -205,6 +208,8 @@ export interface PlayerState {
   maxSpellSlots: Record<string, number>;
   /** Hit die size (e.g. 8 for d8). */
   hitDice: number;
+  /** BG3: short rests used between long rests (max 3). */
+  shortRestsUsed: number;
   /**
    * Extra spell IDs the player has learned beyond their class base set
    * (e.g. by reading a scroll of <spell name> the DM agent granted via the
@@ -502,6 +507,8 @@ export interface StartLocation {
   id: string;
   name: string;
   prompt: string; // image prompt (English)
-  intro: string; // Russian opening narrative template; {name} = host name
+  // dm-context-fix Fix 3: the hardcoded `intro` template was REMOVED — the DM
+  // now generates a unique opening narrative on the first player action via
+  // the LLM (see Room.introNeeded + dm-agent.resolvePlayerMechanics).
   monsters: { name: string; label: string; hp: number; maxHp: number; ac: number; damageNotation: string; attackBonus: number; posX: number; posY: number; color: string; description: string }[];
 }

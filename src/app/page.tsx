@@ -32,9 +32,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
-import type { GameStateSnapshot, NpcState, ResolvedEvent } from "@/lib/game/types";
+import type { GameStateSnapshot, NpcState, ResolvedEvent, InventoryItemState } from "@/lib/game/types";
 import { t } from "@/lib/game/i18n";
-import { findNearestMonsterName, buildAbilityQuickText, classifyAbilityTargeting, type QuickActionContext } from "@/lib/game/quick-use";
+import { findNearestMonsterName, buildAbilityQuickText, buildItemQuickText, classifyAbilityTargeting, type QuickActionContext } from "@/lib/game/quick-use";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 
 // ===== Lazy-loaded heavy modals (item 24: dynamic import with ssr:false) =====
@@ -155,8 +155,8 @@ export default function Home() {
   // When the player clicks a damage-dealing ability in combat, we enter
   // "ability" targeting mode and wait for them to click a monster on the grid.
   // AoE spells enter "aoe" mode and wait for a cell click.
-  const [targetingMode, setTargetingMode] = useState<"none" | "ability" | "aoe">("none");
-  const [targetingAbility, setTargetingAbility] = useState<Ability | null>(null);
+  const [targetingMode, setTargetingMode] = useState<"none" | "ability" | "aoe" | "item">("none");
+  const [targetingAbility, setTargetingAbility] = useState<Ability | InventoryItemState | null>(null);
 
   // UI customization settings (item 21) — read at the top so the hook order is stable.
   const settings = useSettings();
@@ -345,6 +345,13 @@ export default function Home() {
         let event: ResolvedEvent | null = null;
         let imgPrompt: string | null = null;
         let imgNeeded = false;
+        // dm-context-fix Fix 4: capture the scene image URL from the mechanics
+        // snapshot so page.tsx can decide whether to fire the client-side
+        // image-generation fallback. The server-side action route already
+        // fires image generation when imageNeeded=true; page.tsx only fires
+        // when the snapshot's scene is missing or still the placeholder
+        // (i.e., the first action's image hasn't been generated yet).
+        let mechanicsSceneImageUrl: string | null | undefined = undefined;
 
         const flush = async () => {
           // Once mechanics arrive, update state immediately so the player
@@ -367,6 +374,9 @@ export default function Home() {
             if (msg.type === "mechanics") {
               event = msg.event;
               setSnapshot(msg.snapshot);
+              // dm-context-fix Fix 4: capture the scene image URL from the
+              // mechanics snapshot for the image-gen fallback decision.
+              mechanicsSceneImageUrl = msg.snapshot?.scene?.imageUrl ?? null;
               if (event) {
                 imgPrompt = event.imagePrompt;
                 imgNeeded = event.imageNeeded;
@@ -478,7 +488,19 @@ export default function Home() {
         }
 
         // Background image generation — does NOT block the UI.
-        if (imgNeeded && imgPrompt) {
+        // dm-context-fix Fix 4: page.tsx is the FALLBACK image-gen trigger.
+        // The server-side action route already fires image generation when
+        // imageNeeded=true. To avoid double-generation on every action, we
+        // only fire the client-side fallback when the snapshot's scene is
+        // missing or still the placeholder (i.e., the first scene image
+        // hasn't been generated yet — typically the first action of a fresh
+        // room). Subsequent actions rely on the server-side trigger.
+        const PLACEHOLDER_SCENE = "/scenes/forest-ruins.png";
+        const sceneIsPlaceholder =
+          mechanicsSceneImageUrl === null ||
+          mechanicsSceneImageUrl === undefined ||
+          mechanicsSceneImageUrl === PLACEHOLDER_SCENE;
+        if (imgNeeded && imgPrompt && sceneIsPlaceholder) {
           setIsGeneratingImage(true);
           fetch("/api/game/image", {
             method: "POST",
@@ -800,8 +822,8 @@ export default function Home() {
   // BottomPanel / CharacterSheet call this when the player clicks a damage
   // ability or AoE spell during combat. We store the ability + mode and wait
   // for a monster / cell click on the grid.
-  const requestAbilityTargeting = useCallback((ability: Ability, mode: "ability" | "aoe") => {
-    setTargetingAbility(ability);
+  const requestAbilityTargeting = useCallback((target: Ability | InventoryItemState, mode: "ability" | "aoe" | "item") => {
+    setTargetingAbility(target);
     setTargetingMode(mode);
   }, []);
 
@@ -814,14 +836,18 @@ export default function Home() {
   // build the action text with that monster as the explicit target and send
   // it through the normal SSE pipeline.
   const handleMonsterTargetClick = useCallback((monsterId: string) => {
-    if (!targetingAbility || targetingMode !== "ability" || !snapshot) return;
+    if (!targetingAbility || (targetingMode !== "ability" && targetingMode !== "item") || !snapshot) return;
     const monster = snapshot.monsters.find((m) => m.id === monsterId);
     if (!monster) return;
     const ctx: QuickActionContext = {
       combatActive: true,
       nearestMonsterName: monster.name,
     };
-    sendAction(buildAbilityQuickText(targetingAbility, ctx));
+    if (targetingMode === "item" && "itemName" in targetingAbility) {
+      sendAction(buildItemQuickText(targetingAbility, ctx));
+    } else {
+      sendAction(buildAbilityQuickText(targetingAbility as Ability, ctx));
+    }
     cancelTargeting();
   }, [targetingAbility, targetingMode, snapshot, sendAction, cancelTargeting]);
 
@@ -830,8 +856,8 @@ export default function Home() {
   // affected based on the spell's shape + size.
   const handleCellTargetClick = useCallback((x: number, y: number) => {
     if (!targetingAbility || targetingMode !== "aoe") return;
-    const name = targetingAbility.name;
-    const slotSuffix = targetingAbility.slotLevel && targetingAbility.slotLevel > 0
+    const name = "name" in targetingAbility ? targetingAbility.name : "itemName" in targetingAbility ? targetingAbility.itemName : "заклинание";
+    const slotSuffix = "slotLevel" in targetingAbility && targetingAbility.slotLevel && targetingAbility.slotLevel > 0
       ? ` (круг ${targetingAbility.slotLevel})`
       : "";
     sendAction(`Я кастую «${name}»${slotSuffix} в клетку (${x}, ${y})!`);
@@ -949,6 +975,25 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [anyModalOpen, isThinking, targetingMode, triggerAbilityByIndex, sendAction, handleRest]);
 
+  // Bug 9: apply the UI scale class directly to <html> (documentElement) so
+  // that Tailwind's rem-based spacing utilities (p-3, text-sm, gap-2, etc.)
+  // scale with the chosen font-size. Setting font-size on a wrapper div does
+  // NOT scale rem units (rem is anchored to <html>'s font-size, not the
+  // parent's), so the previous implementation only resized a handful of
+  // explicitly px-sized elements and the rest of the UI stayed put.
+  // This useEffect must run BEFORE any early returns (Lobby / LoadingScreen)
+  // so the hook order is stable across renders.
+  const scaleClass = `ui-scale-${settings.uiScale}`;
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove("ui-scale-100", "ui-scale-125", "ui-scale-150");
+    root.classList.add(scaleClass);
+    return () => {
+      root.classList.remove("ui-scale-100", "ui-scale-125", "ui-scale-150");
+      root.classList.add("ui-scale-100");
+    };
+  }, [scaleClass]);
+
   // ===== Lobby =====
   if (!session) {
     return <Lobby onEntered={handleEntered} />;
@@ -975,7 +1020,6 @@ export default function Home() {
 
   // UI customization (item 21): theme + scale, read from the settings store above.
   const themeAttr = settings.theme === "default" ? undefined : settings.theme;
-  const scaleClass = `ui-scale-${settings.uiScale}`;
 
   return (
     <ErrorBoundary>
@@ -1149,19 +1193,6 @@ export default function Home() {
           </Button>
         </div>
 
-        {/* Initiative tracker */}
-        {snapshot.combatActive && (
-          <div className="px-3 pb-2 sm:px-4">
-            <InitiativeTracker
-              initiatives={snapshot.initiatives}
-              turnIndex={snapshot.turnIndex}
-              players={snapshot.players}
-              monsters={snapshot.monsters}
-              combatActive={snapshot.combatActive}
-              round={snapshot.round}
-            />
-          </div>
-        )}
       </header>
 
       {/* ===== Main =====
@@ -1201,6 +1232,18 @@ export default function Home() {
                 onRequestTargeting={requestAbilityTargeting}
               />
             )}
+            {snapshot.combatActive && (
+              <div className="shrink-0">
+                <InitiativeTracker
+                  initiatives={snapshot.initiatives}
+                  turnIndex={snapshot.turnIndex}
+                  players={snapshot.players}
+                  monsters={snapshot.monsters}
+                  combatActive={snapshot.combatActive}
+                  round={snapshot.round}
+                />
+              </div>
+            )}
             <div className="min-h-0 flex-1">
               <DiceLog rolls={snapshot.diceLog} />
             </div>
@@ -1238,9 +1281,9 @@ export default function Home() {
               <div className="flex items-center gap-2 rounded-md border border-amber-500/60 bg-amber-950/50 px-2.5 py-1.5 text-xs text-amber-200 shadow">
                 <Crosshair className="h-3.5 w-3.5 shrink-0 text-amber-300" />
                 <span className="min-w-0 flex-1 truncate">
-                  {targetingMode === "ability"
-                    ? `Выберите цель для «${targetingAbility.name}»`
-                    : `Выберите точку для «${targetingAbility.name}»`}
+                  {targetingMode === "ability" || targetingMode === "item"
+                    ? `Выберите цель для «${"name" in targetingAbility ? targetingAbility.name : "itemName" in targetingAbility ? targetingAbility.itemName : ""}»`
+                    : `Выберите точку для «${"name" in targetingAbility ? targetingAbility.name : "itemName" in targetingAbility ? targetingAbility.itemName : ""}»`}
                 </span>
                 <button
                   type="button"
@@ -1284,6 +1327,10 @@ export default function Home() {
             combatActive={snapshot.combatActive}
             nearestMonsterName={nearestMonsterName}
             onRequestTargeting={requestAbilityTargeting}
+            onRest={handleRest}
+            isThinking={isThinking}
+            isDead={isDead}
+            isYourTurn={isYourTurn}
           />
         )}
       </main>
@@ -1351,7 +1398,7 @@ export default function Home() {
       {/* ===== Bestiary modal (item 4) ===== */}
       <BestiaryPanel open={bestiaryOpen} onOpenChange={setBestiaryOpen} />
       {/* ===== Spellbook modal (item 2 of spellbook task) ===== */}
-      <SpellbookPanel open={spellbookOpen} onOpenChange={setSpellbookOpen} />
+      <SpellbookPanel open={spellbookOpen} onOpenChange={setSpellbookOpen} player={you ?? null} />
       {/* ===== Item database modal (item 2 of item-db task) ===== */}
       <ItemDatabasePanel open={itemDbOpen} onOpenChange={setItemDbOpen} />
       </div>

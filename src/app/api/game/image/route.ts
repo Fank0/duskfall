@@ -82,24 +82,26 @@ export async function POST(req: NextRequest) {
     }
 
     if (!fs.existsSync(SCENES_DIR)) fs.mkdirSync(SCENES_DIR, { recursive: true });
-    const zai = await getZAI();
     const fullPrompt = `${prompt}, dark fantasy, moody atmospheric lighting, painterly digital concept art, highly detailed, cinematic, dramatic shadows`;
 
     let imageUrl = "";
     try {
-      // Pass the request AbortSignal so a client disconnect cancels the SDK call.
-      const response = await zai.images.generations.create(
-        { prompt: fullPrompt, size: "1024x1024" },
-        { signal: req.signal }
-      );
-      const base64 = response.data?.[0]?.base64;
-      if (base64) {
-        const filename = `scene_${Date.now()}.png`;
-        fs.writeFileSync(path.join(SCENES_DIR, filename), Buffer.from(base64, "base64"));
-        imageUrl = `/scenes/${filename}`;
+      // Pollinations.ai (free, no API key required)
+      const encoded = encodeURIComponent(fullPrompt.slice(0, 500));
+      const seed = Math.floor(Math.random() * 1000000);
+      const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&seed=${seed}&nologo=true&model=flux`;
+      const imgRes = await fetch(pollinationsUrl, { signal: req.signal ?? AbortSignal.timeout(60000) });
+      if (imgRes.ok) {
+        const buf = Buffer.from(new Uint8Array(await imgRes.arrayBuffer()));
+        if (buf.length > 1000) {
+          // Save to /tmp/duskfall-scenes/ (writable at runtime, unlike public/)
+          if (!fs.existsSync(TMP_SCENES_DIR)) fs.mkdirSync(TMP_SCENES_DIR, { recursive: true });
+          const filename = `scene_${Date.now()}.png`;
+          fs.writeFileSync(path.join(TMP_SCENES_DIR, filename), buf);
+          imageUrl = `/api/scene-img?file=${filename}`;
+        }
       }
     } catch (e: any) {
-      // AbortError is expected when the client disconnects — don't log it as an error.
       if (e?.name !== "AbortError") {
         console.error("[api/game/image] generation failed:", e);
       }

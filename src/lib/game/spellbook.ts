@@ -1,4 +1,4 @@
-// DUSKFALL spellbook — a curated catalogue of 30+ D&D 5e SRD spells grouped
+// DUSKFALL spellbook — a curated catalogue of 30+ d20 fantasy RPG SRD spells grouped
 // by school and level (cantrips → level 5). Each entry carries the full
 // mechanical block (casting time, range, duration, components, damage, save,
 // AoE) plus Russian + English names.
@@ -165,7 +165,7 @@ export interface Spell {
 
 // ---------- Spell catalogue (34 entries: 4 cantrips + 8 L1 + 6 L2 + 6 L3 + 5 L4 + 5 L5) ----------
 //
-// Mechanics sourced from the D&D 5e SRD. Russian descriptions follow dnd.su
+// Mechanics sourced from the d20 fantasy RPG SRD. Russian descriptions follow dnd.su
 // conventions. Where the task spec lists a spell at a non-SRD level (e.g.
 // Fireball at L2 instead of L3, Cone of Cold at L3 instead of L5), we keep
 // the spec's level and note it in the description; upcast variants get a

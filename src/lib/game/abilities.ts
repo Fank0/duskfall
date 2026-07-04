@@ -1,6 +1,6 @@
 // Ability catalog: innate (racial), class features, consumable scroll spells,
 // and spellbook spells known by caster classes.
-// Sources: D&D 5e SRD / dnd.su. Used both in the character creator preview
+// Sources: d20 fantasy RPG SRD / dnd.su. Used both in the character creator preview
 // and the in-game character sheet.
 
 import type { PlayerState, InventoryItemState } from "./types";

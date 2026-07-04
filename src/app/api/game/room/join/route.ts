@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
     const raceId = (body?.raceId ?? "human").toString();
     const backgroundId = (body?.backgroundId ?? "soldier").toString();
     const bonusStats = body?.bonusStats ?? { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
+    const backstoryRaw = (body?.backstory ?? "").toString();
+    const backstory = backstoryRaw.slice(0, 500);
 
     const room = await getRoomByCode(roomCode);
     if (!room) {
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
       positionIndex: playerCount,
       portraitUrl: null,
       bonusStats,
+      backstory,
     });
 
     // ===== Save-slot binding (auth-restore) =====

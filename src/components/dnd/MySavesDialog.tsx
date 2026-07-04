@@ -149,8 +149,8 @@ export function MySavesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg max-h-[88vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="px-5 pt-5 pb-3 text-left">
           <DialogTitle className="flex items-center gap-2 font-serif gold-text">
             <Save className="h-5 w-5" /> Мои сохранения
           </DialogTitle>
@@ -160,6 +160,7 @@ export function MySavesDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <div className="fantasy-scroll flex-1 overflow-y-auto px-5 pb-5">
         {loading && (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Загрузка сохранений…
@@ -282,6 +283,7 @@ export function MySavesDialog({
             ))}
           </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   );

@@ -140,7 +140,18 @@
   --chart-1: oklch(0.60 0.13 220);
 }
 
-/* ===== UI scale (item 21) — base font-size on the root wrapper ===== */
+/* ===== UI scale (item 21) — base font-size on the root element =====
+ * Bug 9: these classes are applied to <html> (documentElement) from
+ * page.tsx via useEffect, NOT to a wrapper div. Tailwind's spacing
+ * utilities use rem units, which are anchored to <html>'s font-size —
+ * so changing the font-size here scales the entire UI (text, padding,
+ * gaps, etc.). Applying the class to a wrapper div does NOT work because
+ * rem does not cascade from parent divs. */
+html.ui-scale-100 { font-size: 16px; }
+html.ui-scale-125 { font-size: 20px; }
+html.ui-scale-150 { font-size: 24px; }
+/* Backwards-compat: keep the bare selector working too (e.g. if some
+ * other component ever applies the class to a non-<html> element). */
 .ui-scale-100 { font-size: 16px; }
 .ui-scale-125 { font-size: 20px; }
 .ui-scale-150 { font-size: 24px; }

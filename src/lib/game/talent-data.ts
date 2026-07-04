@@ -1,4 +1,4 @@
-// Class talents for DUSKFALL (D&D 5e / BG3-flavored VTT).
+// Class talents for DUSKFALL (d20 fantasy RPG / BG3-flavored VTT).
 // 12 classes × 10 talents = 120 talents. Names & descriptions in Russian.
 // Effects are modest, suitable for a level-2 character.
 

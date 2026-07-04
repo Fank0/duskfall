@@ -11,10 +11,13 @@ import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
+/** BG3 mechanic: max 3 short rests between long rests. */
+const MAX_SHORT_RESTS = 3;
+
 /** POST /api/game/rest
  * Body: { roomCode, playerName, restType: "short" | "long" }
- * Short rest: roll hit dice, heal half; warlock slots restored.
- * Long rest: full HP, all slots restored, short-duration conditions cleared. */
+ * Short rest: roll hit dice, heal half; warlock slots restored. Max 3 between long rests (BG3).
+ * Long rest: full HP, all slots restored, short-duration conditions cleared, reset short rest counter. */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -53,6 +56,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // BG3: check short rest limit
+    if (restType === "short" && player.shortRestsUsed >= MAX_SHORT_RESTS) {
+      return NextResponse.json(
+        { ok: false, error: `Исчерпаны короткие отдыхи (${MAX_SHORT_RESTS}/${MAX_SHORT_RESTS}). Нужен долгий отдых для восстановления.` },
+        { status: 400 }
+      );
+    }
+
     const round = room.round;
     const lines: string[] = [];
     lines.push(`${playerName} отдыхает...`);
@@ -75,8 +86,12 @@ export async function POST(req: NextRequest) {
       if (player.charClass.toLowerCase() === "warlock") {
         lines.push("Ячейки заклинаний колдуна восстановлены.");
       }
+      // Increment short rest counter (BG3)
+      const newCount = player.shortRestsUsed + 1;
+      await db.player.update({ where: { id: player.id }, data: { shortRestsUsed: newCount } });
+      lines.push(`Короткие отдыхи: ${newCount}/${MAX_SHORT_RESTS}.`);
     } else {
-      // Long rest: full HP + all slots restored.
+      // Long rest: full HP + all slots restored + reset short rest counter.
       const missing = player.maxHp - player.hp;
       if (missing > 0) {
         await healPlayer(room.id, playerName, missing);
@@ -84,6 +99,9 @@ export async function POST(req: NextRequest) {
       lines.push(`Долгий отдых: HP восстановлены до ${player.maxHp}.`);
       await restoreAllSpellSlots(room.id, playerName);
       lines.push("Все ячейки заклинаний восстановлены.");
+      // Reset short rest counter
+      await db.player.update({ where: { id: player.id }, data: { shortRestsUsed: 0 } });
+      lines.push(`Короткие отдыхи восстановлены: 0/${MAX_SHORT_RESTS}.`);
       // Clear short-duration conditions (duration <= 3); keep long curses.
       const conds = await db.condition.findMany({ where: { roomId: room.id, targetName: playerName } });
       for (const c of conds) {

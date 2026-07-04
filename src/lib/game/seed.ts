@@ -33,6 +33,8 @@ export interface CreatePlayerInput {
   portraitUrl?: string | null;
   // Point-buy: how many additional points to add to each stat (beyond class base + race bonus).
   bonusStats?: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+  // Player-authored backstory (up to 500 chars). Stored verbatim on the Player row.
+  backstory?: string;
 }
 
 /** Seed a freshly-created room with host + hidden enemies (from a random location) + scene + intro. */
@@ -46,17 +48,9 @@ export async function seedRoomContent(roomId: string, input: CreatePlayerInput) 
     data: loc.monsters.map((m) => ({ ...m, roomId, isActive: false })),
   });
 
-  // Opening scene (use a forest placeholder until the AI regenerates art; the
-  // title/prompt carry the real location so the UI shows the right name).
-  await db.scene.create({
-    data: {
-      roomId,
-      imageUrl: "/scenes/forest-ruins.png",
-      prompt: loc.prompt,
-      title: loc.name,
-      isActive: true,
-    },
-  });
+  // NO placeholder scene — the room/create route generates a real image
+  // from the DM's intro description via Pollinations.ai immediately.
+  // Leaving this out prevents the placeholder from showing up.
 
   // Update the room's location label.
   await db.room.update({ where: { id: roomId }, data: { location: loc.name } });
@@ -73,14 +67,11 @@ export async function seedRoomContent(roomId: string, input: CreatePlayerInput) 
     console.error("[seed] generateDungeonMap failed:", e);
   }
 
-  // Opening narrative.
-  await db.chatMessage.create({
-    data: {
-      roomId,
-      role: "dm", speaker: "", round: 0,
-      content: loc.intro.replace("{name}", input.name),
-    },
-  });
+  // dm-context-fix Fix 3: NO hardcoded intro narrative. The DM generates a
+  // unique opening on the first player action (see Room.introNeeded +
+  // dm-agent.resolvePlayerMechanics). We just flag the room so the DM knows
+  // to generate the intro on the next action.
+  await db.room.update({ where: { id: roomId }, data: { introNeeded: true } });
 }
 
 /** Create a room and seed its world. */
@@ -162,6 +153,7 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       raceName: input.race.name,
       background: input.background.id,
       backgroundName: input.background.name,
+      backstory: (input.backstory ?? "").trim().slice(0, 500),
       xp: 0,
       selectedTalents: "",
       bonusStr: b.str,

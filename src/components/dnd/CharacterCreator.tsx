@@ -4,11 +4,12 @@ import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Skull, Crown, Swords, Loader2, ChevronLeft, ChevronRight,
-  Sparkles, Dna, GraduationCap, User, Shuffle, Minus, Plus, LogIn,
+  Sparkles, Dna, GraduationCap, User, Shuffle, Minus, Plus, LogIn, ScrollText, Zap,
 } from "lucide-react";
 import {
   CLASS_PRESETS, RACE_PRESETS, BACKGROUND_PRESETS,
@@ -19,23 +20,25 @@ import type { CharClassPreset, RacePreset, BackgroundPreset } from "@/lib/game/t
 import { abilityModifier } from "@/lib/game/dice";
 import { cn } from "@/lib/utils";
 
-type Step = "code" | "name" | "race" | "class" | "background" | "stats";
+type Step = "code" | "name" | "race" | "class" | "background" | "backstory" | "stats";
 const STEP_META: Record<Step, { label: string; icon: any }> = {
   code: { label: "Код", icon: LogIn },
   race: { label: "Народ", icon: Dna },
   class: { label: "Класс", icon: Swords },
   background: { label: "Происхождение", icon: GraduationCap },
+  backstory: { label: "Предыстория", icon: ScrollText },
   stats: { label: "Характеристики", icon: Sparkles },
   name: { label: "Имя", icon: User },
 };
-// Create flow: race → class → background → stats → name.
-// Join flow: code → race → class → background → stats → name.
-const STEP_ORDER_CREATE: Step[] = ["race", "class", "background", "stats", "name"];
-const STEP_ORDER_JOIN: Step[] = ["code", "race", "class", "background", "stats", "name"];
+// Create flow: race → class → background → backstory → stats → name.
+// Join flow: code → race → class → background → backstory → stats → name.
+const STEP_ORDER_CREATE: Step[] = ["race", "class", "background", "backstory", "stats", "name"];
+const STEP_ORDER_JOIN: Step[] = ["code", "race", "class", "background", "backstory", "stats", "name"];
 
 const POINT_BUY_POOL = 5; // additional points to distribute
 const STAT_CAP = 18;
 const STAT_SHORT: Record<string, string> = { str: "СИЛ", dex: "ЛОВ", con: "ТЕЛ", int: "ИНТ", wis: "МУД", cha: "ХАР" };
+const BACKSTORY_LIMIT = 500;
 
 export function CharacterCreator({
   mode, // "create" | "join"
@@ -53,6 +56,7 @@ export function CharacterCreator({
   const [raceId, setRaceId] = useState("human");
   const [classId, setClassId] = useState("fighter");
   const [backgroundId, setBackgroundId] = useState("soldier");
+  const [backstory, setBackstory] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [roomCode, setRoomCode] = useState(initialRoomCode ?? "");
   const [busy, setBusy] = useState(false);
@@ -94,6 +98,41 @@ export function CharacterCreator({
     toast("Случайный герой сгенерирован!");
   }
 
+  // Quick-create: generate a random character and immediately submit
+  async function quickCreate() {
+    const randomRace = RACE_PRESETS[Math.floor(Math.random() * RACE_PRESETS.length)];
+    const randomClass = CLASS_PRESETS[Math.floor(Math.random() * CLASS_PRESETS.length)];
+    const randomBg = BACKGROUND_PRESETS[Math.floor(Math.random() * BACKGROUND_PRESETS.length)];
+    const randomName = ["Алдрик", "Малек", "Эльза", "Кормак", "Сигрид", "Бран", "Лиара", "Дрейк"][Math.floor(Math.random() * 8)] + " " + Math.floor(Math.random() * 100);
+    setBusy(true);
+    toast.info("Создаю героя и генерирую вступление...");
+    try {
+      const res = await fetch("/api/game/room/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playerName: randomName,
+          classId: randomClass.id,
+          raceId: randomRace.id,
+          backgroundId: randomBg.id,
+          bonusStats: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
+          backstory: "",
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success("Герой создан! Вход в игру...");
+        onEntered(data.roomCode, randomName);
+      } else {
+        toast.error(data.error ?? "Не удалось создать героя.");
+        setBusy(false);
+      }
+    } catch {
+      toast.error("Ошибка создания героя.");
+      setBusy(false);
+    }
+  }
+
   async function submit() {
     const name = playerName.trim();
     if (!name) { toast.error("Введите имя героя."); setStep("name"); return; }
@@ -102,8 +141,8 @@ export function CharacterCreator({
     try {
       const url = mode === "create" ? "/api/game/room/create" : "/api/game/room/join";
       const payload = mode === "create"
-        ? { playerName: name, classId, raceId, backgroundId, bonusStats: bonus }
-        : { roomCode: roomCode.trim().toUpperCase(), playerName: name, classId, raceId, backgroundId, bonusStats: bonus };
+        ? { playerName: name, classId, raceId, backgroundId, bonusStats: bonus, backstory: backstory.trim().slice(0, BACKSTORY_LIMIT) }
+        : { roomCode: roomCode.trim().toUpperCase(), playerName: name, classId, raceId, backgroundId, bonusStats: bonus, backstory: backstory.trim().slice(0, BACKSTORY_LIMIT) };
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       let data: any;
       try { data = await res.json(); } catch { toast.error("Сервер вернул некорректный ответ."); return; }
@@ -166,6 +205,12 @@ export function CharacterCreator({
               <Button variant="ghost" size="sm" onClick={randomize} className="gap-1 text-muted-foreground">
                 <Shuffle className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Случайно</span>
               </Button>
+              {mode === "create" && (
+                <Button variant="default" size="sm" onClick={quickCreate} disabled={busy} className="gap-1 bg-amber-700 text-white hover:bg-amber-600">
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                  <span className="hidden sm:inline">Быстрый старт</span>
+                </Button>
+              )}
             </div>
 
             {/* Step content */}
@@ -195,6 +240,31 @@ export function CharacterCreator({
                       <BackgroundBody bg={b} />
                     </SelectableCard>
                   ))}
+                </div>
+              )}
+              {step === "backstory" && (
+                <div className="space-y-3">
+                  <div className="rounded-md border border-amber-700/40 bg-amber-950/20 px-3 py-2">
+                    <div className="mb-0.5 flex items-center gap-1.5 text-xs font-semibold gold-text">
+                      <ScrollText className="h-3.5 w-3.5" /> Предыстория героя
+                    </div>
+                    <p className="text-[11px] leading-snug text-muted-foreground">
+                      Опишите прошлое вашего героя: откуда он родом, что его ведёт по пути приключений, какие誓言 или сожаления он несёт. Мастер будет вплетать эту предысторию в нарратив — до 500 символов.
+                    </p>
+                  </div>
+                  <Textarea
+                    value={backstory}
+                    onChange={(e) => setBackstory(e.target.value.slice(0, BACKSTORY_LIMIT))}
+                    placeholder={`Например: «Я — ${race.name.toLowerCase()} ${cls.name.toLowerCase()}, выросший в тени пепельных холмов. Когда-то я служил в гарнизоне Серой Крепости, но в одну ночь предательство командира оставило меня без товарищей. С тех пор я скитаюсь, ищу ответы и не забываю урок: доверие — роскошь, которую не каждый может себе позволить.»`}
+                    className="min-h-[160px] resize-y bg-stone-950/60 text-sm leading-relaxed"
+                    autoFocus
+                  />
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Необязательно — можно оставить пустым.</span>
+                    <span className={cn("font-mono", backstory.length >= BACKSTORY_LIMIT ? "text-red-400" : "text-muted-foreground")}>
+                      {backstory.length} / {BACKSTORY_LIMIT}
+                    </span>
+                  </div>
                 </div>
               )}
               {step === "stats" && (
@@ -283,11 +353,19 @@ export function CharacterCreator({
                     />
                   </div>
                   <div className="rounded-md border border-border/50 bg-stone-900/40 p-3">
-                    <p className="mb-1 text-xs font-semibold gold-text">Предыстория</p>
+                    <p className="mb-1 text-xs font-semibold gold-text">Кто вы</p>
                     <p className="text-xs leading-relaxed text-muted-foreground">
                       {race.name} {cls.name.toLowerCase()}, {bg.name.toLowerCase()}. {race.description}
                     </p>
                   </div>
+                  {backstory.trim().length > 0 && (
+                    <div className="rounded-md border border-amber-700/40 bg-amber-950/20 p-3">
+                      <p className="mb-1 text-xs font-semibold gold-text">Ваша предыстория</p>
+                      <p className="whitespace-pre-wrap text-xs leading-relaxed text-amber-100/80">
+                        {backstory.trim()}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

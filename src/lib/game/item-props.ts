@@ -4,7 +4,7 @@
 
 import type { EquipmentSlot, StatKey } from "./types";
 
-/** Classes that cannot equip heavy armor (D&D 5e SRD). */
+/** Classes that cannot equip heavy armor (d20 fantasy RPG SRD). */
 export const NO_HEAVY_ARMOR_CLASSES: ReadonlySet<string> = new Set([
   "Wizard",
   "Sorcerer",

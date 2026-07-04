@@ -74,7 +74,7 @@ export interface CombatGridProps {
    *   - "aoe":     every cell becomes clickable; clicking a cell calls
    *               onCellTargetClick(x, y).
    */
-  targetingMode?: "none" | "ability" | "aoe";
+  targetingMode?: "none" | "ability" | "aoe" | "item";
   /** Called when the player clicks a monster token in ability-targeting mode. */
   onMonsterTargetClick?: (monsterId: string) => void;
   /** Called when the player clicks a grid cell in aoe-targeting mode. */

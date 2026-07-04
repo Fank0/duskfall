@@ -8,7 +8,12 @@ import { validateRoomCode } from "@/lib/game/validate";
 
 export const dynamic = "force-dynamic";
 
-const MAX_MESSAGES_PER_BATCH = 50;
+// Translate up to 500 messages per call. The previous cap of 50 meant that
+// longer chat histories only had their first 50 messages translated — older
+// messages stayed in the original language and the chat read inconsistently.
+// 500 covers any realistic session length while keeping a sane upper bound
+// to prevent runaway LLM spend.
+const MAX_MESSAGES_PER_BATCH = 500;
 
 // 5 translations per hour per IP (audit-v2: each translation spawns up to 50 LLM calls).
 const translateLimiter = rateLimit({ windowMs: 60 * 60_000, max: 5, label: "translate" });

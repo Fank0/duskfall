@@ -31,10 +31,13 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
-# Prisma: copy the ENTIRE node_modules from build stage to avoid missing
-# transitive deps (effect, @prisma/config, wasm files, etc.)
-COPY --from=build /app/node_modules ./node_modules
+# Prisma: schema + generated client + DB engine + CLI binary
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build /app/node_modules/prisma ./node_modules/prisma
+COPY --from=build /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 # game-sync mini-service — install its socket.io dependency
 COPY --from=build /app/mini-services ./mini-services

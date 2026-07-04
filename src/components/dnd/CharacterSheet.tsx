@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, Shirt, Hammer } from "lucide-react";
+import { Heart, Shield, Coins, Swords, Backpack, Skull, Crown, Sparkles, Scroll as ScrollIcon, ScrollText, Shirt, Hammer } from "lucide-react";
 import type { PlayerState, InventoryItemState, ConditionState, EquipmentSlot } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
@@ -191,7 +191,7 @@ export const CharacterSheet = memo(function CharacterSheet({
           </div>
         </div>
 
-        {/* Spell slots (casters only) */}
+        {/* Spell slots (casters only) — shown in both compact and full modes */}
         {isCaster && slotLevels.length > 0 && (
           <div className="mt-2 rounded border border-border/40 bg-stone-900/40 px-2 py-1.5">
             <div className="mb-1 flex items-center gap-1.5">
@@ -463,6 +463,19 @@ export const CharacterSheet = memo(function CharacterSheet({
                 })}
               </ul>
             </ScrollArea>
+
+            {/* Backstory (player-authored) — collapsed preview under abilities. */}
+            {player.backstory && player.backstory.trim().length > 0 && (
+              <details className="mt-2 rounded border border-amber-700/30 bg-amber-950/10 px-2 py-1.5">
+                <summary className="flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold gold-text">
+                  <ScrollText className="h-3 w-3 text-amber-300" />
+                  Предыстория
+                </summary>
+                <p className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-amber-100/70">
+                  {player.backstory.trim()}
+                </p>
+              </details>
+            )}
           </>
         )}
       </CardContent>

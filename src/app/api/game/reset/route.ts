@@ -59,6 +59,8 @@ export async function POST(req: NextRequest) {
           cha: oldPlayer.bonusCha,
         }
       : { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 };
+    // Preserve the player's authored backstory across reset (Fix 6 bug).
+    const backstory = oldPlayer?.backstory ?? "";
 
     // Delete the room (cascade clears everything) and recreate with the same code.
     await db.room.delete({ where: { id: room.id } });
@@ -82,6 +84,7 @@ export async function POST(req: NextRequest) {
       positionIndex: 0,
       portraitUrl: oldPlayer?.portraitUrl ?? null,
       bonusStats,
+      backstory,
     });
 
     const snapshot = await getSnapshot(roomCode);

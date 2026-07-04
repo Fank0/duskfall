@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
-  Shirt, Hammer, Star, Search,
+  Shirt, Hammer, Star, Search, Bed, Moon,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -63,7 +63,7 @@ function sortAbilitiesByPriority(list: Ability[]): Ability[] {
  *
  * Quick-use visual feedback (Item 2):
  *   - Click → 300ms amber pulse ring on the chip
- *   - Click → 1.5s "отправлено ✓" sent hint badge
+ *   - Click → 1.5s "" sent hint badge
  *   - Click → 500ms disabled (double-click protection)
  *   - Hover → shadcn Tooltip with full ability/item description
  *   - Slot-level abilities show a prominent "КN" colored circle
@@ -79,6 +79,10 @@ export const BottomPanel = memo(function BottomPanel({
   combatActive = false,
   nearestMonsterName,
   onRequestTargeting,
+  onRest,
+  isThinking = false,
+  isDead = false,
+  isYourTurn = true,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -95,8 +99,19 @@ export const BottomPanel = memo(function BottomPanel({
    * damage-dealing abilities and AoE spells call this instead of sending the
    * action immediately. The parent enters a targeting mode and waits for the
    * player to click a monster (ability) or grid cell (aoe) on the grid.
+   * Also used for items that need a target (weapons, scrolls, potions on allies).
    */
-  onRequestTargeting?: (ability: Ability, mode: "ability" | "aoe") => void;
+  onRequestTargeting?: (target: Ability | InventoryItemState, mode: "ability" | "aoe" | "item") => void;
+  /** Short/long rest handler — surfaced as dedicated rest buttons (Fix 2). */
+  onRest?: (restType: "short" | "long") => void;
+  /** True while a DM action is streaming — disables rest buttons. */
+  isThinking?: boolean;
+  /** True if the local player is dead — disables rest buttons. */
+  isDead?: boolean;
+  /** True when it's the local player's turn (combat or exploration).
+   *  When false, ability/item quick-use chips are disabled to prevent
+   *  wasted /api/game/action requests that the server would reject. */
+  isYourTurn?: boolean;
 }) {
   const settings = useSettings();
   const lang = settings.lang;
@@ -132,7 +147,14 @@ export const BottomPanel = memo(function BottomPanel({
 
   // Use filteredAbilities for the main section, allAbilities for everything else.
   const abilities = filteredAbilities;
-  const canQuickUse = Boolean(onQuickAction);
+  // Bug 11: only gate quick-use during COMBAT when it's NOT your turn.
+  // During exploration (no combat), ALL players should be able to use
+  // abilities / items — exploration has no per-player turn restriction.
+  // The previous `Boolean(onQuickAction) && isYourTurn` gated disabled all
+  // quick-use whenever isYourTurn was false, which during exploration meant
+  // every non-current-explorer player couldn't drink a potion or cast a
+  // utility spell out of their turn.
+  const canQuickUse = Boolean(onQuickAction) && (!combatActive || isYourTurn);
 
   // Equipment — find equipped items by id from inventory
   const eq = player.equipment || {};
@@ -177,7 +199,7 @@ export const BottomPanel = memo(function BottomPanel({
   // For each chip id we track three transient states:
   //   pulsing       — 300ms amber ring pulse after click
   //   disabledChips — 500ms double-click protection
-  //   sentChips     — 1.5s "отправлено ✓" hint badge
+  //   sentChips     — 1.5s "" hint badge
   // All three use immutable Set state so React detects every change.
   const [pulsing, setPulsing] = useState<Set<string>>(() => new Set());
   const [disabledChips, setDisabledChips] = useState<Set<string>>(() => new Set());
@@ -253,6 +275,22 @@ export const BottomPanel = memo(function BottomPanel({
       }
     }
     triggerQuick(chipId, buildAbilityQuickText(a, quickCtx));
+  };
+
+  /**
+   * Item click dispatcher. Items that need a target (weapons in combat,
+   * scrolls that target enemies) enter targeting mode when combat is active.
+   * Self-use items (potions, torches) are sent immediately.
+   */
+  const triggerItem = (item: InventoryItemState) => {
+    if (!canQuickUse) return;
+    const chipId = `item:${item.id}`;
+    if (disabledChips.has(chipId)) return;
+    if (combatActive && onRequestTargeting && (item.itemType === "weapon" || item.itemType === "scroll")) {
+      onRequestTargeting(item, "item");
+      return;
+    }
+    triggerQuick(chipId, buildItemQuickText(item, quickCtx));
   };
 
   return (
@@ -331,7 +369,7 @@ export const BottomPanel = memo(function BottomPanel({
                         <button
                           type="button"
                           disabled={isDisabled}
-                          onClick={() => triggerQuick(chipId, buildItemQuickText(item, quickCtx))}
+                          onClick={() => triggerItem(item)}
                           className={cn(
                             "relative flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-all",
                             item.itemType === "potion" && "border-rose-700/40 bg-rose-950/20 text-rose-200",
@@ -349,11 +387,7 @@ export const BottomPanel = memo(function BottomPanel({
                           {item.itemType === "weapon" && <Swords className="h-2.5 w-2.5" />}
                           <span className="truncate max-w-[80px]">{item.itemName}</span>
                           {item.quantity > 1 && <span className="text-[8px] opacity-70">×{item.quantity}</span>}
-                          {isSent && (
-                            <span className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-emerald-500 bg-emerald-950 px-1.5 py-px text-[8px] font-medium text-emerald-300 shadow">
-                              отправлено ✓
-                            </span>
-                          )}
+
                         </button>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-[240px] text-left text-[10px] leading-tight">
@@ -518,6 +552,66 @@ export const BottomPanel = memo(function BottomPanel({
             </div>
           </div>
         )}
+
+        {/* Divider */}
+        {onRest && <div className="hidden lg:block w-px bg-border/40" />}
+
+        {/* ===== Rest (short / long) — always visible, disabled in combat ===== */}
+        {onRest && (
+          <div className="flex flex-col gap-1 lg:w-auto">
+            <div className="flex items-center gap-1.5">
+              <Bed className="h-3.5 w-3.5 text-sky-300" />
+              <span className="text-[11px] font-semibold gold-text">Отдых</span>
+            </div>
+            {/* BG3: short rest counter (3 max between long rests) */}
+            <div className="flex items-center gap-1 mb-0.5">
+              <span className="text-[9px] text-muted-foreground">Короткие:</span>
+              <div className="flex gap-0.5">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "h-2 w-2 rounded-full border",
+                      i < (3 - (player.shortRestsUsed ?? 0))
+                        ? "border-sky-500 bg-sky-600"
+                        : "border-border/50 bg-stone-900/60"
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                disabled={combatActive || isThinking || isDead || (player.shortRestsUsed ?? 0) >= 3}
+                onClick={() => onRest("short")}
+                title={combatActive ? "Нельзя отдыхать в бою" : (player.shortRestsUsed ?? 0) >= 3 ? "Исчерпаны короткие отдыхи. Нужен долгий отдых." : "Короткий отдых: бросок кости здоровья, восстановление ячеек колдуна"}
+                className={cn(
+                  "flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                  "border-sky-800/60 bg-sky-950/40 text-sky-200 hover:bg-sky-950/60",
+                  "disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+              >
+                <Bed className="h-3 w-3" />
+                Короткий
+              </button>
+              <button
+                type="button"
+                disabled={combatActive || isThinking || isDead}
+                onClick={() => onRest("long")}
+                title={combatActive ? "Нельзя отдыхать в бою" : "Долгий отдых: полное HP, все ячейки, снятие коротких состояний, восстановление коротких отдыхов"}
+                className={cn(
+                  "flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors",
+                  "border-indigo-800/60 bg-indigo-950/40 text-indigo-200 hover:bg-indigo-950/60",
+                  "disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+              >
+                <Moon className="h-3 w-3" />
+                Долгий
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -639,11 +733,6 @@ function AbilityChip({
                 title={`Горячая клавиша: ${hotkey}`}
               >
                 {hotkey}
-              </span>
-            )}
-            {isSent && (
-              <span className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-emerald-500 bg-emerald-950 px-1.5 py-px text-[8px] font-medium text-emerald-300 shadow">
-                отправлено ✓
               </span>
             )}
           </button>

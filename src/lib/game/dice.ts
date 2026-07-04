@@ -49,7 +49,7 @@ export function rollDice(notation: string, modifier = 0): DiceResult {
   };
 }
 
-/** Roll a d20 plus a modifier — the bread and butter of D&D. */
+/** Roll a d20 plus a modifier — the bread and butter of d20 fantasy. */
 export function rollD20(modifier = 0): DiceResult {
   return rollDice("1d20", modifier);
 }
@@ -85,7 +85,7 @@ export function rollDamage(notation: string): number {
   return rollDice(notation).total;
 }
 
-/** D&D 5e ability modifier from a stat score. */
+/** d20 fantasy RPG ability modifier from a stat score. */
 export function abilityModifier(score: number): number {
   return Math.floor((score - 10) / 2);
 }

@@ -1,4 +1,4 @@
-// Database helpers: fetch / mutate the room-scoped D&D game state.
+// Database helpers: fetch / mutate the room-scoped d20 fantasy game state.
 
 import { db } from "@/lib/db";
 import { abilityModifier, rollD20 } from "./dice";
@@ -77,6 +77,7 @@ function toPlayer(p: any): PlayerState {
     raceName: p.raceName,
     background: p.background,
     backgroundName: p.backgroundName,
+    backstory: p.backstory ?? "",
     xp: p.xp,
     selectedTalents: p.selectedTalents ? p.selectedTalents.split(",").filter(Boolean) : [],
     bonusStr: p.bonusStr,
@@ -86,10 +87,12 @@ function toPlayer(p: any): PlayerState {
     bonusWis: p.bonusWis,
     bonusCha: p.bonusCha,
     pendingLevelUp: p.pendingLevelUp,
+    pendingLevelUps: p.pendingLevelUps ?? 0,
     pendingASI: Boolean(p.pendingASI),
     spellSlots: parseSpellSlots(p.spellSlots),
     maxSpellSlots: parseSpellSlots(p.maxSpellSlots),
     hitDice: p.hitDice ?? 8,
+    shortRestsUsed: p.shortRestsUsed ?? 0,
     spellbookSpells: p.spellbookSpells
       ? String(p.spellbookSpells).split(",").map((s: string) => s.trim()).filter(Boolean)
       : [],
@@ -442,6 +445,15 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
       ?? players[0]?.name
       ?? null);
 
+  // Bug 12: currentTurnName must reflect the current actor in BOTH combat
+  // and exploration. Previously it was set only from the initiative entry
+  // (which is null during exploration), so during exploration the
+  // PartyPanel / CombatGrid showed NO player highlighted as 'current turn'
+  // — which made it look like the wrong (or no) player was active. Now we
+  // fall back to currentExplorerName when combat is inactive so the
+  // highlighted player always matches the actual turn owner.
+  const currentTurnName = currentEntry?.combatantName ?? currentExplorerName;
+
   const snapshot: GameStateSnapshot = {
     roomCode: room.code,
     hostName: room.hostName,
@@ -456,7 +468,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     round: room.round,
     location: room.location,
     turnIndex: room.turnIndex,
-    currentTurnName: currentEntry?.combatantName ?? null,
+    currentTurnName,
     currentTurnType: (currentEntry?.combatantType as "player" | "monster") ?? null,
     currentExplorerName,
     conditions: conditions.map(toCondition),
@@ -507,6 +519,37 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     lines.push(
       `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo} | Позиция (${p.posX},${p.posY})`
     );
+    // Backstory (player-authored): let the DM weave the hero's history into
+    // the narrative — call back to NPCs, places, oaths, regrets.
+    if (p.backstory && p.backstory.trim().length > 0) {
+      lines.push(`  Предыстория ${p.name}: ${p.backstory.trim()}`);
+    }
+    // ===== Selected talents (so DM knows player's capabilities) =====
+    if (p.selectedTalents && p.selectedTalents.length > 0) {
+      const { getTalentsForClass } = await import("./talents");
+      const cid = getClassIdByCharClass(p.charClass);
+      const allClassTalents = getTalentsForClass(cid);
+      const picked = p.selectedTalents
+        .map((id: string) => allClassTalents.find((t) => t.id === id))
+        .filter((t: any) => t);
+      if (picked.length > 0) {
+        lines.push(`  Таланты ${p.name}: ${picked.map((t: any) => `${t.name} (${t.description?.slice(0, 60) ?? ""})`).join(", ")}`);
+      }
+    }
+    // ===== Computed abilities (race/class/talent/scroll — so DM knows what player CAN do) =====
+    const { computeAbilities } = await import("./abilities");
+    const playerItems = snap.inventory.filter((it) => it.playerName === p.name);
+    const abilities = computeAbilities(p, playerItems);
+    if (abilities.length > 0) {
+      const abilSummary = abilities.map((a) => {
+        const parts = [a.name];
+        if (a.castNotation) parts.push(a.castNotation);
+        if (a.consumable) parts.push("расходуемый");
+        if (a.slotLevel) parts.push(`я${a.slotLevel}`);
+        return parts.join(" ");
+      });
+      lines.push(`  Способности ${p.name}: ${abilSummary.join(", ")}`);
+    }
     // Spellbook: list known spells for caster classes (so the DM agent can
     // reference them when the player casts a known spell or finds a scroll).
     const classId = getClassIdByCharClass(p.charClass);
@@ -586,8 +629,36 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
   const activeMonsters: typeof snap.monsters = [];
   const hiddenMonsters: typeof snap.monsters = [];
   for (const m of snap.monsters) (m.isActive ? activeMonsters : hiddenMonsters).push(m);
+  // ===== Bug 4: disambiguate duplicate monster names =====
+  // When multiple active monsters share the same name (e.g. 3 "Гоблин"), the
+  // DM agent cannot tell them apart from the context alone. We append a
+  // numeric suffix ("Гоблин 1", "Гоблин 2", ...) so the DM can refer to a
+  // specific monster by its indexed name in success.monsterDamage.target.
+  // The same disambiguated name is what the backend looks up when applying
+  // damage (see findMonsterByTargetName in dm-agent.ts).
+  const activeNameCount = new Map<string, number>();
+  for (const m of activeMonsters) {
+    activeNameCount.set(m.name, (activeNameCount.get(m.name) ?? 0) + 1);
+  }
+  const activeNameSeen = new Map<string, number>();
+  /** Returns the display name for an active monster (with #N suffix when the
+   *  name has duplicates). Hidden monsters always use the bare name — the DM
+   *  never targets them directly. */
+  const activeDisplayName = (m: typeof snap.monsters[number]): string => {
+    const total = activeNameCount.get(m.name) ?? 1;
+    if (total <= 1) return m.name;
+    const seen = (activeNameSeen.get(m.name) ?? 0) + 1;
+    activeNameSeen.set(m.name, seen);
+    return `${m.name} ${seen}`;
+  };
   if (activeMonsters.length > 0) {
     lines.push("=== Противники (на сетке) ===");
+    // ===== dm-context-fix (Fix 1): clearer monster listing =====
+    // Format each monster as:
+    //   "Монстр: <Имя> [#N если дубликаты] (HP x/y, AC n, позиция X,Y) — <описание>"
+    // The leading "Монстр: " tag + the explicit "позиция X,Y" + description
+    // make it unambiguous which monster the player is referring to when they
+    // say "атакую гоблина" — the DM can match by name AND by position.
     for (const m of activeMonsters) {
       // Look up the bestiary entry by name so the DM agent can narrate the
       // monster's CR + any unique special ability (item 5 of the bestiary
@@ -599,8 +670,10 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       const abilityTag = entry?.specialAbility
         ? ` | ⚡ Способность: ${entry.specialAbility}`
         : "";
+      const display = activeDisplayName(m);
+      const atkTag = ` | Атака +${m.attackBonus} | Урон ${m.damageNotation}`;
       lines.push(
-        `${m.name} (${m.label}): HP ${m.hp}/${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY})${crTag}${abilityTag}`
+        `Монстр: ${display} (HP ${m.hp}/${m.maxHp}, AC ${m.ac}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag} — ${m.description}`
       );
     }
   }
@@ -612,8 +685,9 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       const abilityTag = entry?.specialAbility
         ? ` | ⚡ Способность: ${entry.specialAbility}`
         : "";
+      const atkTag = ` | Атака +${m.attackBonus} | Урон ${m.damageNotation}`;
       lines.push(
-        `${m.name} (${m.label}): HP ${m.maxHp} | AC ${m.ac} | Атака +${m.attackBonus} | Урон ${m.damageNotation} | Позиция (${m.posX},${m.posY}) | ${m.description}${crTag}${abilityTag}`
+        `Монстр: ${m.name} (HP ${m.maxHp}, AC ${m.ac}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag} — ${m.description}`
       );
     }
   }
@@ -690,22 +764,21 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     `=== Время суток и погода ===\nСейчас: ${timeOfDayLabelRu(snap.timeOfDay)} · ${weatherLabelRu(snap.weather)}`
   );
 
-  // Recent chat: trim to the last 15 messages. If there are older messages,
+  // Recent chat: trim to the last 30 messages. If there are older messages,
   // include a one-line condensed summary so the DM still has some continuity.
-  const RECENT_CHAT_LIMIT = 15;
+  const RECENT_CHAT_LIMIT = 30;
   const allChat = snap.chat;
   const recent = allChat.slice(-RECENT_CHAT_LIMIT);
   if (recent.length > 0) {
     lines.push("=== Недавние события ===");
-    // If there are older messages we skipped, condense the first 3 of them into
-    // a single one-line "Ранее: ..." summary.
+    // If there are older messages we skipped, condense the first 5 of them into
+    // a multi-line summary so the DM has more context continuity.
     if (allChat.length > RECENT_CHAT_LIMIT) {
-      const older = allChat.slice(0, Math.min(3, allChat.length - RECENT_CHAT_LIMIT));
+      const older = allChat.slice(0, Math.min(5, allChat.length - RECENT_CHAT_LIMIT));
       const condensed = older
         .map((c) => {
           const who = c.role === "player" ? `${c.speaker}` : c.role === "system" ? "Система" : "Мастер";
-          // Keep only the first ~80 chars per message so the summary stays short.
-          const snippet = c.content.replace(/\s+/g, " ").trim().slice(0, 80);
+          const snippet = c.content.replace(/\s+/g, " ").trim().slice(0, 120);
           return `${who}: ${snippet}`;
         })
         .join(" / ");
@@ -713,13 +786,66 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     }
     for (const c of recent) {
       const who = c.role === "player" ? `Игрок ${c.speaker}` : c.role === "system" ? "Система" : "Мастер";
-      lines.push(`${who}: ${c.content.slice(0, 300)}`);
+      lines.push(`${who}: ${c.content.slice(0, 400)}`);
     }
   }
+
+  // ===== Story memory: persistent key events the DM should remember =====
+  try {
+    const memories = await db.storyMemory.findMany({
+      where: { roomId: snap.roomCode },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+    });
+    if (memories.length > 0) {
+      lines.push("=== Память сюжета (ключевые события) ===");
+      // Reverse so oldest is first (chronological order)
+      for (const m of memories.reverse()) {
+        lines.push(`[${m.type}] ${m.content}`);
+      }
+    }
+  } catch { /* table might not exist yet */ }
+
+  // ===== Ground items (lootable) =====
+  const groundItems = snap.inventory.filter((i) => i.playerName === "__ground__");
+  if (groundItems.length > 0) {
+    lines.push("=== Предметы на земле ===");
+    lines.push(groundItems.map((i) => `${i.itemName} x${i.quantity}`).join(", "));
+  }
+
+  // ===== Dungeon state =====
+  if (snap.dungeonBiome) {
+    const biomeLabel: Record<string, string> = { catacombs: "Катакомбы", caves: "Пещеры", tower: "Башня", forest: "Лес", dungeon: "Подземелье" };
+    const bl = biomeLabel[snap.dungeonBiome] ?? snap.dungeonBiome;
+    lines.push(`=== Подземелье ===\nБиом: ${bl} | Этаж: ${snap.dungeonDepth} | Зачищено: ${snap.dungeonCleared ? "да" : "нет"}`);
+  }
+
+  // ===== Current room description (from world map) =====
+  if (snap.currentMapPos && snap.mapRooms.length > 0) {
+    const here = snap.mapRooms.find((r) => r.x === snap.currentMapPos!.x && r.y === snap.currentMapPos!.y);
+    if (here && here.description) {
+      lines.push(`=== Описание текущей комнаты ===\n${here.description}`);
+    }
+  }
+
+  // ===== Average party level (for encounter scaling) =====
+  const avgLevel = alivePlayers.length > 0
+    ? Math.round(alivePlayers.reduce((sum, p) => sum + p.level, 0) / alivePlayers.length)
+    : 1;
+  lines.push(`=== Средний уровень группы: ${avgLevel} ===`);
+
   return lines.join("\n");
 }
 
 // ---------- mutations ----------
+/** Save a story memory entry for persistent DM recall. */
+export async function addStoryMemory(roomId: string, type: string, content: string): Promise<void> {
+  try {
+    await db.storyMemory.create({ data: { roomId, type, content: content.slice(0, 500) } });
+    invalidateSnapshotCache(roomId);
+  } catch { /* table might not exist yet */ }
+}
+
 export async function logDiceRoll(
   roomId: string,
   round: number,
@@ -1065,7 +1191,10 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
   let nx = m.posX;
   let ny = m.posY;
   let steps = 2;
-  while (steps > 0 && (nx !== p.posX || ny !== p.posY)) {
+  // Move toward player but STOP at distance 1 (adjacent), not on player's cell
+  while (steps > 0) {
+    const dist = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+    if (dist <= 1) break; // already adjacent — don't step onto player
     const dx = p.posX - nx;
     const dy = p.posY - ny;
     if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) nx += Math.sign(dx);
@@ -1340,6 +1469,7 @@ export async function awardXP(roomId: string, playerName: string, xp: number): P
   }
   // If the new level grants an ASI, set pendingASI in addition to pendingLevelUp.
   const grantASI = leveledUp && ASI_LEVELS.has(newLevel);
+  const levelsGained = newLevel - p.level;
   await db.player.update({
     where: { id: p.id },
     data: {
@@ -1349,6 +1479,7 @@ export async function awardXP(roomId: string, playerName: string, xp: number): P
       maxHp: newMaxHp,
       hp: newHp,
       pendingLevelUp: leveledUp ? true : p.pendingLevelUp,
+      pendingLevelUps: leveledUp ? (p.pendingLevelUps ?? 0) + levelsGained : p.pendingLevelUps,
       pendingASI: grantASI ? true : p.pendingASI,
     },
   });
@@ -1370,9 +1501,14 @@ export async function applyLevelUpTalent(roomId: string, playerName: string, tal
   if (!talent) return false;
   if (talent.requires && !existing.includes(talent.requires)) return false; // prerequisite not met
   existing.push(talentId);
+  const newCount = Math.max(0, (p.pendingLevelUps ?? 1) - 1);
   await db.player.update({
     where: { id: p.id },
-    data: { selectedTalents: existing.join(","), pendingLevelUp: false },
+    data: {
+      selectedTalents: existing.join(","),
+      pendingLevelUp: newCount > 0,
+      pendingLevelUps: newCount,
+    },
   });
   invalidateSnapshotCache(roomId);
   return true;
