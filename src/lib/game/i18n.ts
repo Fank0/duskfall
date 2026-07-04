@@ -380,7 +380,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Talk to NPCs or explore to get quests.",
     "rest.short_rest": "Short",
     "rest.long_rest": "Long",
-    ""ui.click_use": "click — use",
+    "ui.click_use": "click — use",
     "ui.click_apply": "click — apply",
   },
 
@@ -531,7 +531,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Hablar to NPCs or explore to get quests.",
     "rest.short_rest": "Corto",
     "rest.long_rest": "Largo",
-    ""ui.click_use": "clic — usar",
+    "ui.click_use": "clic — usar",
     "ui.click_apply": "clic — aplicar",
   },
 
@@ -683,7 +683,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Sprechen to NPCs or explore to get quests.",
     "rest.short_rest": "Kurz",
     "rest.long_rest": "Lang",
-    ""ui.click_use": "Klick — verwenden",
+    "ui.click_use": "Klick — verwenden",
     "ui.click_apply": "Klick — anwenden",
   },
 
@@ -834,7 +834,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Journal empty. Parler to NPCs or explore to get quests.",
     "rest.short_rest": "Court",
     "rest.long_rest": "Long",
-    ""ui.click_use": "clic — utiliser",
+    "ui.click_use": "clic — utiliser",
     "ui.click_apply": "clic — appliquer",
   },
 
@@ -986,7 +986,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.combat_log": "战斗日志",
     "ui.quest_journal": "任务日志",
     "ui.quest_empty": "日志为空。与NPC交谈或探索以获得任务。",
-    ""ui.click_use": "点击 — 使用",
+    "ui.click_use": "点击 — 使用",
     "ui.click_apply": "点击 — 施放",
   },
 };
