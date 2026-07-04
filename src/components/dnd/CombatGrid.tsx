@@ -83,6 +83,10 @@ export interface CombatGridProps {
   onPlayerTargetClick?: (playerName: string) => void;
   /** Called when the player clicks a grid cell in aoe-targeting mode. */
   onCellTargetClick?: (x: number, y: number) => void;
+  /** Called when the player clicks an empty cell to move their token (click-to-move). */
+  onMoveClick?: (x: number, y: number) => void;
+  /** The current player's name (for click-to-move — only this player's token moves). */
+  yourName?: string;
 }
 
 /**
@@ -105,6 +109,8 @@ export const CombatGrid = memo(function CombatGrid({
   onMonsterTargetClick,
   onPlayerTargetClick,
   onCellTargetClick,
+  onMoveClick,
+  yourName,
 }: CombatGridProps) {
   const settings = useSettings();
   const tokenShape = settings.tokenShape;
@@ -477,6 +483,9 @@ export const CombatGrid = memo(function CombatGrid({
               const monsterInCell = targetingMode === "ability" || targetingMode === "item" ? monsterByCell.get(`${x},${y}`) : undefined;
               const playerInCell = targetingMode === "ability" || targetingMode === "item" ? playerByCell.get(`${x},${y}`) : undefined;
               const isAoeTargetCell = targetingMode === "aoe";
+              // Click-to-move: when not in targeting mode, clicking an empty
+              // cell moves the current player's token there (if onMoveClick provided).
+              const canMoveHere = targetingMode === "none" && onMoveClick && !monsterInCell && !playerInCell && terrainType !== "full_cover";
               const cellClick =
                 monsterInCell && onMonsterTargetClick
                   ? () => onMonsterTargetClick(monsterInCell.id)
@@ -484,6 +493,8 @@ export const CombatGrid = memo(function CombatGrid({
                   ? () => onPlayerTargetClick(playerInCell.name)
                   : isAoeTargetCell && onCellTargetClick
                   ? () => onCellTargetClick(x, y)
+                  : canMoveHere
+                  ? () => onMoveClick!(x, y)
                   : undefined;
               return (
                 <div
@@ -500,6 +511,9 @@ export const CombatGrid = memo(function CombatGrid({
                       "cursor-crosshair ring-2 ring-red-400/70 animate-pulse-glow hover:bg-red-500/25",
                     playerInCell && !monsterInCell &&
                       "cursor-crosshair ring-2 ring-emerald-400/70 animate-pulse-glow hover:bg-emerald-500/25",
+                    // Click-to-move: empty cells show a subtle hover highlight.
+                    canMoveHere &&
+                      "cursor-pointer hover:bg-sky-500/15 hover:border-sky-400/40",
                   )}
                   title={
                     monsterInCell
@@ -508,6 +522,8 @@ export const CombatGrid = memo(function CombatGrid({
                       ? `${t(settings.lang, "ui.select_target")}: ${playerInCell.name} (${playerInCell.hp}/${playerInCell.maxHp} HP)`
                       : isAoeTargetCell
                       ? `${t(settings.lang, "ui.cast_at")} (${x}, ${y})`
+                      : canMoveHere
+                      ? `${t(settings.lang, "ui.move_here")} (${x}, ${y})`
                       : `(${x}, ${y})`
                   }
                 >
@@ -666,6 +682,17 @@ export const CombatGrid = memo(function CombatGrid({
           )}
         </div>
       </CardContent>
+      {/* D&D 5e terrain legend — shown only when terrain cells exist. */}
+      {terrainMap && terrainMap.size > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 px-3 py-1.5 text-[9px] text-muted-foreground">
+          <span className="font-semibold gold-text">{t(settings.lang, "terrain.legend")}:</span>
+          <span className="flex items-center gap-0.5"><span>〰️</span> {t(settings.lang, "terrain.difficult_short")}</span>
+          <span className="flex items-center gap-0.5"><span>🌳</span> {t(settings.lang, "terrain.half_cover_short")}</span>
+          <span className="flex items-center gap-0.5"><span>🪨</span> {t(settings.lang, "terrain.full_cover_short")}</span>
+          <span className="flex items-center gap-0.5"><span>⬆️</span> {t(settings.lang, "terrain.high_ground_short")}</span>
+          <span className="flex items-center gap-0.5"><span>🌊</span> {t(settings.lang, "terrain.water_short")}</span>
+        </div>
+      )}
     </Card>
   );
 }, combatGridComparator);

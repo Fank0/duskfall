@@ -823,21 +823,68 @@ function AbilityChip({
           )}
         </div>
       </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-[260px] text-left text-[10px] leading-tight">
-        <div className="space-y-0.5">
-          <div className="font-semibold text-amber-200">
+      <TooltipContent side="top" className="max-w-[280px] text-left text-[10px] leading-tight">
+        <div className="space-y-1">
+          <div className="font-semibold text-amber-200 flex items-center gap-1 flex-wrap">
             {localizeAbility(lang, a.name)}
             {a.source === "spell" && a.slotLevel && a.slotLevel > 0 && (
-              <span className="ml-1 text-fuchsia-300">· круг {a.slotLevel}</span>
+              <span className="text-fuchsia-300">· круг {a.slotLevel}</span>
             )}
             {hotkey !== null && (
-              <span className="ml-1 text-stone-300">· [{hotkey}]</span>
+              <span className="text-stone-300">· [{hotkey}]</span>
             )}
             {isFavorited && (
-              <span className="ml-1 text-amber-300">★</span>
+              <span className="text-amber-300">★</span>
             )}
           </div>
-          <div className="text-[9px] text-muted-foreground">{tooltip}</div>
+          {/* Type badges */}
+          <div className="flex flex-wrap gap-1">
+            <span className={cn(
+              "rounded px-1 py-px text-[8px] font-medium",
+              a.source === "race" && "bg-emerald-950/60 text-emerald-200",
+              a.source === "class" && "bg-sky-950/60 text-sky-200",
+              a.source === "talent" && "bg-purple-950/60 text-purple-200",
+              a.source === "scroll" && "bg-amber-950/60 text-amber-200",
+              a.source === "spell" && "bg-fuchsia-950/60 text-fuchsia-200",
+            )}>
+              {tt2(`char.source_${a.source}`)}
+            </span>
+            {a.castType && (
+              <span className={cn(
+                "rounded px-1 py-px text-[8px] font-medium",
+                a.castType === "damage" && "bg-red-950/60 text-red-200",
+                a.castType === "heal" && "bg-emerald-950/60 text-emerald-200",
+                a.castType === "buff" && "bg-sky-950/60 text-sky-200",
+                a.castType === "utility" && "bg-stone-800/60 text-stone-200",
+              )}>
+                {tt2(`char.cast_${a.castType}`)}
+              </span>
+            )}
+            {a.consumable && (
+              <span className="rounded bg-amber-950/60 px-1 py-px text-[8px] font-medium text-amber-200">
+                {tt2("ui.consumable")}
+              </span>
+            )}
+          </div>
+          {/* Cast notation */}
+          {a.castNotation && (
+            <div className="text-[9px] text-red-300 font-mono">
+              {a.castType === "heal" ? "✚ " : "⚔ "}
+              {a.castNotation}
+            </div>
+          )}
+          {/* AoE info */}
+          {a.aoeShape && (
+            <div className="text-[9px] text-fuchsia-300">
+              ◈ AoE: {a.aoeShape}{a.aoeSize ? ` ${a.aoeSize}` : ""}
+            </div>
+          )}
+          {/* Description */}
+          {a.description && (
+            <div className="text-[9px] text-muted-foreground leading-relaxed">
+              {a.description}
+            </div>
+          )}
         </div>
       </TooltipContent>
     </Tooltip>

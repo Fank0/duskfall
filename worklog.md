@@ -1577,3 +1577,43 @@ Stage Summary:
 - AuthScreen + Lobby visually enhanced (BG3-inspired dark fantasy polish)
 - 5 new i18n keys across 6 languages
 - lint: 0 errors, tsc: 0 errors
+
+---
+Task ID: click-to-move-tooltips-floating-text
+Agent: main-agent
+Task: Add click-to-move on tactical grid, improved ability tooltips, floating damage numbers, terrain legend
+
+Work Log:
+- Created /api/game/move-token endpoint (moves player token to x,y on the grid)
+- Added click-to-move to CombatGrid:
+  * New props: onMoveClick(x,y), yourName
+  * When not in targeting mode, clicking an empty cell moves the player's token
+  * Empty cells show a subtle sky-blue hover highlight
+  * Full cover cells are NOT clickable (blocked)
+  * Title shows "Move here (x, y)" in the player's language
+- Added handleMoveClick in page.tsx — calls /api/game/move-token and updates snapshot
+- Added ui.move_here i18n key to all 6 languages
+- Added terrain legend to CombatGrid (shown when terrain cells exist):
+  * Compact row with all 5 terrain icons + short labels
+  * Appears at the bottom of the grid card
+  * Added 6 new i18n keys (terrain.legend + 5 short labels) to all 6 languages
+- Enhanced ability tooltips in BottomPanel:
+  * Structured layout with type badges (source + cast type + consumable)
+  * Color-coded badges matching the chip colors
+  * Cast notation with ⚔/✚ icons
+  * AoE info (shape + size)
+  * Full description with proper line height
+- Wired floating combat text system (CombatTextOverlay was unused!):
+  * Imported makeDamageText, makeMissText, makeHealText, FloatingText type
+  * Added floatingTexts state
+  * On combat events: find target position, generate floating text (damage/miss/heal/crit)
+  * Text auto-removes after 1.3s
+  * Rendered as overlay above the grid
+- lint: 0 errors, tsc: 0 errors
+
+Stage Summary:
+- Click-to-move: players can now click empty cells to move their token (D&D 5e movement)
+- Terrain legend: visual explanation of all 5 terrain types on the grid
+- Enhanced ability tooltips: structured, color-coded, with all relevant info
+- Floating damage numbers: damage/miss/heal/crit text appears above targets during combat
+- 7 new i18n keys across 6 languages

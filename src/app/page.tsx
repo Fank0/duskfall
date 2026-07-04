@@ -10,6 +10,7 @@ import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
 import { BottomPanel } from "@/components/dnd/BottomPanel";
 import type { AoEOverlay, CombatAnimEvent } from "@/components/dnd/CombatGrid";
+import { CombatTextOverlay, makeDamageText, makeMissText, makeHealText, type FloatingText } from "@/components/dnd/CombatTextOverlay";
 import { SceneViewer } from "@/components/dnd/SceneViewer";
 import { ChatPanel } from "@/components/dnd/ChatPanel";
 import { DiceLog } from "@/components/dnd/DiceLog";
@@ -138,6 +139,7 @@ export default function Home() {
   const [lastAoe, setLastAoe] = useState<AoEOverlay | null>(null);
   const [lastAnimEvent, setLastAnimEvent] = useState<CombatAnimEvent | null>(null);
   const animEventCounter = useRef(0);
+  const [floatingTexts, setFloatingTexts] = useState<FloatingText[]>([]);
   const [questOpen, setQuestOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [isMovingRoom, setIsMovingRoom] = useState(false);
@@ -438,6 +440,37 @@ export default function Home() {
                     isCrit,
                     isHeal,
                   });
+                  // ===== Floating combat text (damage/miss/heal numbers) =====
+                  if (targetName && snapshot) {
+                    // Find target position on the grid (player or monster).
+                    const player = snapshot.players.find((p) => p.name === targetName);
+                    const monster = snapshot.monsters.find((m) => m.name === targetName);
+                    const posX = player?.posX ?? monster?.posX ?? 0;
+                    const posY = player?.posY ?? monster?.posY ?? 0;
+                    // Convert grid position to relative 0..1 for the overlay.
+                    const relX = (posX + 0.5) / 16;
+                    const relY = (posY + 0.5) / 16;
+                    let ft: FloatingText | null = null;
+                    if (isHeal && damage > 0) {
+                      ft = makeHealText(relX, relY, damage);
+                    } else if (damage > 0) {
+                      ft = makeDamageText(relX, relY, damage, isCrit);
+                    } else {
+                      // Check for a miss (d20 attack roll that failed).
+                      const missRoll = allRolls.find((r: any) =>
+                        (r.notation === "1d20" || r.notation === "d20") && !r.success && r.target_type === "AC"
+                      );
+                      if (missRoll) ft = makeMissText(relX, relY);
+                    }
+                    if (ft) {
+                      setFloatingTexts((prev) => [...prev, ft]);
+                      // Remove after animation (1.2s).
+                      const ftId = ft.id;
+                      setTimeout(() => {
+                        setFloatingTexts((prev) => prev.filter((t) => t.id !== ftId));
+                      }, 1300);
+                    }
+                  }
                   // ===== SFX (item 6.2) =====
                   try {
                     // Dice-roll clatter: fire whenever any dice were rolled this action.
@@ -881,6 +914,26 @@ export default function Home() {
     sendAction(`Я кастую «${name}»${slotSuffix} в клетку (${x}, ${y})!`);
     cancelTargeting();
   }, [targetingAbility, targetingMode, sendAction, cancelTargeting]);
+
+  // Click-to-move: when the player clicks an empty cell on the tactical grid,
+  // move their token there via the /api/game/move-token endpoint.
+  const handleMoveClick = useCallback(async (x: number, y: number) => {
+    if (!session || targetingMode !== "none") return;
+    try {
+      const res = await fetch("/api/game/move-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, x, y }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSnapshot(data.snapshot);
+        pingRoom(session.roomCode);
+      }
+    } catch {
+      /* network blip — ignore */
+    }
+  }, [session, targetingMode, pingRoom]);
 
   // Escape cancels targeting mode. Also cancel when combat ends so the player
   // is never stuck targeting on a peaceful grid.
@@ -1343,9 +1396,17 @@ export default function Home() {
               onMonsterTargetClick={handleMonsterTargetClick}
               onPlayerTargetClick={handlePlayerTargetClick}
               onCellTargetClick={handleCellTargetClick}
+              onMoveClick={handleMoveClick}
+              yourName={session?.playerName}
             />
           </aside>
         </div>
+
+        {/* ===== Floating combat text overlay (damage/miss/heal numbers) =====
+            Rendered as a fixed overlay so it floats above the grid. */}
+        {floatingTexts.length > 0 && (
+          <CombatTextOverlay texts={floatingTexts} />
+        )}
 
         {/* ===== BOTTOM: Full-width equipment + inventory + abilities + spells ===== */}
         {you && (
