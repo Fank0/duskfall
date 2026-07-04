@@ -169,7 +169,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     // ===== chat =====
     "chat.send_action": "Отправить действие",
-    "chat.action_placeholder": "Опишите действие героя… (Enter — отправить)",
+    "chat.action_placeholder": "Что вы делаете? (атакуйте, обыщите, поговорите, спрячьтесь…)",
     "chat.dead_placeholder": "Герой пал. Ожидайте новой игры.",
     "chat.waiting_placeholder": "Ожидание хода ({name} действует)…",
     "chat.show_more": "Показать ещё",
@@ -329,7 +329,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     // ===== chat =====
     "chat.send_action": "Send action",
-    "chat.action_placeholder": "Describe the hero's action… (Enter to send)",
+    "chat.action_placeholder": "What do you do? (attack, search, talk, hide…)",
     "chat.dead_placeholder": "The hero has fallen. Await a new game.",
     "chat.waiting_placeholder": "Waiting for turn ({name} acting)…",
     "chat.show_more": "Show more",
@@ -482,7 +482,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.attack": "Atacar",
 
     "chat.send_action": "Enviar acción",
-    "chat.action_placeholder": "Describe la acción del héroe… (Enter para enviar)",
+    "chat.action_placeholder": "¿Qué haces? (atacar, registrar, hablar, esconderse…)",
     "chat.dead_placeholder": "El héroe ha caído. Espera una nueva partida.",
     "chat.waiting_placeholder": "Esperando turno ({name} actúa)…",
     "chat.show_more": "Mostrar más",
@@ -632,7 +632,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.attack": "Angreifen",
 
     "chat.send_action": "Aktion senden",
-    "chat.action_placeholder": "Beschreibe die Heldentat… (Enter zum Senden)",
+    "chat.action_placeholder": "Was tust du? (angreifen, durchsuchen, sprechen, verstecken…)",
     "chat.dead_placeholder": "Der Held ist gefallen. Warte auf ein neues Spiel.",
     "chat.waiting_placeholder": "Warte auf Zug ({name} handelt)…",
     "chat.show_more": "Mehr anzeigen",
@@ -782,7 +782,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.attack": "Attaquer",
 
     "chat.send_action": "Envoyer l'action",
-    "chat.action_placeholder": "Décrivez l'action du héros… (Entrée pour envoyer)",
+    "chat.action_placeholder": "Que faites-vous ? (attaquer, fouiller, parler, se cacher…)'action du héros… (Entrée pour envoyer)",
     "chat.dead_placeholder": "Le héros est tombé. Attendez une nouvelle partie.",
     "chat.waiting_placeholder": "En attente du tour ({name} agit)…",
     "chat.show_more": "Afficher plus",
