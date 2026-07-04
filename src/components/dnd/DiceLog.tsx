@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
  */
 export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[] }) {
   const settings = useSettings();
+  const tt = (key: string, params?: Record<string, string | number>) => t(settings.lang, key, params);
   const collapsed = settings.collapsedDiceLog;
   return (
     <Card className="parchment rune-border border-border/80 gap-0">
@@ -60,10 +61,10 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">
                           <span className="truncate font-medium">{r.label}</span>
-                          {isAdv && <span title="Преимущество" className="shrink-0 text-emerald-400 font-bold">↑</span>}
-                          {isDisadv && <span title="Помеха" className="shrink-0 text-red-400 font-bold">↓</span>}
-                          {isCrit && <span className="shrink-0 text-[9px] font-bold text-amber-300 uppercase">Крит!</span>}
-                          {isFumble && <span className="shrink-0 text-[9px] font-bold text-red-400 uppercase">Провал!</span>}
+                          {isAdv && <span title={tt("dice.adv")} className="shrink-0 text-emerald-400 font-bold">↑</span>}
+                          {isDisadv && <span title={tt("dice.disadv")} className="shrink-0 text-red-400 font-bold">↓</span>}
+                          {isCrit && <span className="shrink-0 text-[9px] font-bold text-amber-300 uppercase">{tt("dice.crit_hit")}</span>}
+                          {isFumble && <span className="shrink-0 text-[9px] font-bold text-red-400 uppercase">{tt("dice.crit_fail")}</span>}
                         </div>
                         <div className="font-mono text-[10px] text-muted-foreground">
                           {r.notation}
@@ -83,9 +84,9 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
                               })}
                             </span>
                           ) : (
-                            <span>выпало {r.result}</span>
+                            <span>{tt("dice.rolled")} {r.result}</span>
                           )}
-                          {r.target ? ` (цель ${r.target})` : ""}
+                          {r.target ? ` (${tt("dice.target")} ${r.target})` : ""}
                         </div>
                       </div>
                       <div className="flex flex-col items-end">

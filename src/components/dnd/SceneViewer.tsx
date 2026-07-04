@@ -29,7 +29,7 @@ export function SceneViewer({
           : "none";
 
   const settings = useSettings();
-  const tt = (key: string) => t(settings.lang, key);
+  const tt = (key: string, params?: Record<string, string | number>) => t(settings.lang, key, params);
 
   const timeEmoji =
     timeOfDay === "dawn" ? "🌅" : timeOfDay === "day" ? "☀️" : timeOfDay === "dusk" ? "🌇" : "🌙";

@@ -79,7 +79,7 @@ export const PartyPanel = memo(function PartyPanel({
                         <span className="truncate text-sm font-semibold">{p.name}</span>
                         {isYou && (
                           <Badge variant="outline" className="shrink-0 border-primary/60 text-[9px] text-primary">
-                            Вы
+                            {t(settings.lang, "common.you")}
                           </Badge>
                         )}
                         {p.isHost && <Crown className="h-3 w-3 shrink-0 text-amber-300" />}

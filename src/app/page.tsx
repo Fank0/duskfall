@@ -896,10 +896,17 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [targetingMode, cancelTargeting]);
 
+  // Cancel targeting when combat ENDS (transition from active → inactive) so
+  // the player is never stuck targeting on a peaceful grid. We track the
+  // previous combat state with a ref so we don't cancel targeting that was
+  // intentionally entered outside combat (e.g. AoE cell targeting during
+  // exploration).
+  const prevCombatActive = useRef(false);
   useEffect(() => {
-    if (snapshot && !snapshot.combatActive && targetingMode !== "none") {
+    if (snapshot && prevCombatActive.current && !snapshot.combatActive && targetingMode !== "none") {
       cancelTargeting();
     }
+    if (snapshot) prevCombatActive.current = snapshot.combatActive;
   }, [snapshot, targetingMode, cancelTargeting]);
 
   // Track whether any modal is open — hotkeys are suppressed while a modal
@@ -926,16 +933,22 @@ export default function Home() {
     const a = abilities[index];
     const combatActive = snapshot.combatActive;
     const nearest = findNearestMonsterName(snapshot.monsters, me.posX, me.posY);
-    if (combatActive) {
-      const kind = classifyAbilityTargeting(a);
-      if (kind === "monster") {
-        requestAbilityTargeting(a, "ability");
-        return;
-      }
-      if (kind === "aoe") {
-        requestAbilityTargeting(a, "aoe");
-        return;
-      }
+    // Match BottomPanel.triggerAbility dispatch logic:
+    // — monster targeting: only in combat.
+    // — aoe targeting: works in both combat and exploration (cell targeting).
+    // — heal targeting: only in combat (ally tokens).
+    const kind = classifyAbilityTargeting(a);
+    if (kind === "monster" && combatActive) {
+      requestAbilityTargeting(a, "ability");
+      return;
+    }
+    if (kind === "aoe") {
+      requestAbilityTargeting(a, "aoe");
+      return;
+    }
+    if (kind === "self" && a.castType === "heal" && combatActive) {
+      requestAbilityTargeting(a, "ability");
+      return;
     }
     const ctx: QuickActionContext = {
       combatActive,

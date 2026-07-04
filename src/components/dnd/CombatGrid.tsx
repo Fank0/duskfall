@@ -8,7 +8,7 @@ import { CONDITIONS } from "@/lib/game/conditions";
 import { cn } from "@/lib/utils";
 import { GRID_SIZE } from "@/lib/game/state";
 import { useSettings } from "@/lib/game/settings";
-import { t } from "@/lib/game/i18n";
+import { t, type Lang } from "@/lib/game/i18n";
 import { shallowEqual } from "@/lib/game/shallow";
 
 /** AoE overlay info passed from the page (transient — lasts ~2s). */
@@ -511,14 +511,14 @@ export const CombatGrid = memo(function CombatGrid({
                   {lootItems && lootItems.length > 0 && (
                     <div
                       className="pointer-events-none absolute inset-0 z-10 rounded-[2px] loot-shimmer"
-                      title={`Здесь лежит: ${lootItems.join(", ")}`}
+                      title={`${t(settings.lang, "grid.loot")}: ${lootItems.join(", ")}`}
                     />
                   )}
                   {/* Discovered trap (item 20) */}
                   {isTrap && trapDiscovered && (
                     <div
                       className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[2px] bg-red-900/55 text-[10px]"
-                      title="Ловушка!"
+                      title={t(settings.lang, "grid.trap")}
                     >
                       <span>⚠️</span>
                     </div>
@@ -573,6 +573,7 @@ export const CombatGrid = memo(function CombatGrid({
                           showName={showTokenNames}
                           anim={activeAnim && activeAnim.name === entry.name ? activeAnim : null}
                           critFx={activeCrit && activeCrit.name === entry.name ? activeCrit : null}
+                          lang={settings.lang}
                         />
                       ) : (
                         <MonsterToken
@@ -583,6 +584,7 @@ export const CombatGrid = memo(function CombatGrid({
                           showName={showTokenNames}
                           anim={activeAnim && activeAnim.name === entry.name ? activeAnim : null}
                           critFx={activeCrit && activeCrit.name === entry.name ? activeCrit : null}
+                          lang={settings.lang}
                         />
                       )}
                     </div>
@@ -791,6 +793,7 @@ function PlayerToken({
   showName,
   anim,
   critFx,
+  lang,
 }: {
   players: PlayerState[];
   currentTurnName: string | null;
@@ -799,6 +802,7 @@ function PlayerToken({
   showName: boolean;
   anim: { kind: "hit" | "heal"; id: number } | null;
   critFx: { id: number } | null;
+  lang: Lang;
 }) {
   const p = players[0];
   const isTurn = currentTurnName === p.name;
@@ -858,7 +862,7 @@ function PlayerToken({
         {critFx && (
           <>
             <div key={`burst-${critFx.id}`} className="pointer-events-none absolute inset-0 z-30 crit-burst-overlay" />
-            <span key={`text-${critFx.id}`} className="crit-float-text">КРИТ!</span>
+            <span key={`text-${critFx.id}`} className="crit-float-text">{t(lang, "ui.crit")}</span>
           </>
         )}
       </div>
@@ -880,6 +884,7 @@ function MonsterToken({
   showName,
   anim,
   critFx,
+  lang,
 }: {
   monster: MonsterState;
   isTurn: boolean;
@@ -888,6 +893,7 @@ function MonsterToken({
   showName: boolean;
   anim: { kind: "hit" | "heal"; id: number } | null;
   critFx: { id: number } | null;
+  lang: Lang;
 }) {
   const hpPct = monster.maxHp > 0 ? (monster.hp / monster.maxHp) * 100 : 0;
   const hpColor = hpGradientColor(hpPct);
@@ -932,7 +938,7 @@ function MonsterToken({
         {critFx && (
           <>
             <div key={`burst-${critFx.id}`} className="pointer-events-none absolute inset-0 z-30 crit-burst-overlay" />
-            <span key={`text-${critFx.id}`} className="crit-float-text">КРИТ!</span>
+            <span key={`text-${critFx.id}`} className="crit-float-text">{t(lang, "ui.crit")}</span>
           </>
         )}
       </div>

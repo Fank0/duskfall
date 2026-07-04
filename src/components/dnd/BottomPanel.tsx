@@ -159,18 +159,18 @@ export const BottomPanel = memo(function BottomPanel({
   // Equipment — find equipped items by id from inventory
   const eq = player.equipment || {};
   const equippedSlots: { slot: string; label: string; item?: InventoryItemState }[] = [
-    { slot: "eqWeapon", label: "Оруж" },
-    { slot: "eqShield", label: "Щит" },
-    { slot: "eqHead", label: "Голова" },
-    { slot: "eqChest", label: "Торс" },
-    { slot: "eqLegs", label: "Ноги" },
-    { slot: "eqHands", label: "Руки" },
-    { slot: "eqAccessory1", label: "Акс1" },
-    { slot: "eqAccessory2", label: "Акс2" },
-  ].map(({ slot, label }) => {
+    { slot: "eqWeapon", labelKey: "equip.weapon" },
+    { slot: "eqShield", labelKey: "equip.shield" },
+    { slot: "eqHead", labelKey: "equip.head" },
+    { slot: "eqChest", labelKey: "equip.chest" },
+    { slot: "eqLegs", labelKey: "equip.legs" },
+    { slot: "eqHands", labelKey: "equip.hands" },
+    { slot: "eqAccessory1", labelKey: "equip.acc1" },
+    { slot: "eqAccessory2", labelKey: "equip.acc2" },
+  ].map(({ slot, labelKey }) => {
     const id = (eq as any)[slot] as string | null | undefined;
     const item = id ? inventory.find((i) => i.id === id) : undefined;
-    return { slot, label, item };
+    return { slot, label: tt(labelKey), item };
   });
   const equippedCount = equippedSlots.filter((s) => s.item).length;
 
@@ -263,11 +263,15 @@ export const BottomPanel = memo(function BottomPanel({
     if (!canQuickUse) return;
     const chipId = `abil:${a.id}`;
     if (disabledChips.has(chipId)) return;
-    // Two-step targeting: if the ability needs a target AND targeting is available,
-    // enter targeting mode (works in BOTH combat and exploration).
+    // Two-step targeting: if the ability needs a target AND targeting is available.
+    // — monster targeting: only in combat (need monster tokens to click);
+    //   outside combat the action is sent immediately.
+    // — aoe targeting: works in BOTH combat (target monsters) and exploration
+    //   (target a grid cell — e.g. Fireball at a door).
+    // — heal targeting: only in combat (target an ally token).
     if (onRequestTargeting) {
       const kind = classifyAbilityTargeting(a);
-      if (kind === "monster") {
+      if (kind === "monster" && combatActive) {
         onRequestTargeting(a, "ability");
         return;
       }
@@ -275,7 +279,6 @@ export const BottomPanel = memo(function BottomPanel({
         onRequestTargeting(a, "aoe");
         return;
       }
-      // Heal abilities could target allies — enter targeting mode too
       if (kind === "self" && a.castType === "heal" && combatActive) {
         onRequestTargeting(a, "ability");
         return;
@@ -293,14 +296,14 @@ export const BottomPanel = memo(function BottomPanel({
     if (!canQuickUse) return;
     const chipId = `item:${item.id}`;
     if (disabledChips.has(chipId)) return;
-    // Two-step targeting: weapons, scrolls, and offensive items enter targeting
-    // mode (works in BOTH combat and exploration).
-    if (onRequestTargeting && (item.itemType === "weapon" || item.itemType === "scroll")) {
+    // Two-step targeting: weapons/scrolls target monster tokens — only in
+    // combat. Potions target ally tokens — only in combat. Outside combat
+    // all items are sent immediately via the standard quick-use flow.
+    if (onRequestTargeting && combatActive && (item.itemType === "weapon" || item.itemType === "scroll")) {
       onRequestTargeting(item, "item");
       return;
     }
-    // Potions could target allies — enter targeting mode in combat
-    if (onRequestTargeting && item.itemType === "potion" && combatActive) {
+    if (onRequestTargeting && combatActive && item.itemType === "potion") {
       onRequestTargeting(item, "item");
       return;
     }
@@ -324,7 +327,7 @@ export const BottomPanel = memo(function BottomPanel({
                 type="button"
                 disabled={!onUnequip || !item}
                 onClick={() => item && onUnequip?.(slot)}
-                title={item ? `${localizeData(lang, "item", item.itemName)} — tt("ui.click_unequip")` : label}
+                title={item ? `${localizeData(lang, "item", item.itemName)} — ${tt("ui.click_unequip")}` : label}
                 className={cn(
                   "flex flex-col items-center justify-center rounded border px-1 py-0.5 text-[8px] transition-colors",
                   item
@@ -428,7 +431,7 @@ export const BottomPanel = memo(function BottomPanel({
           <div className="flex flex-col gap-1 lg:w-auto lg:max-w-[18%]">
             <div className="flex items-center gap-1.5">
               <Star className="h-3.5 w-3.5 text-amber-300" />
-              <span className="text-[11px] font-semibold gold-text">Избранное</span>
+              <span className="text-[11px] font-semibold gold-text">{tt("ui.favorites")}</span>
               <Badge variant="secondary" className="ml-auto text-[8px]">{favoritedAbilities.length}</Badge>
             </div>
             <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
@@ -480,7 +483,7 @@ export const BottomPanel = memo(function BottomPanel({
               <Input
                 value={abilitySearch}
                 onChange={(e) => setAbilitySearch(e.target.value)}
-                placeholder="Поиск способности…"
+                placeholder={tt("ui.search_ability")}
                 className="h-6 rounded border-border/50 bg-stone-900/60 pl-6 pr-2 text-[10px] placeholder:text-muted-foreground/60"
                 data-no-click-sfx
               />
@@ -542,10 +545,10 @@ export const BottomPanel = memo(function BottomPanel({
                       "flex flex-col items-center gap-0.5 rounded px-1",
                       isLow && "animate-pulse-glow ring-1 ring-red-500/60",
                     )}
-                    title={isLow ? `Мало слотов ${s.level}-го круга: ${s.current}/${s.max}` : `${s.current}/${s.max}`}
+                    title={isLow ? tt("ui.slots_low", { lv: s.level, cur: s.current, max: s.max }) : `${s.current}/${s.max}`}
                   >
                     <span className={cn("text-[8px]", isLow ? "font-bold text-red-400" : "text-muted-foreground")}>
-                      К{s.level}
+                      {tt("ui.slot_level_short")}{s.level}
                     </span>
                     <div className="flex gap-0.5">
                       {Array.from({ length: s.max }).map((_, i) => (
@@ -609,7 +612,7 @@ export const BottomPanel = memo(function BottomPanel({
                 )}
               >
                 <Bed className="h-3 w-3" />
-                Короткий
+                {tt("rest.short_rest")}
               </button>
               <button
                 type="button"
@@ -623,7 +626,7 @@ export const BottomPanel = memo(function BottomPanel({
                 )}
               >
                 <Moon className="h-3 w-3" />
-                Долгий
+                {tt("rest.long_rest")}
               </button>
             </div>
           </div>
@@ -698,7 +701,7 @@ function AbilityChip({
   lang,
 }: AbilityChipProps & { lang: Lang }) {
   const tooltip = buildAbilityTooltip(a);
-  const tt2 = (key: string) => t(lang, key);
+  const tt2 = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -733,15 +736,15 @@ function AbilityChip({
             {a.slotLevel && a.slotLevel > 0 && (
               <span
                 className="ml-0.5 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full border border-fuchsia-400/70 bg-fuchsia-900/70 px-1 text-[8px] font-bold leading-none text-fuchsia-100"
-                title={`Тратит ячейку ${a.slotLevel}-го круга`}
+                title={tt2("ui.spends_slot", { lv: a.slotLevel })}
               >
-                К{a.slotLevel}
+                {tt2("ui.slot_level_short")}{a.slotLevel}
               </span>
             )}
             {/* Item 2 — consumable badge for scrolls. */}
             {a.consumable && (
               <span className="ml-0.5 inline-flex items-center rounded border border-amber-700/50 bg-amber-950/60 px-1 text-[7px] font-medium leading-none text-amber-200">
-                расходуемый
+                {tt2("ui.consumable")}
               </span>
             )}
             {/* Item 4 — hotkey number badge (1..8) in the corner. */}
@@ -766,7 +769,7 @@ function AbilityChip({
                   ? "border-amber-400 bg-amber-900/40 hover:bg-amber-800/50"
                   : "border-stone-500/70 bg-stone-900/90 hover:bg-stone-800",
               )}
-              title={isFavorited ? "Убрать из избранного" : "Добавить в избранное"}
+              title={isFavorited ? tt2("ui.remove_favorite") : tt2("ui.add_favorite")}
             >
               <Star
                 className={cn(

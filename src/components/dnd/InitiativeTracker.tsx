@@ -81,7 +81,7 @@ export function InitiativeTracker({
                     <span className="truncate text-[10px] font-semibold">{label}</span>
                   </div>
                   <span className="font-mono text-xs font-bold text-amber-300">{e.initiative}</span>
-                  {dead && <span className="text-[8px] text-red-400">пал</span>}
+                  {dead && <span className="text-[8px] text-red-400">{tt("char.dead_short")}</span>}
                 </div>
                 {i < initiatives.length - 1 && (
                   <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />

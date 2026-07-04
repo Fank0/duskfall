@@ -447,14 +447,14 @@ export const CharacterSheet = memo(function CharacterSheet({
                               "border-amber-700/50 text-amber-300"
                             )}
                           >
-                            {a.source === "race" ? "народ" : a.source === "class" ? "класс" : a.source === "talent" ? "талант" : a.source === "spell" ? "закл." : "свиток"}
+                            {a.source === "race" ? tt("char.source_race") : a.source === "class" ? tt("char.source_class") : a.source === "talent" ? tt("char.source_talent") : a.source === "spell" ? tt("char.source_spell") : tt("char.source_scroll")}
                           </Badge>
                         </div>
                       </div>
                       <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{a.description}</p>
                       {a.castNotation && (
                         <span className="mt-0.5 inline-block font-mono text-[9px] text-red-300">
-                          {a.castType === "heal" ? "лечение " : a.castType === "buff" ? "эффект " : "урон "}
+                          {a.castType === "heal" ? tt("char.cast_heal") + " " : a.castType === "buff" ? tt("char.cast_buff") + " " : a.castType === "utility" ? tt("char.cast_utility") + " " : tt("char.cast_damage") + " "}
                           {a.castNotation}
                         </span>
                       )}
@@ -469,7 +469,7 @@ export const CharacterSheet = memo(function CharacterSheet({
               <details className="mt-2 rounded border border-amber-700/30 bg-amber-950/10 px-2 py-1.5">
                 <summary className="flex cursor-pointer items-center gap-1.5 text-[11px] font-semibold gold-text">
                   <ScrollText className="h-3 w-3 text-amber-300" />
-                  Предыстория
+                  {tt("char.backstory")}
                 </summary>
                 <p className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-amber-100/70">
                   {player.backstory.trim()}

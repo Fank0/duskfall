@@ -607,8 +607,8 @@ function MessageBubble({
               type="button"
               onClick={handleTtsClick}
               disabled={ttsDisabled || (anyTtsActive && !isTtsLoading && !isTtsPlaying)}
-              title={isTtsPlaying ? "Остановить озвучку" : "Озвучить реплику Мастера"}
-              aria-label={isTtsPlaying ? "Остановить озвучку" : "Озвучить реплику Мастера"}
+              title={isTtsPlaying ? tt("ui.tts_stop") : tt("ui.tts_play")}
+              aria-label={isTtsPlaying ? tt("ui.tts_stop") : tt("ui.tts_play")}
               data-no-click-sfx
               className={cn(
                 "flex h-5 w-5 items-center justify-center rounded-full border text-amber-300 transition-colors",
