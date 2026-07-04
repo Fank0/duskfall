@@ -90,14 +90,14 @@ export const PartyPanel = memo(function PartyPanel({
                       <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground">
                         <span className="font-medium text-stone-300">{p.raceName} {p.charClass}</span>
                         <span>·</span>
-                        <span className="text-amber-300/80">ур.{p.level}</span>
+                        <span className="text-amber-300/80">{t(settings.lang, "character.level_short")}{p.level}</span>
                         <span>·</span>
                         <span className="flex items-center gap-0.5">
                           <Heart className="h-2.5 w-2.5 text-red-400" />
                           <span className={cn(hpPct <= 30 && "font-bold text-red-400")}>{p.hp}/{p.maxHp}</span>
                         </span>
                         <span>·</span>
-                        <span>AC {p.ac}</span>
+                        <span>{t(settings.lang, "character.ac")} {p.ac}</span>
                         {p.gold > 0 && (
                           <>
                             <span>·</span>
@@ -115,7 +115,7 @@ export const PartyPanel = memo(function PartyPanel({
                         />
                       </div>
                       <div className="mt-0.5 flex items-center justify-between text-[9px] font-mono text-muted-foreground">
-                        <span>СИЛ{p.str}({fmt(abilityModifier(p.str))}) ЛОВ{p.dex}({fmt(abilityModifier(p.dex))}) ТЕЛ{p.con}({fmt(abilityModifier(p.con))})</span>
+                        <span>{t(settings.lang, "character.str")}{p.str}({fmt(abilityModifier(p.str))}) {t(settings.lang, "character.dex")}{p.dex}({fmt(abilityModifier(p.dex))}) {t(settings.lang, "character.con")}{p.con}({fmt(abilityModifier(p.con))})</span>
                         <span className="truncate ml-1 text-stone-400">{p.weaponName}</span>
                       </div>
                     </li>

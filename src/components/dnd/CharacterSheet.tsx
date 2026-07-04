@@ -179,8 +179,8 @@ export const CharacterSheet = memo(function CharacterSheet({
       <CardContent className="px-3 pb-3 pt-0">
         {/* Vitals */}
         <div className="grid grid-cols-3 gap-1.5">
-          <Vital icon={<Heart className="h-3 w-3" />} label="HP" value={`${player.hp}/${player.maxHp}`} accent="text-red-400" />
-          <Vital icon={<Shield className="h-3 w-3" />} label="AC" value={`${player.ac}`} accent="text-sky-300" />
+          <Vital icon={<Heart className="h-3 w-3" />} label={tt("character.hp")} value={`${player.hp}/${player.maxHp}`} accent="text-red-400" />
+          <Vital icon={<Shield className="h-3 w-3" />} label={tt("character.ac")} value={`${player.ac}`} accent="text-sky-300" />
           <Vital icon={<Coins className="h-3 w-3" />} label={tt("character.gold_short")} value={`${player.gold}`} accent="text-amber-300" />
         </div>
 
@@ -309,11 +309,11 @@ export const CharacterSheet = memo(function CharacterSheet({
             </div>
             {/* AC breakdown line */}
             <div className="mb-2 rounded border border-sky-800/40 bg-sky-950/20 px-2 py-1 text-[9px] text-sky-200">
-              AC {player.ac} = 10
-              {acBreakdown.dexBonus > 0 ? ` + ${acBreakdown.dexBonus} (ЛОВ)` : acBreakdown.dexBonus < 0 ? ` ${acBreakdown.dexBonus} (ЛОВ)` : ""}
-              {acBreakdown.armor > 0 ? ` + ${acBreakdown.armor} (броня)` : ""}
-              {acBreakdown.shield > 0 ? ` + ${acBreakdown.shield} (щит)` : ""}
-              {acBreakdown.other > 0 ? ` + ${acBreakdown.other} (прочее)` : ""}
+              {tt("character.ac")} {player.ac} = 10
+              {acBreakdown.dexBonus > 0 ? ` + ${acBreakdown.dexBonus} ({tt("character.dex")})` : acBreakdown.dexBonus < 0 ? ` ${acBreakdown.dexBonus} ({tt("character.dex")})` : ""}
+              {acBreakdown.armor > 0 ? ` + ${acBreakdown.armor} ({tt("character.armor")})` : ""}
+              {acBreakdown.shield > 0 ? ` + ${acBreakdown.shield} ({tt("character.shield")})` : ""}
+              {acBreakdown.other > 0 ? ` + ${acBreakdown.other} ({tt("character.other")})` : ""}
             </div>
 
             <Separator className="my-2 bg-border/50" />
