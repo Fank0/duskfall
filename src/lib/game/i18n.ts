@@ -218,7 +218,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.quest_empty": "Журнал пуст. Поговорите с NPC или исследуйте мир, чтобы получить задание.",
     "rest.short_rest": "Короткий",
     "rest.long_rest": "Долгий",
-    ""ui.click_use": "клик — использовать",
+    "ui.click_use": "клик — использовать",
     "ui.click_apply": "клик — применить",
   },
 
