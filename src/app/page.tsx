@@ -1337,9 +1337,9 @@ export default function Home() {
 
       {/* ===== Footer ===== */}
       <footer className="mt-auto shrink-0 border-t border-border/60 bg-stone-950/60 px-4 py-2 text-center text-[10px] text-muted-foreground backdrop-blur">
-        <span className="gold-text font-serif">DUSKFALL</span> · Комната{" "}
+        <span className="gold-text font-serif">DUSKFALL</span> · {tt("ui.room_code")}:{" "}
         <span className="font-mono text-amber-200">{snapshot.roomCode}</span> ·{" "}
-        {snapshot.players.length} гер. · Все исходы решаются бросками костей
+        {snapshot.players.length} {tt("common.heroes")} · {tt("ui.footer_hint")}
       </footer>
 
       {/* ===== Level-up modal ===== */}

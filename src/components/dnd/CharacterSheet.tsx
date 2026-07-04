@@ -323,7 +323,7 @@ export const CharacterSheet = memo(function CharacterSheet({
               <Backpack className="h-3 w-3 text-amber-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("character.inventory")}</span>
               {isYou && onQuickAction && (
-                <span className="ml-1 text-[8px] italic text-amber-300/70">клик — использовать</span>
+                <span className="ml-1 text-[8px] italic text-amber-300/70">{tt("ui.click_use")}</span>
               )}
               <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
             </div>
@@ -372,7 +372,7 @@ export const CharacterSheet = memo(function CharacterSheet({
               <Sparkles className="h-3 w-3 text-amber-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("character.abilities")}</span>
               {isYou && onQuickAction && (
-                <span className="ml-1 text-[8px] italic text-amber-300/70">клик — применить</span>
+                <span className="ml-1 text-[8px] italic text-amber-300/70">{tt("ui.click_apply")}</span>
               )}
               <Badge variant="secondary" className="ml-auto text-[8px]">
                 {computeAbilities(player, inventory).length}

@@ -380,11 +380,11 @@ export const CombatGrid = memo(function CombatGrid({
             {isTargetingActive ? (
               <span className="flex items-center gap-1 rounded-full border border-amber-500/60 bg-amber-950/50 px-2 py-0.5 text-amber-300 animate-pulse-glow">
                 <Crosshair className="h-3 w-3" />
-                {targetingMode === "ability" ? "Выбор цели" : "Выбор области"}
+                {targetingMode === "ability" || targetingMode === "item" ? t(settings.lang, "ui.target_select") : t(settings.lang, "ui.aoe_select")}
               </span>
             ) : combatActive ? (
               <span className="flex items-center gap-1 rounded-full border border-red-800/60 bg-red-950/50 px-2 py-0.5 text-red-300 animate-pulse-glow">
-                <Swords className="h-3 w-3" /> Бой · Раунд {round}
+                <Swords className="h-3 w-3" /> {t(settings.lang, "game.combat")} · {t(settings.lang, "game.round")} {round}
               </span>
             ) : (
               <span className="flex items-center gap-1 rounded-full border border-emerald-800/60 bg-emerald-950/40 px-2 py-0.5 text-emerald-300">
@@ -480,7 +480,7 @@ export const CombatGrid = memo(function CombatGrid({
                     monsterInCell
                       ? `Выбрать цель: ${monsterInCell.name} (${monsterInCell.hp}/${monsterInCell.maxHp} HP)`
                       : isAoeTargetCell
-                      ? `Кастовать в клетку (${x}, ${y})`
+                      ? `${t(settings.lang, "ui.cast_at")} (${x}, ${y})`
                       : `(${x}, ${y})`
                   }
                 >
@@ -488,7 +488,7 @@ export const CombatGrid = memo(function CombatGrid({
                   {isThreat && (
                     <div
                       className="pointer-events-none absolute inset-0 z-10 rounded-[2px] bg-red-700/15"
-                      title="Зона угрозы (дальний бой)"
+                      title={t(settings.lang, "ui.threat_zone")}
                     />
                   )}
                   {/* Loot cell shimmer (item 20) */}
