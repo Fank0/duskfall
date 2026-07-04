@@ -45,17 +45,24 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
                   const isAdv = r.advantageMode === "advantage";
                   const isDisadv = r.advantageMode === "disadvantage";
                   const bothRolls = r.allRolls && r.allRolls.length > 1 ? r.allRolls : null;
+                  const isCrit = r.result === 20;
+                  const isFumble = r.result === 1;
                   return (
                     <li
                       key={r.id}
-                      className="flex items-center gap-2 rounded-md border border-border/40 bg-stone-900/40 px-2 py-1 text-xs animate-fade-up"
+                      className={cn(
+                        "flex items-center gap-2 rounded-md border px-2 py-1 text-xs animate-fade-up",
+                        isCrit ? "border-amber-500/60 bg-amber-950/30" : isFumble ? "border-red-500/60 bg-red-950/30" : "border-border/40 bg-stone-900/40",
+                      )}
                     >
-                      <Dices className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                      <Dices className={cn("h-3.5 w-3.5 shrink-0", isCrit ? "text-amber-300" : "text-amber-400/70")} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">
                           <span className="truncate font-medium">{r.label}</span>
-                          {isAdv && <span title="Преимущество" className="shrink-0 text-emerald-400">⬆️</span>}
-                          {isDisadv && <span title="Помеха" className="shrink-0 text-red-400">⬇️</span>}
+                          {isAdv && <span title="Преимущество" className="shrink-0 text-emerald-400 font-bold">↑</span>}
+                          {isDisadv && <span title="Помеха" className="shrink-0 text-red-400 font-bold">↓</span>}
+                          {isCrit && <span className="shrink-0 text-[9px] font-bold text-amber-300 uppercase">Крит!</span>}
+                          {isFumble && <span className="shrink-0 text-[9px] font-bold text-red-400 uppercase">Провал!</span>}
                         </div>
                         <div className="font-mono text-[10px] text-muted-foreground">
                           {r.notation}
@@ -84,7 +91,7 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
                         <span
                           className={cn(
                             "font-mono text-sm font-bold",
-                            r.total >= 20 ? "text-amber-300 text-glow" : "text-foreground"
+                            isCrit ? "text-amber-300 text-glow" : isFumble ? "text-red-400" : "text-foreground",
                           )}
                         >
                           {r.total}
@@ -93,7 +100,7 @@ export const DiceLog = memo(function DiceLog({ rolls }: { rolls: DiceRollState[]
                           <span
                             className={cn(
                               "text-[9px] font-bold uppercase",
-                              success ? "text-emerald-400" : "text-red-400"
+                              success ? "text-emerald-400" : "text-red-400",
                             )}
                           >
                             {success ? "успех" : "провал"}
