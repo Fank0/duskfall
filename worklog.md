@@ -2522,3 +2522,50 @@ Stage Summary:
 - Sounds added to: attack, move, explore, targeting, click-to-move, abilities, spells
 - Quick actions simplified: removed Скрыться, Говорить, Обыскать (merged into Осмотреться)
 - DM English words: strengthened prompt + post-processing stripEnglishWords()
+
+---
+Task ID: dm-narrative-llm-upgrade
+Agent: main-agent
+Task: Improve DM storytelling (NPC meeting + quest start), add D&D DM conventions, upgrade LLM model hierarchy
+
+Work Log:
+- Analyzed LLM models for D&D DM (narrative quality + Russian + JSON):
+  * Claude 3.5 Sonnet — best narrative/creativity, follows rules (★★★★★)
+  * GPT-4o — excellent Russian, logic, JSON (★★★★☆)
+  * GLM-4.6 — good Russian, free (z.ai) (★★★☆☆)
+  * Gemini 2.0 Flash — fast, free (★★★☆☆)
+  * Qwen3 — good Russian, free (OpenRouter) (★★★☆☆)
+  * Llama 3.3 — open, free, weak Russian (★★☆☆☆)
+- Restructured LLM provider chain (llm.ts):
+  * OLD: GLM → Gemini → OpenRouter → Ollama
+  * NEW: OpenRouter (Claude 3.5 Sonnet) → GLM → Gemini → Ollama
+  * OpenRouter now PRIMARY (provides Claude 3.5 Sonnet, GPT-4o, Qwen3)
+  * Default model: anthropic/claude-3.5-sonnet
+  * Fallbacks: gpt-4o → qwen3 → llama-3.3 → nemotron
+  * Updated FAST_MODEL_BY_PROVIDER for new order
+  * Updated all comments/docs to reflect new hierarchy
+- Updated generateUniqueIntro to start with NPC meeting + combat quest:
+  * NEW: Story starts with NPC meeting (questgiver/elder/stranger) in tavern/square/camp
+  * NPC describes problem, offers reward, gives CLEAR combat quest
+  * Quest types: KILL (monster/bandits/undead), STEAL (artifact/documents), NEGOTIATE (goblins/smith), DELIVER (escort/caravan)
+  * 8-15 sentences with NPC description, location, quest, reward, call to action
+  * Updated fallback placeholder to feature NPC in tavern with crypt quest
+  * Updated retry prompt to also require NPC + quest
+- Added D&D DM narrative conventions to SYSTEM_PROMPT_PLANNING:
+  1. SHOW, DON'T TELL — describe fangs/smell, not "looks dangerous"
+  2. ACTIVE ACTIONS — describe consequences, not passive scenes
+  3. SENSORY IMMERSION — 2+ senses per narrative (sight+sound, smell+touch)
+  4. TENSION PACING — alternate calm/danger, build before combat
+  5. NPCs WITH CHARACTER — unique voice, manner, motivation per NPC
+  6. CONSEQUENCES — kill NPC → family seeks revenge, help NPC → ally later
+  7. INTERACTIVE ENVIRONMENT — describe objects players can interact with
+  8. RHYTHM — short sentences for action, long for description, questions for engagement
+  9. PLAYER AGENCY — always 2+ action options, don't railroad
+- lint: 0 errors, tsc: 0 errors
+
+Stage Summary:
+- LLM hierarchy upgraded: OpenRouter (Claude 3.5 Sonnet) now primary — best narrative model
+- DM now starts every story with NPC meeting + combat quest (not just location description)
+- 9 D&D DM narrative conventions added to system prompt
+- Fallback placeholder features NPC in tavern with crypt-clearing quest
+- All changes compile cleanly (lint 0, tsc 0)

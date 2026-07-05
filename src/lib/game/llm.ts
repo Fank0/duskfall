@@ -1,23 +1,31 @@
 // Unified LLM client — multi-provider fallback chain.
 //
-// PRIMARY: GLM-4.6 (z.ai) — best Russian quality.
-// FALLBACK CHAIN (tried in order if the primary provider fails):
-//   1. GLM (z.ai)     — glm-4.6 → glm-4-plus → glm-4-air → glm-4-flash
-//   2. Gemini (Google)— gemini-2.0-flash → gemini-1.5-flash
-//   3. OpenRouter     — qwen3 → nvidia nemotron → llama-3.3 → gpt-oss
+// ANALYSIS: Best models for D&D DM (narrative quality + Russian + JSON):
+//   1. Claude 3.5 Sonnet — best narrative/creativity, follows rules
+//   2. GPT-4o — excellent Russian, logic, JSON
+//   3. GLM-4.6 — good Russian, free (z.ai)
+//   4. Gemini 2.0 Flash — fast, free
+//   5. Qwen3 — good Russian, free (OpenRouter)
+//   6. Llama 3.3 — open, free
+//
+// PRIORITY CHAIN (tried in order if the primary provider fails):
+//   1. OpenRouter (Claude/GPT-4o/Qwen3 — if API key set)
+//   2. GLM (z.ai) — glm-4.6 → glm-4-plus → glm-4-air → glm-4-flash
+//   3. Gemini (Google) — gemini-2.0-flash → gemini-1.5-flash
 //   4. Ollama (local) — configurable model (default llama3.2)
 //   5. z-ai-web-dev-sdk sandbox config (last resort, only inside z.ai sandbox)
 //
 // === ENVIRONMENT VARIABLES (one set per provider) ===
 //
-// GLM (primary, recommended):
+// OpenRouter (primary — provides access to Claude, GPT-4o, Qwen3):
+//   OPENROUTER_API_KEY=sk-or-v1-...        (https://openrouter.ai/keys)
+//   OPENROUTER_MODEL=anthropic/claude-3.5-sonnet  (or gpt-4o, qwen3)
+//
+// GLM (fallback 1, free z.ai):
 //   GLM_API_KEY=...                        (z.ai API key)
 //
-// Gemini (fallback 1):
+// Gemini (fallback 2):
 //   GEMINI_API_KEY=...                     (https://aistudio.google.com/apikey)
-//
-// OpenRouter (fallback 2 — free models incl. NVIDIA Nemotron, Qwen3, Llama 3.3):
-//   OPENROUTER_API_KEY=sk-or-v1-...        (https://openrouter.ai/keys)
 //
 // Ollama (fallback 3, local, no key needed):
 //   OLLAMA_BASE_URL=http://localhost:11434/v1
@@ -84,8 +92,8 @@ function geminiConfig(): ProviderConfig | null {
 }
 
 /**
- * OpenRouter — fallback 2. Provides free access to NVIDIA Nemotron, Qwen3,
- * Llama 3.3, GPT-OSS, and other open models via a single API key.
+ * OpenRouter — PRIMARY provider. Provides access to the best models for D&D DM:
+ * Claude 3.5 Sonnet (best narrative), GPT-4o (best Russian), Qwen3 (free).
  */
 function openRouterConfig(): ProviderConfig | null {
   // Accept OPENROUTER_API_KEY, or detect an OpenRouter key in QWEN_API_KEY/LLM_API_KEY.
@@ -100,14 +108,16 @@ function openRouterConfig(): ProviderConfig | null {
     provider: "openrouter",
     baseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
     apiKey,
-    model: process.env.OPENROUTER_MODEL || "qwen/qwen3-next-80b-a3b-instruct:free",
+    // Default: Claude 3.5 Sonnet (best narrative quality for D&D DM).
+    // Fallbacks: GPT-4o (excellent Russian), Qwen3 (free), Llama 3.3 (free).
+    model: process.env.OPENROUTER_MODEL || "anthropic/claude-3.5-sonnet",
     fallbackModels: parseList(process.env.OPENROUTER_FALLBACK_MODELS).length
       ? parseList(process.env.OPENROUTER_FALLBACK_MODELS)
       : [
-          "nvidia/nemotron-3-super-120b-a12b:free",
+          "openai/gpt-4o",
+          "qwen/qwen3-next-80b-a3b-instruct:free",
           "meta-llama/llama-3.3-70b-instruct:free",
-          "openai/gpt-oss-120b:free",
-          "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+          "nvidia/nemotron-3-super-120b-a12b:free",
         ],
   };
 }
@@ -169,19 +179,23 @@ function legacyConfig(): ProviderConfig | null {
 /**
  * Resolve the ordered list of providers to try.
  * If LLM_PROVIDER is set → only that provider (legacy/test mode).
- * Otherwise → [GLM, Gemini, OpenRouter, Ollama] (skipping any without keys/config).
+ * Otherwise → [OpenRouter (Claude/GPT-4o), GLM, Gemini, Ollama] (skipping any without keys/config).
  */
 function getProviderChain(): ProviderConfig[] {
   const legacy = legacyConfig();
   if (legacy) return [legacy];
 
   const chain: ProviderConfig[] = [];
-  const glm = glmConfig();
-  if (glm) chain.push(glm);
-  const gemini = geminiConfig();
-  if (gemini) chain.push(gemini);
+  // OpenRouter first (best models: Claude 3.5 Sonnet, GPT-4o)
   const openrouter = openRouterConfig();
   if (openrouter) chain.push(openrouter);
+  // GLM second (free, good Russian)
+  const glm = glmConfig();
+  if (glm) chain.push(glm);
+  // Gemini third (free, fast)
+  const gemini = geminiConfig();
+  if (gemini) chain.push(gemini);
+  // Ollama last (local)
   const ollama = ollamaConfig();
   if (ollama) chain.push(ollama);
   return chain;
@@ -207,9 +221,9 @@ async function callWithProviderChain(
   // When `preferFast` is set, prepend a fast/cheap model to each provider's
   // model list so we hit the lightweight option first.
   const FAST_MODEL_BY_PROVIDER: Record<string, string> = {
+    openrouter: "qwen/qwen3-next-80b-a3b-instruct:free",
     glm: "glm-4-flash",
     gemini: "gemini-1.5-flash-8b",
-    openrouter: "qwen/qwen-turbo",
   };
 
   let lastErr: any = null;
