@@ -1672,6 +1672,49 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   });
   await damagePlayer(roomId, targetName, dmg);
   totalDamageToPlayer += dmg;
+
+    // D&D 5e: auto-execute special abilities on hit.
+    if (m.specialAbility && anyHit) {
+      const ability = m.specialAbility.toLowerCase();
+      // Похищение жизни: heal monster for half damage dealt.
+      if (ability.includes("похищение жизни") || ability.includes("life steal") || ability.includes("вампир")) {
+        const heal = Math.floor(dmg / 2);
+        if (heal > 0 && m.hp < m.maxHp) {
+          const newHp = Math.min(m.maxHp, m.hp + heal);
+          await db.monster.update({ where: { id: m.id }, data: { hp: newHp } });
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `🩸 ${m.name} похищает ${heal} HP у ${targetName}.` },
+          });
+        }
+      }
+      // Паралич: CON save DC 10 or paralyzed 1 round.
+      if (ability.includes("паралич") || ability.includes("paraly")) {
+        const saveMod = abilityModifier((target as any).con ?? 10);
+        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        if (saveRoll < 10) {
+          await applyCondition(roomId, targetName, "player", "stunned", 1, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `⚡ ${m.name} парализует ${targetName}! (спасбросок ${saveRoll} vs DC 10)` },
+          });
+        }
+      }
+      // Истощение силы: target gets -1 to attacks (apply poisoned condition as proxy).
+      if (ability.includes("истощение") || ability.includes("ослабл")) {
+        await applyCondition(roomId, targetName, "player", "poisoned", 3, m.name);
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: `💜 ${m.name} истощает силы ${targetName}.` },
+        });
+      }
+      // Ужасающий вопль / Дыхание тлена / Тёмный огонь: AoE damage (cooldown every 2-3 rounds).
+      if ((ability.includes("вопль") || ability.includes("дыхание") || ability.includes("огонь")) && round % 3 === 0) {
+        const aoeDmg = ability.includes("дыхание") ? rollDice("6d6") : ability.includes("вопль") ? rollDice("3d6") : rollDice("3d6");
+        await damagePlayer(roomId, targetName, aoeDmg.total);
+        totalDamageToPlayer += aoeDmg.total;
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: `🔥 ${m.name} использует.specialAbility: ${aoeDmg.total} урона по ${targetName}!` },
+        });
+      }
+    }
   } // end multiattack loop
 
   // Talent: counterattack — the target may strike back.
