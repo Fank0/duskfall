@@ -80,6 +80,25 @@ import type {
 import { llmLangName, type Lang, defaultLang } from "./i18n";
 
 
+// ---------- D&D 5e: cantrip scaling by character level ----------
+/** Scale cantrip damage dice based on character level.
+ *  Level 1-4: 1 die, 5-10: 2 dice, 11-16: 3 dice, 17+: 4 dice.
+ *  e.g. Fire Bolt: 1d10 → 2d10 (L5) → 3d10 (L11) → 4d10 (L17). */
+function scaleCantripDamage(notation: string, charLevel: number): string {
+  if (!notation) return notation;
+  const match = notation.match(/^(\d*)d(\d+)(.*)$/);
+  if (!match) return notation;
+  const baseDice = parseInt(match[1] || "1", 10);
+  const dieSize = parseInt(match[2], 10);
+  const suffix = match[3] || "";
+  let multiplier = 1;
+  if (charLevel >= 17) multiplier = 4;
+  else if (charLevel >= 11) multiplier = 3;
+  else if (charLevel >= 5) multiplier = 2;
+  return `${baseDice * multiplier}d${dieSize}${suffix}`;
+}
+
+
 // ---------- BG3/D&D 5e: concentration checks on damage ----------
 /** When a concentrating character takes damage, they must make a CON save
  *  with DC = max(10, damage/2) or lose concentration. This helper rolls
@@ -907,6 +926,7 @@ async function resolvePlayerAction(
     equipment: { weapon: null, shield: null, head: null, chest: null, legs: null, hands: null, accessory1: null, accessory2: null },
     tempHp: 0, isDying: false, deathSaveSuccess: 0, deathSaveFailure: 0,
     actionUsed: false, bonusActionUsed: false, reactionUsed: false, concentratingOn: "",
+    skillProficiencies: [], saveProficiencies: [], passivePerception: 10, spellSaveDC: 12,
   };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
@@ -1569,6 +1589,10 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     bonusActionUsed: Boolean((target as any).bonusActionUsed),
     reactionUsed: Boolean((target as any).reactionUsed),
     concentratingOn: (target as any).concentratingOn ?? "",
+    skillProficiencies: (target as any).skillProficiencies ?? [],
+    saveProficiencies: (target as any).saveProficiencies ?? [],
+    passivePerception: (target as any).passivePerception ?? 10,
+    spellSaveDC: (target as any).spellSaveDC ?? 12,
   };
   // Check for shielded condition (+2 AC) — effectiveAC only checks talents, not conditions
   const targetConds = await db.condition.findMany({ where: { roomId, targetName: target.name } });

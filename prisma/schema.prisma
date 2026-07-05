@@ -185,6 +185,17 @@ model Player {
   // Taking damage forces a CON save (DC 10 or half damage, whichever is
   // higher). On failure, concentration breaks and the spell ends.
   concentratingOn  String   @default("")
+  // D&D 5e skills & saving throw proficiencies (JSON array of skill/save names).
+  // e.g. ["acrobatics","stealth","perception","dex_save","wis_save"]
+  // Set at character creation based on class + background.
+  skillProficiencies  String   @default("[]")
+  saveProficiencies   String   @default("[]")
+  // Passive perception = 10 + WIS modifier + proficiency (if proficient).
+  // Pre-calculated and stored for DM context.
+  passivePerception   Int      @default(10)
+  // Spell save DC = 8 + proficiency bonus + casting stat modifier.
+  // Pre-calculated and stored for DM context.
+  spellSaveDC         Int      @default(12)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

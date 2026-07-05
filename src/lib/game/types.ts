@@ -245,6 +245,14 @@ export interface PlayerState {
   reactionUsed: boolean;
   /** Spell name currently concentrating on (empty = none). */
   concentratingOn: string;
+  /** D&D 5e skill proficiencies (JSON array of skill names). */
+  skillProficiencies: string[];
+  /** D&D 5e saving throw proficiencies (JSON array of save names). */
+  saveProficiencies: string[];
+  /** Passive perception = 10 + WIS mod + proficiency (if proficient). */
+  passivePerception: number;
+  /** Spell save DC = 8 + proficiency bonus + casting stat mod. */
+  spellSaveDC: number;
 }
 
 export interface MonsterState {

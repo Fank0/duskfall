@@ -14,6 +14,7 @@ import { randomBiomeId } from "./dungeon-biomes";
 import { ITEM_DATABASE, type ItemEntry } from "./item-database";
 import { addDatabaseItemToInventory } from "./state";
 import { generateTerrainForRoom } from "./terrain";
+import { abilityModifier } from "./dice";
 
 /** Serialize a Partial<Stats> into a JSON string for storage. */
 function serializeEquipStats(stats: Partial<Record<"str" | "dex" | "con" | "int" | "wis" | "cha", number>>): string {
@@ -175,6 +176,14 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       spellSlots: JSON.stringify(spellSlots),
       maxSpellSlots: JSON.stringify(maxSlots),
       hitDice,
+      // D&D 5e: saving throw proficiencies by class.
+      saveProficiencies: JSON.stringify(getSaveProficiencies(p.charClass)),
+      // D&D 5e: skill proficiencies by background (simplified — 2 skills per background).
+      skillProficiencies: JSON.stringify(getSkillProficiencies(input.background.id)),
+      // Passive perception = 10 + WIS modifier (+ proficiency if perception is a skill proficiency).
+      passivePerception: 10 + abilityModifier(finalWis) + (getSkillProficiencies(input.background.id).includes("perception") ? 2 : 0),
+      // Spell save DC = 8 + proficiency + casting stat modifier (INT for wizard, WIS for cleric/druid, CHA for sorcerer/warlock/bard/paladin).
+      spellSaveDC: 8 + 2 + abilityModifier(getCastingStat(p.charClass, finalInt, finalWis, finalCha)),
     },
   });
   // Starting inventory: class items + background item.
@@ -264,4 +273,49 @@ async function generateUniqueCode(): Promise<string> {
     if (!exists) return code;
   }
   return "DND" + Math.floor(1000 + Math.random() * 9000);
+}
+
+/** D&D 5e: saving throw proficiencies by class (SRD). */
+function getSaveProficiencies(charClass: string): string[] {
+  const map: Record<string, string[]> = {
+    "Barbarian": ["str_save", "con_save"],
+    "Bard": ["dex_save", "cha_save"],
+    "Cleric": ["wis_save", "cha_save"],
+    "Druid": ["int_save", "wis_save"],
+    "Fighter": ["str_save", "con_save"],
+    "Monk": ["str_save", "dex_save"],
+    "Paladin": ["wis_save", "cha_save"],
+    "Ranger": ["str_save", "dex_save"],
+    "Rogue": ["dex_save", "int_save"],
+    "Sorcerer": ["con_save", "cha_save"],
+    "Warlock": ["wis_save", "cha_save"],
+    "Wizard": ["int_save", "wis_save"],
+  };
+  return map[charClass] ?? ["dex_save", "con_save"];
+}
+
+/** D&D 5e: skill proficiencies by background (simplified — 2 skills per background). */
+function getSkillProficiencies(backgroundId: string): string[] {
+  const map: Record<string, string[]> = {
+    "soldier": ["athletics", "intimidation"],
+    "sage": ["arcana", "history"],
+    "criminal": ["deception", "stealth"],
+    "folk-hero": ["animal-handling", "survival"],
+    "noble": ["history", "persuasion"],
+    "acolyte": ["insight", "religion"],
+    "entertainer": ["acrobatics", "performance"],
+    "hermit": ["medicine", "religion"],
+  };
+  return map[backgroundId] ?? ["perception", "survival"];
+}
+
+/** D&D 5e: casting stat by class. Returns the stat value for spell save DC. */
+function getCastingStat(charClass: string, int: number, wis: number, cha: number): number {
+  const wisClasses = ["Cleric", "Druid", "Ranger"];
+  const chaClasses = ["Bard", "Paladin", "Sorcerer", "Warlock"];
+  const intClasses = ["Wizard", "Fighter", "Rogue", "Monk"];
+  if (wisClasses.includes(charClass)) return wis;
+  if (chaClasses.includes(charClass)) return cha;
+  if (intClasses.includes(charClass)) return int;
+  return wis;
 }

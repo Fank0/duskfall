@@ -11,6 +11,38 @@ import { useSettings } from "@/lib/game/settings";
 import { t, localizeData, localizeAbility } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 
+/** D&D 5e skills (SRD). */
+const SKILL_LIST: { key: string; label: string; stat: string }[] = [
+  { key: "acrobatics", label: "Акробатика", stat: "dex" },
+  { key: "animal-handling", label: "Обращение с животными", stat: "wis" },
+  { key: "arcana", label: "Магия", stat: "int" },
+  { key: "athletics", label: "Атлетика", stat: "str" },
+  { key: "deception", label: "Обман", stat: "cha" },
+  { key: "history", label: "История", stat: "int" },
+  { key: "insight", label: "Проницательность", stat: "wis" },
+  { key: "intimidation", label: "Запугивание", stat: "cha" },
+  { key: "investigation", label: "Анализ", stat: "int" },
+  { key: "medicine", label: "Медицина", stat: "wis" },
+  { key: "nature", label: "Природа", stat: "int" },
+  { key: "perception", label: "Внимательность", stat: "wis" },
+  { key: "performance", label: "Выступление", stat: "cha" },
+  { key: "persuasion", label: "Убеждение", stat: "cha" },
+  { key: "religion", label: "Религия", stat: "int" },
+  { key: "sleight-of-hand", label: "Ловкость рук", stat: "dex" },
+  { key: "stealth", label: "Скрытность", stat: "dex" },
+  { key: "survival", label: "Выживание", stat: "wis" },
+];
+
+/** D&D 5e saving throws. */
+const SAVE_LIST: { key: string; label: string; stat: string }[] = [
+  { key: "str_save", label: "💪 Сила", stat: "str" },
+  { key: "dex_save", label: "🏹 Ловкость", stat: "dex" },
+  { key: "con_save", label: "❤️ Телосложение", stat: "con" },
+  { key: "int_save", label: "📖 Интеллект", stat: "int" },
+  { key: "wis_save", label: "🦉 Мудрость", stat: "wis" },
+  { key: "cha_save", label: "🎭 Харизма", stat: "cha" },
+];
+
 /**
  * FullCharacterSheet — D&D 5e style character sheet modal.
  * Shows all character details: stats, skills, saving throws, equipment,
@@ -120,6 +152,44 @@ export function FullCharacterSheet({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Skills & Saving Throws */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold gold-text">{tt("char.skills")}</h3>
+            <div className="space-y-0.5 text-[10px]">
+              {SKILL_LIST.map((skill) => {
+                const prof = player.skillProficiencies?.includes(skill.key);
+                const statMod = mod(player[skill.stat as keyof typeof player] as number);
+                const bonus = statMod + (prof ? player.proficiencyBonus : 0);
+                return (
+                  <div key={skill.key} className={cn("flex justify-between", prof && "text-amber-200 font-medium")}>
+                    <span>{prof ? "●" : "○"} {skill.label}</span>
+                    <span className="font-mono">{bonus >= 0 ? "+" : ""}{bonus}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold gold-text">{tt("char.saves")}</h3>
+            <div className="space-y-0.5 text-[10px]">
+              {SAVE_LIST.map((save) => {
+                const prof = player.saveProficiencies?.includes(save.key);
+                const statMod = mod(player[save.stat as keyof typeof player] as number);
+                const bonus = statMod + (prof ? player.proficiencyBonus : 0);
+                return (
+                  <div key={save.key} className={cn("flex justify-between", prof && "text-amber-200 font-medium")}>
+                    <span>{prof ? "●" : "○"} {save.label}</span>
+                    <span className="font-mono">{bonus >= 0 ? "+" : ""}{bonus}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 

@@ -2603,3 +2603,267 @@ Stage Summary:
 - localizeSpell(lang, ruName) helper exported, with graceful Russian fallback for unknown keys.
 - SpellbookPanel.tsx now shows spell names in the active UI language; English name kept as a secondary subtitle only when UI ≠ English (avoids duplication); free-text search now matches localized spell names.
 - Verified: lint 0, tsc 0, full dictionary coverage (34/34 × 6 langs), EN column matches spell.nameEn 1:1.
+
+---
+Task ID: bg3-gap-analysis
+Agent: explore (Z.ai Code)
+Task: Deep BG3/D&D 5e SRD gap analysis — read all key game-system files and report what's missing vs BG3 + D&D 5e SRD across 10 categories. Research only, no code changes.
+
+Work Log:
+- Read worklog.md last 3 sections (i18n-modals-mobile-fixes, toast-i18n-craft-passive, accessibility-oa-i18n, audio-sfx-ui-cleanup, dm-narrative-llm-upgrade, spell-i18n-dict) for project context.
+- Read dm-agent.ts (2306 lines): SYSTEM_PROMPT_PLANNING (lines 171-422), SYSTEM_PROMPT_NARRATION_TPL, resolvePlayerMechanics (1935-2305), advanceTurn (1648-1816), runMonsterTurn (1480-1641). Confirmed mechanics: action economy pips, initiative, opportunity attacks (monsters attacking fleeing players), death saves, AoE spells (circle/cone/line), advantage/disadvantage + auto-flanking/high-ground, cover AC bonus, concentration CON-save on damage, story memory, passive perception, dynamic DCs, custom item/monster/NPC creation, learn-spell-from-scroll, 10 conditions.
+- Read state.ts (2281 lines): getDMContext (510-889), damagePlayer (1053-1100) with temp-HP-absorption + massive-damage + dying-state, healPlayer (1102-1122) with stabilization, applyCondition (1807-1836), tickConditions (1851-1882), spendSpellSlot (1726-1746), awardXP (1594-1633), applyLevelUpASI (1664-1701). Confirmed: ASI at levels 5/9/13/17, MAX_LEVEL=17, proficiency bonus 2 + floor((level-1)/4).
+- Read abilities.ts (251 lines) fully. Confirmed: 12 classes with 1 class-feature ability each (12 total), 9 races with 2-3 racial abilities each (~22 racial), 7 scroll-spell definitions, spellbook-spell-as-ability conversion, 4 cast types (damage/heal/buff/utility), AoE shape/size propagated from spell entry.
+- Read conditions.ts (188 lines) fully. Confirmed 10 conditions: poisoned, stunned, frightened, burning, slowed, blinded, prone, blessed, shielded, weakened. Effects modeled: attackDisadvantage, checkDisadvantage, acBonus, speedMultiplier, skipTurn, damagePerRound, attackBonusDice, saveBonusDice. NOT modeled: exhaustion (10 levels), charmed, restrained, incapacitated, petrified, deafened, grappled, invisible, paralyzed, unconscious.
+- Read spellbook.ts (837 lines) — 34 spells: 4 cantrips, 8 L1, 6 L2, 6 L3, 5 L4, 5 L5. Only 3 explicit `_upcast` variants (fireball_upcast, cone_of_cold_upcast, mass_cure_wounds_upcast). NO cantrip scaling. NO ritual casting. NO material-component-with-cost tracking. NO prepared-spells (wizards only via spellbookSpells column).
+- Read bestiary.ts (1043 lines) — 51 monsters across 7 categories (humanoid/undead/beast/dragon/demon/elemental/boss). BestiaryEntry has: name, nameEn, category, cr, hp, ac, damageNotation, attackBonus, speed, size (string), description, specialAbility (string — FLAVOR TEXT ONLY, never mechanically resolved), loot. NOT modeled: resistances, immunities, condition immunities, multiattack, legendary actions, lair actions, recharge mechanics, spellcasting, senses (darkvision/tremorsense), languages.
+- Read presets.ts (446 lines) — 12 classes, 9 races, 10 backgrounds. Each background grants ONE skill as a string label (e.g. "Атлетика") — never tracked as a proficiency, never applied to checks. NO saving throw proficiencies. NO tool proficiencies. NO subclasses. Spell slot tables: full casters max char level 5 → max slot level 3, BUT spellbook has L4/L5 spells (UNREACHABLE).
+- Read talents.ts (147 lines) + talent-data.ts (1162 lines) — 126 class talents + 6 ASI talents. Effect types modeled: ac_bonus, hp_bonus, save_bonus, initiative_bonus, damage_bonus_flat, crit_range, crit_bonus_dice, extra_attack_chance, reroll_miss_once, damage_resistance_flat/pct, counterattack, heal_on_kill, vampiric_pct, asi. **USED in dm-agent**: damageBonusFromTalents, applyDamageReduction, rollVampiricHeal, rollHealOnKill, rollCounterattack. **DEFINED BUT NEVER CALLED**: critRangeFromTalents, critBonusDiceFromTalents, extraAttackChance/rollExtraAttack, hasRerollMissOnce, initiativeBonusFromTalents — crit/extra-attack/reroll-miss/initiative-bonus talents are decorative only.
+- Read terrain.ts (190 lines) fully. 5 terrain types: difficult, half_cover, full_cover, high_ground, water. Biome-aware deterministic generation. Functions: coverAcBonus (+2/+5), highGroundAdvantage, blocksLineOfSight, isDifficultTerrain, hasLineOfSight (Bresenham). Gap: isDifficultTerrain is checked but move-token route ignores it for movement cost. NO lighting layer, NO dim light, NO dark vision mechanical effect.
+- Read CombatGrid.tsx first 100 lines + token section. 16×16 grid. All tokens are 1×1 (Large/Huge/Gargantuan creatures in bestiary don't occupy multiple cells). AoE overlay supported (circle/cone/line with element coloring). Range highlight during targeting. Click-to-move. NO light radius, NO vision cones, NO fog of war.
+- Read BottomPanel.tsx first 110 lines + COMBAT_ACTIONS. Sections: Equipment (8 slots), Inventory chips, Abilities chips (sorted by cast-type priority), COMBAT_ACTIONS (Move, Dash, Disengage, Dodge, Help, Ready), Spell slots (per-level pip display), Rest buttons (short/long). Favorite-ability toggle exists. NO quick-slot hotbar with keyboard bindings. NO item-stack splitting.
+- Read prisma/schema.prisma (443 lines) — confirmed models: Room, Account, SaveSlot, Player, Monster, InventoryItem, ChatMessage, DiceRoll, Scene, InitiativeEntry, Condition, Quest, MapRoom, Npc, Trap, StoryMemory, TerrainCell, DiscoveredMonster. Player has 8 equipment slots, action economy pips, dying/death-saves, concentratingOn, tempHp. Monster has only: name, label, hp/maxHp, ac, damageNotation, attackBonus, posX/Y, color, description, isActive, isBoss, specialAbility. NO resistances/immunities field, NO size field, NO multiattack field, NO legendary actions field.
+- Searched for: skillCheck, abilityCheck, skillProf, savingThrow (no matches); attunement, platinum, copper, electrum (no matches); multiclass (no matches); feat (no matches — only ASI); ritual (no matches); reaction usage (markActionUsed called only with "action" — reactionUsed flag is NEVER set true anywhere); markActionUsed call sites (only ONE in dm-agent:2270).
+- Searched for: extraAttack (talent exists but never called); critRangeFromTalents (defined, never used); rollExtraAttack (defined, never called); hasRerollMissOnce (defined, never called).
+- Searched for: subclass names (champion, berserker, devotion, hunter, thief, openhand, evocation, draconic, fiend, life, land, lore) — NONE present.
+- Searched for: legendary actions, lair actions, resistances, immunities — NONE in bestiary.ts or Monster model.
+- Searched for: shared vision, fog of war, party management, leave room, transfer host — NONE.
+
+Stage Summary (gap report — compact tables; ✓ = exists in DUSKFALL, ✗ = missing):
+
+### 1. Combat mechanics
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| Action economy pips (A/B/R) | ✓ | — | — | Pips shown but only Action consumed (markActionUsed called once with "action"); B/R never set true |
+| Reactions (Shield, AoO by player, Counterspell, Uncanny Dodge) | ✗ | CRITICAL | medium | reactionUsed flag exists but never set; no reaction-ability system; opportunity attacks only fire FROM monsters, not BY players |
+| Bonus actions (two-weapon, off-hand, cunning action) | ✗ | CRITICAL | medium | bonusActionUsed never set true; bonus-action abilities (Second Wind, Rage) just consume main action |
+| Extra Attack (Fighter L5+, Barbarian L5+, etc.) | ✗ | CRITICAL | medium | talent effect `extra_attack_chance` defined but rollExtraAttack() never called in dm-agent; Fighters always 1 attack/turn |
+| Action Surge (Fighter L2) | ✗ | high | easy | not in talent-data or abilities |
+| Critical hit range/dice (Champion 19-20, Savage Attacker) | ✗ | high | easy | critRangeFromTalents & critBonusDiceFromTalents defined but never called; crit is always nat 20 only |
+| Reroll-miss-once ( Fighter Great Weapon Fighting, Halfling Lucky) | ✗ | high | easy | hasRerollMissOnce() defined but never called |
+| Grappling (Athletics contest → restrained) | ✗ | high | medium | not implemented; "grappled" condition absent |
+| Shoving (push 5ft / knock prone) | ✗ | high | medium | not implemented |
+| Two-weapon fighting | ✗ | high | medium | not implemented |
+| Reach weapons (10ft) | ✗ | medium | easy | not modeled — all melee = 1 cell |
+| Multi-cell tokens (Large/Huge/Gargantuan) | ✗ | high | hard | bestiary has size strings, but grid renders all tokens 1×1 |
+| Flanking advantage | ✓ | — | — | auto-detected in dm-agent (lines 361-365) |
+| Cover (+2/+5 AC) | ✓ | — | — | terrain.ts + dm-agent coverAcBonus |
+| Difficult terrain movement cost (×2) | ✗ | high | easy | isDifficultTerrain() exists but move-token route ignores it |
+| Initiative | ✓ | — | — | rollInitiative + InitiativeEntry |
+| Opportunity attacks (monsters) | ✓ | — | — | move-token/route.ts |
+| Death saves / dying | ✓ | — | — | advanceTurn + damagePlayer |
+| Massive damage instant death | ✓ | — | — | damagePlayer checks `remaining >= maxHp` |
+| Sneak attack | ✓ | partial | — | rogue class ability description present, but no mechanical trigger |
+| Conditions (10 of 14) | ✓ partial | high | medium | Missing: exhaustion, charmed, restrained, incapacitated, petrified, deafened, grappled, invisible, paralyzed, unconscious |
+
+### 2. Spells & abilities
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| 34 spells (cantrips → L5) | ✓ | — | — | 4/8/6/6/5/5 split |
+| Spell slots (auto-spend + upcast slot) | ✓ | — | — | spendSpellSlot auto-uses higher slot if exact-level empty |
+| Concentration (1 spell, CON save on damage) | ✓ | — | — | setConcentration/breakConcentration + CON-save in dm-agent |
+| Cantrip scaling (Fire Bolt 1d10→2d10→3d10 at L5/11/17) | ✗ | CRITICAL | easy | fixed damage; no level-scaling function |
+| Upcast damage scaling (Fireball 8d6 → 9d6 at L4, etc.) | ✗ | high | medium | only 3 hardcoded `_upcast` variants; auto-upcast just consumes higher slot with no damage increase |
+| Ritual casting (Identify, Detect Magic, Find Familiar) | ✗ | high | medium | no ritual field; no cast-as-ritual-without-slot path |
+| Spell save DC tracked per-caster | ✗ | high | easy | spell.saveDC is a static number in catalog; DM recomputes ad-hoc but no player field |
+| Spell attack modifier (prof + casting stat) | ✗ | high | easy | no spell_attack_bonus field on Player |
+| L4-L9 spell slots | ✗ | CRITICAL | medium | maxSpellSlotsForLevel caps at char level 5 / slot level 3 — L4+ spells in spellbook are UNREACHABLE |
+| L6-L9 spells | ✗ | high | medium | not in spellbook at all |
+| Prepared spells (cleric/druid/paladin daily prep) | ✗ | high | medium | only wizard-style "known spells" via spellbookSpells column |
+| Warlock pact magic (separate slot table, slots refresh on short rest) | ✗ | high | medium | warlock uses full-caster slot table |
+| Counter-spell / Dispel Magic as reactions | ✗ | high | medium | no reaction-spell system |
+| Material components with cost (gp) | ✗ | low | easy | components string present but not consumed |
+| Learn spell from scroll | ✓ | — | — | learnSpell() + DM plan field |
+
+### 3. Character system
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| 12 classes, 9 races, 10 backgrounds | ✓ | — | — | presets.ts |
+| 6 ability scores + modifiers | ✓ | — | — | dice.ts abilityModifier |
+| Proficiency bonus per level (2→6) | ✓ | — | — | proficiencyForLevel |
+| ASI at L5/9/13/17 | ✓ | — | — | ASI_LEVELS set, applyLevelUpASI |
+| Talent system (126 talents) | ✓ | — | — | talent-data.ts |
+| Skill proficiencies (18 skills, 2-4 per class) | ✗ | CRITICAL | medium | backgrounds grant ONE skill as string label — never tracked; no skill list in Player; no proficiency applied to checks |
+| Saving throw proficiencies (2 per class) | ✗ | CRITICAL | easy | not modeled at all; FullCharacterSheet comment claims "saving throws" but section is missing |
+| Tool proficiencies (thieves' tools, herbalism kit, etc.) | ✗ | high | medium | not modeled |
+| Expertise (double proficiency — rogue/bard) | ✗ | high | easy | not modeled |
+| Jack of All Trades (half-profic — bard) | ✗ | medium | easy | not modeled |
+| Skill modifiers on character sheet | ✗ | high | easy | FullCharacterSheet shows vitals/stats/equipment/abilities/conditions/backstory/inventory — NO skills/saves section |
+| Languages (Common, Elvish, etc.) | ✗ | medium | easy | not modeled |
+| Subclasses (Champion, Berserker, Devotion, Hunter, Thief, Open Hand, Evocation, Draconic, Fiend, Life, Land, Lore) | ✗ | CRITICAL | hard | ZERO subclasses; only flat class features. Means zero build diversity beyond talent picks |
+| Backstory | ✓ | — | — | backstory column (500 chars) |
+| Passive perception | ✓ | — | — | computed as 10 + WIS mod in getDMContext |
+
+### 4. Monsters & NPCs
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| 51 monsters across 7 categories | ✓ | — | — | bestiary.ts |
+| CR / HP / AC / damageNotation / attackBonus / speed / size / loot | ✓ | — | — | BestiaryEntry fields |
+| Special ability blurb (Russian text) | ✓ | — | — | flavor text shown to DM only |
+| Special abilities mechanically executed | ✗ | CRITICAL | hard | abilities like "Паралич: СПАС CON 10 или парализована" are DESCRIPTION ONLY — never auto-fired in runMonsterTurn; relies on LLM remembering to interpret them |
+| Multiattack (3 attacks as 1 Action) | ✗ | CRITICAL | medium | some bestiary entries mention "Двойная атака" in specialAbility but never executed; monsters always 1 attack/turn |
+| Legendary actions (3/round for bosses) | ✗ | CRITICAL | hard | bosses only have specialAbility text; no Legendary field on Monster model |
+| Lair actions | ✗ | high | hard | not modeled |
+| Mythic encounters | ✗ | low | hard | not modeled |
+| Damage resistances (skeletons resist piercing) | ✗ | CRITICAL | medium | no resistances field on Monster; combat applies full damage to all types |
+| Damage immunities (undead immune to poison) | ✗ | CRITICAL | medium | not modeled |
+| Condition immunities (undead immune to frightened/poisoned) | ✗ | high | medium | not modeled |
+| Reactions on monsters (legendary resistance, parry) | ✗ | high | medium | not modeled |
+| Recharge mechanic (5-6 on d6 = dragon breath recharges) | ✗ | high | medium | not modeled — special abilities with "раз в 3 раунда" never auto-tracked |
+| Spellcasting monsters (Lich, Cult Fanatic, Necromancer) | ✗ | high | hard | no spell list per monster |
+| Senses (darkvision 60, tremorsense, truesight, blindsight) | ✗ | medium | easy | not modeled |
+| Monster size on grid (Large = 2×2, Huge = 3×3) | ✗ | high | hard | all tokens 1×1 |
+| Monster AI tactics (intelligent targeting, retreat, ability use) | ✓ | partial | — | retreat at HP <25% for intelligent monsters; targeting prefers weak/casters via moveMonsterTowardNearestPlayer; no ability-use AI |
+| NPC system (merchant/questgiver/ally/enemy, disposition) | ✓ | — | — | Npc model + upsertNpc |
+
+### 5. Items & equipment
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| 103 catalog items with rarity/enchantment/curse/charges/value/weight | ✓ | — | — | item-database.ts |
+| 8 equipment slots (weapon/shield/head/chest/legs/hands/acc1/acc2) | ✓ | — | — | Player.eq* columns |
+| Set bonuses defined | ✓ | — | — | item-database.ts has SET_BONUSES; NOT APPLIED in code |
+| Crafting stations (alchemy/forge/enchant) | ✓ | — | — | Room.hasAlchemy/hasForge/hasEnchant + craftItem |
+| Attunement (3 max, requires short rest) | ✗ | CRITICAL | medium | not modeled; magic items can be freely equipped with no limit |
+| Multi-currency (silver/copper/electrum/platinum, gemstones) | ✗ | high | easy | gold only; Player.gold column |
+| Carrying capacity / encumbrance | ✗ | high | medium | weight field exists but never summed/checked |
+| Magic weapon +1/+2/+3 to attack AND damage rolls | ✗ | high | medium | enchantment field in catalog; +1 weapons show in name but bonus never applied to attack rolls |
+| Charges consumed on staves / rings | ✗ | high | medium | charges field exists (10/50/3) but never decremented |
+| Cursed items equip-lock | ✗ | medium | medium | curse text shown but no "cannot unequip" mechanic |
+| Containers (bag of holding, quivers, scroll cases) | ✗ | low | medium | not modeled |
+| Player-to-player item trade | ✗ | medium | easy | no API for transfer |
+| Item stack splitting | ✗ | low | easy | potions stack visually only |
+| Consumable stack quantity tracked | ✓ | — | — | InventoryItem.quantity column |
+| Loot drop on monster death | ✓ | — | — | generateLoot + addDatabaseItemToInventory to __ground__ |
+| Loot-all button after combat | ✗ | medium | easy | UI only — items are ground-tagged and DM must narrate pickup |
+
+### 6. Terrain & environment
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| 5 terrain types (difficult/half_cover/full_cover/high_ground/water) | ✓ | — | — | terrain.ts |
+| Biome-aware deterministic generation | ✓ | — | — | BIOME_PROFILES per biome |
+| Cover AC bonus (+2/+5) | ✓ | — | — | coverAcBonus |
+| Line of sight (Bresenham, full_cover blocks) | ✓ | — | — | hasLineOfSight |
+| High ground advantage | ✓ | — | — | highGroundAdvantage |
+| Difficult terrain actually doubles movement cost | ✗ | CRITICAL | easy | isDifficultTerrain() defined but move-token route ignores it |
+| Lighting (light sources, dim light, bright light) | ✗ | CRITICAL | medium | not modeled; racial darkvision is flavor only |
+| Vision modes (Darkvision 60/120, Truesight, Blindsight, Tremorsense) | ✗ | high | medium | not modeled mechanically |
+| Fog of war / unexplored cells | ✗ | medium | medium | all tokens visible to all players |
+| Hazards (lava, acid pools, falling damage) | ✗ | high | medium | only instant-damage traps exist |
+| Verticality (jumping, climbing, swimming, flying) | ✗ | high | hard | not modeled — fly spell exists but no altitude layer |
+| Destructible terrain | ✗ | low | hard | not modeled |
+| Environmental fire propagation (burning webs, oil) | ✗ | low | hard | not modeled |
+| Weather affecting combat (rain → disadvantage on ranged) | ✗ | medium | easy | mentioned in DM prompt but no code |
+| Time-of-day vision penalties | ✗ | medium | easy | mentioned but no code |
+
+### 7. Social & exploration
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| LLM-driven social encounters via DM agent | ✓ | — | — | DM improvises Persuade/Deceive/Intimidate with ad-hoc DCs |
+| World map with room-to-room navigation | ✓ | — | — | MapRoom model + move-room route |
+| Random encounters (combat/merchant/puzzle/npc/trap/treasure) | ✓ | — | — | encounters.ts |
+| Traps (perception DC, DEX save, disarming) | ✓ | — | — | Trap model + move-room route |
+| Skill checks modeled mechanically (roll d20 + prof + ability mod vs DC) | ✗ | CRITICAL | medium | entirely LLM-improvised; no skill list, no proficiency tracking, no skill roll formula |
+| Tool checks (thieves tools for locks, herbalism kit for potions) | ✗ | high | medium | not modeled |
+| Group checks (party rolls together) | ✗ | medium | easy | not modeled |
+| Travel pace (fast/normal/slow) | ✗ | medium | easy | not modeled |
+| Hex crawl / overland travel | ✗ | low | medium | only room-to-room dungeon map |
+| Food/water/ammo tracking | ✗ | low | easy | not modeled |
+| Faction reputation | ✗ | low | medium | not modeled |
+| Long-rest encounter chance | ✗ | low | easy | not modeled |
+| NPC dialogue trees | ✗ | low | medium | free-text LLM only |
+
+### 8. Leveling & progression
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| XP awards + level-up | ✓ | — | — | awardXP + XP_THRESHOLDS |
+| Talent picks on level-up | ✓ | — | — | applyLevelUpTalent |
+| ASI on L5/9/13/17 | ✓ | — | — | applyLevelUpASI |
+| Proficiency per level | ✓ | — | — | proficiencyForLevel |
+| HP gain per level | ✓ | — | — | awardXP computes ~5 + CON mod per level |
+| Multiclassing | ✗ | CRITICAL | hard | not modeled — single charClass per player |
+| Subclass selection (L1/L2/L3 depending on class) | ✗ | CRITICAL | hard | no subclasses at all |
+| Feat system (Great Weapon Master, Sharpshooter, Polearm Master, etc.) | ✗ | high | medium | only 6 ASI talents (+2 to one stat) — no actual feats |
+| Spell progression beyond L5 (L6-L9 spells/slots) | ✗ | CRITICAL | medium | spellbook caps at L5, slots cap at L3, but MAX_LEVEL=17 |
+| Cantrip scaling per character level | ✗ | high | easy | fixed damage |
+| Pact magic (warlock) | ✗ | high | medium | uses full-caster table |
+| Class resources (Ki, Sorcery Points, Rage charges, Bardic Inspiration, Lay on Hands pool, Channel Divinity, Wild Shape) | ✗ | CRITICAL | hard | none modeled; class abilities are flavor text only |
+| Hit dice spending on short rest (hit dice pool) | ✗ | high | medium | hitDice column exists but never decremented; short rest just rolls 1 hit die |
+| Extended spellbook (wizards learning 2 spells per level free) | ✗ | medium | easy | not modeled |
+| Fighting style (Fighter L1, Ranger L2, Paladin L2 — Archery/Defense/Dueling/GWF/Protection/TWF) | ✗ | high | easy | not modeled |
+
+### 9. UI/UX
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| 16×16 combat grid with tokens + animations | ✓ | — | — | CombatGrid.tsx |
+| Combat log with filters (attack/damage/heal/condition) | ✓ | — | — | CombatLog.tsx |
+| Full character sheet (vitals/stats/equip/abilities/conditions/inventory) | ✓ | — | — | FullCharacterSheet.tsx |
+| BottomPanel (equip/inventory/abilities/combat-actions/spell-slots/rest) | ✓ | — | — | BottomPanel.tsx |
+| Favorite-ability toggle | ✓ | — | — | settings.toggleFavoriteAbility |
+| Click-to-move + range highlight + targeting modes | ✓ | — | — | CombatGrid targetingMode |
+| AoE overlay (circle/cone/line, element-colored) | ✓ | — | — | CombatGrid AOE_ELEMENT_COLORS |
+| Quick-slot hotbar (1-8 keyboard bindings) | ✗ | high | medium | favorite toggles exist but no keyboard hotkeys / persistent numbered slots |
+| Skill list with modifiers on character sheet | ✗ | CRITICAL | easy | not present in FullCharacterSheet despite comment claiming it |
+| Saving throw modifiers on character sheet | ✗ | CRITICAL | easy | not present |
+| Spell preparation UI (prepared vs known) | ✗ | high | medium | no prepared-spell concept |
+| Action history per character (not global) | ✗ | medium | easy | only global combat log |
+| Mini-map for dungeons | ✗ | medium | medium | only world-map grid |
+| Token size variation (2×2 / 3×3 for Large/Huge) | ✗ | high | hard | all tokens 1×1 |
+| Token condition indicators inline (small icon overlay) | ✓ | partial | — | ConditionIcons component exists, rendered under player token |
+| Initiative tracker as separate UI panel | ✗ | medium | easy | only in DM context chat |
+| Drag-and-drop equip/unequip | ✗ | low | medium | click-only |
+| Stack splitting | ✗ | low | easy | not modeled |
+| Loot-all button after combat | ✗ | medium | easy | not modeled |
+| Item rarity color coding in inventory | ✓ | — | — | rarityLabelRu + colored badges |
+
+### 10. Multiplayer
+| Feature | Status | Priority | Difficulty | Notes |
+|---|---|---|---|---|
+| Room codes + joinRoomAsPlayer | ✓ | — | — | room/join route |
+| Initiative-based combat turn order | ✓ | — | — | InitiativeEntry model |
+| Exploration turn rotation (round-robin alive players) | ✓ | — | — | Room.explorationActorIndex + advanceExplorationTurn |
+| Per-account save slots (3 slots) | ✓ | — | — | SaveSlot model |
+| Discovered monsters per account (bestiary unlock) | ✓ | — | — | DiscoveredMonster model |
+| Shared vision / fog of war (each player sees only their own view) | ✗ | high | hard | all players see full grid + all tokens |
+| Party management UI (kick, ban, transfer host) | ✗ | high | medium | only join exists; no leave/kick/transfer-host API |
+| Player reconnect / disconnect handling | ✗ | high | medium | no leave-room API; abandoned players persist in initiative |
+| Synchronized turn indicator across clients | ✓ partial | — | — | relies on snapshot polling, no websocket push |
+| Human DM mode (player as DM instead of AI) | ✗ | medium | hard | always AI DM |
+| Spectator mode | ✗ | low | medium | not modeled |
+| Voice / text chat (player-to-player, not just DM) | ✗ | low | medium | only in-game DM chat |
+| Private character info (per-player notes, hidden dice rolls) | ✗ | low | medium | not modeled |
+| Cross-room persistent character progression | ✗ | medium | hard | each room is a fresh campaign; SaveSlot only bookmarks resume |
+
+---
+
+### TOP 10 MOST IMPACTFUL GAPS (recommended priority order)
+
+1. **Skill & saving throw proficiency system** (CRITICAL, medium) — entire D&D 5e skill-check layer missing; backgrounds grant a flavor-only skill label; no proficiency applied to rolls; character sheet has no skills/saves section. Without this, the DM's "DC 15" calls are arbitrary.
+2. **Reaction & bonus-action consumption** (CRITICAL, medium) — `actionUsed`/`bonusActionUsed`/`reactionUsed` flags exist but only `action` is ever set true. Bonus-action abilities (Second Wind, Rage, Cunning Action) and reactions (Shield, Counterspell, player opportunity attacks, Uncanny Dodge) cannot fire. The BG3-style action-economy pips are decorative.
+3. **Special-ability mechanical execution** (CRITICAL, hard) — 51 bestiary entries have Russian-text special abilities ("Паралич: СПАС CON 10 или парализована", "Дыхание тлена: 6d6 по линии") that are NEVER auto-fired in `runMonsterTurn`. They rely entirely on the LLM remembering to interpret flavor text. Combat feels flat: every monster is "move + 1 attack".
+4. **Multiattack & Extra Attack** (CRITICAL, medium) — Fighters at L5+ should attack twice; monsters like wolves ("Двойная атака: атакует дважды за ход") should attack twice. Currently everyone gets exactly 1 attack/turn. Talent effect `extra_attack_chance` is defined but never called.
+5. **Subclasses** (CRITICAL, hard) — zero subclasses (no Champion/Berserker/Devotion/Hunter/Thief/Open Hand/Evocation/Draconic/Fiend/Life/Land/Lore). 12 flat classes with one class-feature ability each means zero build diversity past talent picks.
+6. **Monster resistances/immunities + condition immunities** (CRITICAL, medium) — entire damage-type system missing. Skeletons take full piercing damage; undead can be poisoned; zombies can be frightened. `Monster` model has no `resistances`/`immunities` field. Combat math is wrong vs SRD.
+7. **L4–L9 spell slots & spells** (CRITICAL, medium) — `maxSpellSlotsForLevel` caps at character level 5 / slot level 3. The spellbook has L4 and L5 spells (Cone of Cold, Wall of Fire, Mass Cure Wounds, Cloudkill) that are UNREACHABLE. L6-L9 spells (Sunburst, Meteor Swarm, Wish) don't exist. Max char level is 17 but casters plateau at L5.
+8. **Cantrip scaling + upcast damage scaling** (CRITICAL, easy) — Fire Bolt does 1d10 forever; Fireball does 8d6 whether cast at L3 or L5. Only 3 hardcoded `_upcast` variants exist. The auto-upcast slot-spend logic consumes a higher slot but doesn't increase damage. This breaks caster power curve.
+9. **Class resources (Ki, Sorcery Points, Rage, Bardic Inspiration, Lay on Hands, Channel Divinity, Wild Shape)** (CRITICAL, hard) — none modeled. Class abilities in `abilities.ts` are flavor text; Monk's Martial Arts never increases, Barbarian's Rage has no charges, Cleric's Channel Divinity is one-shot per "short rest" via DM improvisation.
+10. **Multiclassing + feats** (high, hard) — entirely absent. Single `charClass` per player. No feats like Great Weapon Master, Sharpshooter, Polearm Master, Sentinel, Crossbow Expert. ASI pick is +2 to one stat only.
+
+### Honorable mentions (next-tier priority)
+- **Lighting & darkvision** (CRITICAL, medium) — racial darkvision is flavor-only; no light sources, dim light, or vision-mode mechanics. The "show, don't tell" DM narrative can't reference what a player actually sees.
+- **Multi-cell tokens** (high, hard) — Large/Huge/Gargantuan creatures occupy 1 grid cell. Dragons look identical to goblins on the grid.
+- **Difficult terrain movement cost** (CRITICAL, easy) — `isDifficultTerrain()` is defined but `move-token/route.ts` ignores it. Movement is free across mud/ice/rubble.
+- **Legendary actions for bosses** (CRITICAL, hard) — `Monster.isBoss` flag exists but bosses get only 1 attack/turn like everything else. No `legendaryActions` field.
+- **Attunement** (CRITICAL, medium) — magic items freely equippable; no 3-item cap, no short-rest attunement ritual.
+- **Lighting / vision modes** — racial darkvision is flavor only; no mechanical effect on what tokens a player can see/target.
+
+### What's solid (already at BG3/D&D 5e parity)
+- DM agent architecture (LLM planning → backend dice → state mutations → LLM narration) is sound
+- Action economy pips UI + concentration + temp HP + dying/death-saves
+- 34-spell spellbook with school + level + save DC + AoE shape
+- 51-monster bestiary with CR + loot tables
+- 12 classes × 9 races × 10 backgrounds + 126 talents + 6 ASI
+- 103-item catalog with rarity + enchantment + curse + charges + set bonuses
+- Terrain system (5 types, biome-aware, LoS via Bresenham, cover AC bonus, high-ground advantage)
+- Initiative + exploration turn rotation + per-account save slots + discovered-monster bestiary unlock
+- BG3-style SFX, scene image generation, story memory, quest journal, NPC system, crafting stations
+- 6-language i18n with full dictionary coverage
