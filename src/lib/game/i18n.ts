@@ -78,6 +78,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     // ===== game =====
     "game.attack": "Атаковать",
     "game.move": "Двигаться",
+    "game.move_text": "Я осторожно продвигаюсь вперёд, держа оружие наготове.",
     "game.cast": "Колдовать",
     "game.roll": "Бросок",
     "game.hit": "Попадание",
@@ -162,6 +163,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     // ===== actions (chat quick actions) =====
     "actions.explore": "Осмотреться",
+    "actions.explore_text": "Я внимательно осматриваю местность — ищу опасности, подсказки, тайники и спрятанные предметы.",
     "actions.talk": "Говорить",
     "actions.search": "Обыскать",
     "actions.hide": "Скрыться",
@@ -179,6 +181,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.trade": "Торговать",
     "actions.craft": "Крафт",
     "actions.attack": "Атаковать",
+    "actions.attack_text": "Я обнажаю оружие и атакую ближайшего врага!",
 
     // ===== chat =====
     "chat.send_action": "Отправить действие",
@@ -239,6 +242,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.select_target": "Выбрать цель",
     "ui.cast_at": "Кастовать в клетку",
     "ui.move_here": "Переместиться сюда",
+    "ui.click_to_move_hint": "Кликните по клетке на сетке, чтобы переместиться туда",
     "ui.entered_room": "Вы вошли в",
     "ui.random_event": "Случайное событие",
     "ui.see_chat_for_details": "См. журнал чата для подробностей.",
@@ -296,6 +300,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.remove_favorite": "Убрать из избранного",
     "ui.tts_play": "Озвучить реплику Мастера",
     "ui.tts_stop": "Остановить озвучку",
+    "ui.tts_failed": "Не удалось озвучить текст",
     "ui.slot_level_short": "К",
     "ui.search_ability": "Поиск способности…",
     "ui.slots_low": "Мало слотов {lv}-го круга: {cur}/{max}",
@@ -481,6 +486,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     // ===== game =====
     "game.attack": "Attack",
+    "game.move_text": "I carefully move forward, weapon ready.",
     "game.move": "Move",
     "game.cast": "Cast",
     "game.roll": "Roll",
@@ -565,6 +571,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     // ===== rest =====
 
     // ===== actions =====
+    "actions.explore_text": "I carefully examine the area — looking for dangers, clues, hidden items.",
     "actions.explore": "Look around",
     "actions.talk": "Talk",
     "actions.search": "Search",
@@ -583,6 +590,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.trade": "Trade",
     "actions.craft": "Craft",
     "actions.attack": "Attack",
+    "actions.attack_text": "I draw my weapon and attack the nearest enemy!",
 
     // ===== chat =====
     "chat.send_action": "Send action",
@@ -643,6 +651,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.select_target": "Select target",
     "ui.cast_at": "Cast at cell",
     "ui.move_here": "Move here",
+    "ui.click_to_move_hint": "Click a cell on the grid to move there",
     "ui.entered_room": "Entered",
     "ui.random_event": "Random event",
     "ui.see_chat_for_details": "See chat log for details.",
@@ -700,6 +709,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.remove_favorite": "Remove from favorites",
     "ui.tts_play": "Speak DM line",
     "ui.tts_stop": "Stop narration",
+    "ui.tts_failed": "Failed to narrate text",
     "ui.slot_level_short": "L",
     "ui.search_ability": "Search ability…",
     "ui.slots_low": "Low on {lv}-level slots: {cur}/{max}",
@@ -882,6 +892,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "common.you": "Tú",
     "common.player": "Jugador",
 
+    "game.move_text": "Me muevo con cuidado hacia adelante, arma lista.",
     "game.attack": "Atacar",
     "game.move": "Mover",
     "game.cast": "Lanzar",
@@ -962,6 +973,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Pequeña etiqueta bajo cada ficha en la cuadrícula",
     "ui.music_hint": "Música atmosférica según el ambiente (mundo/combate/tensión)",
 
+    "actions.explore_text": "Exmino cuidadosamente la zona — busco peligros, pistas, objetos ocultos.",
 
     "actions.explore": "Explorar",
     "actions.talk": "Hablar",
@@ -980,6 +992,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.combat_actions": "Acciones de combate",
     "actions.trade": "Comerciar",
     "actions.craft": "Artesanía",
+    "actions.attack_text": "¡Desenvaino mi arma y ataco al enemigo más cercano!",
     "actions.attack": "Atacar",
 
     "chat.send_action": "Enviar acción",
@@ -1035,6 +1048,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.threat_zone": "Zona de amenaza (a distancia)",
     "ui.select_target": "Seleccionar objetivo",
     "ui.cast_at": "Lanzar en celda",
+    "ui.click_to_move_hint": "Haz clic en una casilla de la cuadrícula para moverte allí",
     "ui.move_here": "Mover aquí",
     "ui.entered_room": "Entraste en",
     "ui.random_event": "Evento aleatorio",
@@ -1093,6 +1107,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.remove_favorite": "Quitar de favoritos",
     "ui.tts_play": "Narrar línea del DM",
     "ui.tts_stop": "Detener narración",
+    "ui.tts_failed": "Error al narrar el texto",
     "ui.slot_level_short": "C",
     "ui.search_ability": "Buscar habilidad…",
     "ui.slots_low": "Pocos espacios de nivel {lv}: {cur}/{max}",
@@ -1274,6 +1289,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "common.send": "Senden",
     "common.you": "Du",
     "common.player": "Spieler",
+    "game.move_text": "Ich bewege mich vorsichtig vorwärts, Waffe bereit.",
 
     "game.attack": "Angreifen",
     "game.move": "Bewegen",
@@ -1354,6 +1370,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names": "Namen anzeigen",
     "ui.show_token_names_hint": "Kleine Beschriftung unter jeder Figur im Raster",
     "ui.music_hint": "Atmosphärische Musik nach Stimmung (Welt/Kampf/Spannung)",
+    "actions.explore_text": "Ich untersuche sorgfältig die Umgebung — suche nach Gefahren, Hinweisen, versteckten Gegenständen.",
 
 
     "actions.explore": "Umsehen",
@@ -1372,6 +1389,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.ready_hint": "Eine Aktion mit Auslöser vorbereiten",
     "ui.combat_actions": "Kampfaktionen",
     "actions.trade": "Handeln",
+    "actions.attack_text": "Ich ziehe meine Waffe und greife den nächsten Feind an!",
     "actions.craft": "Handwerk",
     "actions.attack": "Angreifen",
 
@@ -1428,6 +1446,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.aoe_select": "Bereich wählen",
     "ui.threat_zone": "Bedrohungszone (Fernkampf)",
     "ui.select_target": "Ziel wählen",
+    "ui.click_to_move_hint": "Klicke auf ein Feld im Raster, um dich dorthin zu bewegen",
     "ui.cast_at": "Auf Feld wirken",
     "ui.move_here": "Hierher bewegen",
     "ui.entered_room": "Betreten",
@@ -1487,6 +1506,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.remove_favorite": "Aus Favoriten entfernen",
     "ui.tts_play": "DM-Zeile sprechen",
     "ui.tts_stop": "Narration stoppen",
+    "ui.tts_failed": "Fehler beim Erzählen",
     "ui.slot_level_short": "K",
     "ui.search_ability": "Fähigkeit suchen…",
     "ui.slots_low": "Wenig Plätze der {lv}. Stufe: {cur}/{max}",
@@ -1667,6 +1687,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "common.error": "Erreur",
     "common.send": "Envoyer",
     "common.you": "Vous",
+    "game.move_text": "J'avance prudemment, arme prête.",
     "common.player": "Joueur",
 
     "game.attack": "Attaquer",
@@ -1747,6 +1768,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.square_tokens": "Carrés",
     "ui.show_token_names": "Afficher les noms",
     "ui.show_token_names_hint": "Petite étiquette sous chaque jeton sur la grille",
+    "actions.explore_text": "J'examine attentivement la zone — cherche dangers, indices, objets cachés.",
     "ui.music_hint": "Musique atmosphérique selon l'ambiance (monde/combat/tension)",
 
 
@@ -1765,6 +1787,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.ready": "Préparation",
     "actions.ready_hint": "Préparer une action avec un déclencheur",
     "ui.combat_actions": "Actions de combat",
+    "actions.attack_text": "Je dégaine mon arme et attaque l'ennemi le plus proche !",
     "actions.trade": "Commercer",
     "actions.craft": "Artisanat",
     "actions.attack": "Attaquer",
@@ -1820,6 +1843,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.target_select": "Choisir la cible",
     "ui.aoe_select": "Choisir la zone",
     "ui.threat_zone": "Zone de menace (à distance)",
+    "ui.click_to_move_hint": "Cliquez sur une case de la grille pour vous y déplacer",
     "ui.select_target": "Choisir la cible",
     "ui.cast_at": "Lancer sur la case",
     "ui.move_here": "Se déplacer ici",
@@ -1880,6 +1904,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.remove_favorite": "Retirer des favoris",
     "ui.tts_play": "Narrer la ligne du DM",
     "ui.tts_stop": "Arrêter la narration",
+    "ui.tts_failed": "Échec de la narration",
     "ui.slot_level_short": "C",
     "ui.search_ability": "Rechercher aptitude…",
     "ui.slots_low": "Peu d'emplacements niveau {lv} : {cur}/{max}",
@@ -2059,6 +2084,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "common.loading": "加载中…",
     "common.error": "错误",
     "common.send": "发送",
+    "game.move_text": "我小心翼翼地向前移动，武器准备好。",
     "common.you": "你",
     "common.player": "玩家",
 
@@ -2141,6 +2167,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names": "显示名字",
     "ui.show_token_names_hint": "网格上每个指示物下方的小标签",
     "ui.music_hint": "按氛围生成的环境音乐（世界/战斗/紧张）",
+    "actions.explore_text": "我仔细检查该区域——寻找危险、线索和隐藏物品。",
 
     "rest.short_rest": "短休",
     "rest.long_rest": "长休",
@@ -2159,6 +2186,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.help_hint": "给盟友下一次攻击优势",
     "actions.ready": "预备",
     "actions.ready_hint": "准备一个带触发条件的动作",
+    "actions.attack_text": "我拔出武器攻击最近的敌人！",
     "ui.combat_actions": "战斗动作",
     "actions.trade": "交易",
     "actions.craft": "制作",
@@ -2213,6 +2241,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.click_apply": "点击 — 施放",
     "ui.target_select": "选择目标",
     "ui.aoe_select": "选择区域",
+    "ui.click_to_move_hint": "点击网格上的格子移动到那里",
     "ui.threat_zone": "威胁区域（远程）",
     "ui.select_target": "选择目标",
     "ui.cast_at": "在格子施放",
@@ -2274,6 +2303,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.remove_favorite": "从收藏移除",
     "ui.tts_play": "朗读DM台词",
     "ui.tts_stop": "停止朗读",
+    "ui.tts_failed": "朗读失败",
     "ui.slot_level_short": "环",
     "ui.search_ability": "搜索能力…",
     "ui.slots_low": "{lv}环法术位不足：{cur}/{max}",
@@ -2597,6 +2627,67 @@ const ABILITY_I18N: Record<string, Record<Lang, string>> = {
 /** Translate an ability name into the UI language. */
 export function localizeAbility(lang: Lang, ruName: string): string {
   const entry = ABILITY_I18N[ruName];
+  if (entry && entry[lang]) return entry[lang];
+  return ruName;
+}
+
+// ===== Spell name translations =====
+// Source of truth is the Russian `name` field on each spell in
+// spellbook.ts; this dictionary mirrors every catalogue entry and provides
+// official SRD 5e localizations for the other 5 languages. The `en` column
+// matches the spell's `nameEn` field, so the SpellbookPanel can either use
+// `localizeSpell(lang, spell.name)` (preferred) or fall back to
+// `spell.nameEn` directly.
+const SPELL_I18N: Record<string, Record<Lang, string>> = {
+  // Cantrips (level 0)
+  "Огненный сгусток": { "ru": "Огненный сгусток", "en": "Fire Bolt", "es": "Descarga de fuego", "de": "Feuerstrahl", "fr": "Trait de feu", "zh": "火焰箭" },
+  "Луч холода": { "ru": "Луч холода", "en": "Ray of Frost", "es": "Rayo de escarcha", "de": "Froststrahl", "fr": "Rayon de givre", "zh": "寒霜射线" },
+  "Священное пламя": { "ru": "Священное пламя", "en": "Sacred Flame", "es": "Llama sagrada", "de": "Heilige Flamme", "fr": "Flamme sacrée", "zh": "神圣火焰" },
+  "Всплеск кислоты": { "ru": "Всплеск кислоты", "en": "Acid Splash", "es": "Salpicadura ácida", "de": "Säurespritzer", "fr": "Jet d'acide", "zh": "酸液飞溅" },
+  // Level 1
+  "Магическая стрела": { "ru": "Магическая стрела", "en": "Magic Missile", "es": "Misil mágico", "de": "Magisches Geschoss", "fr": "Projectile magique", "zh": "魔法飞弹" },
+  "Щит": { "ru": "Щит", "en": "Shield", "es": "Escudo", "de": "Schild", "fr": "Bouclier", "zh": "护盾术" },
+  "Лечение ран": { "ru": "Лечение ран", "en": "Cure Wounds", "es": "Curar heridas", "de": "Wunden heilen", "fr": "Soins", "zh": "治疗伤势" },
+  "Благословение": { "ru": "Благословение", "en": "Bless", "es": "Bendición", "de": "Segnen", "fr": "Bénédiction", "zh": "祝福术" },
+  "Удар грома": { "ru": "Удар грома", "en": "Thunderwave", "es": "Onda de trueno", "de": "Donnerwelle", "fr": "Onde de tonnerre", "zh": "雷鸣波" },
+  "Хроматическая сфера": { "ru": "Хроматическая сфера", "en": "Chromatic Orb", "es": "Orbe cromático", "de": "Chromatische Kugel", "fr": "Orbe chromatique", "zh": "七彩球" },
+  "Усыпление": { "ru": "Усыпление", "en": "Sleep", "es": "Dormir", "de": "Schlaf", "fr": "Sommeil", "zh": "催眠术" },
+  "Магическая броня": { "ru": "Магическая броня", "en": "Mage Armor", "es": "Armadura de mago", "de": "Magerrüstung", "fr": "Armure du mage", "zh": "法师护甲" },
+  // Level 2
+  "Паутина": { "ru": "Паутина", "en": "Web", "es": "Telaraña", "de": "Spinnennetz", "fr": "Toile d'araignée", "zh": "蛛网术" },
+  "Невидимость": { "ru": "Невидимость", "en": "Invisibility", "es": "Invisibilidad", "de": "Unsichtbarkeit", "fr": "Invisibilité", "zh": "隐形术" },
+  "Удержание личности": { "ru": "Удержание личности", "en": "Hold Person", "es": "Inmovilizar persona", "de": "Person festhalten", "fr": "Immobiliser personne", "zh": "人类定身术" },
+  "Малое восстановление": { "ru": "Малое восстановление", "en": "Lesser Restoration", "es": "Restauración menor", "de": "Geringere Wiederherstellung", "fr": "Restauration inférieure", "zh": "次级复原术" },
+  "Палящий луч": { "ru": "Палящий луч", "en": "Scorching Ray", "es": "Rayo ardiente", "de": "Versengender Strahl", "fr": "Rayon ardent", "zh": "灼热射线" },
+  // Level 3
+  "Огненный шар": { "ru": "Огненный шар", "en": "Fireball", "es": "Bola de fuego", "de": "Feuerball", "fr": "Boule de feu", "zh": "火球术" },
+  "Молния": { "ru": "Молния", "en": "Lightning Bolt", "es": "Rayo", "de": "Blitzschlag", "fr": "Éclair", "zh": "闪电束" },
+  "Развеяние магии": { "ru": "Развеяние магии", "en": "Dispel Magic", "es": "Disipar magia", "de": "Magie bannen", "fr": "Dissipation de la magie", "zh": "驱散魔法" },
+  "Огненный шар (усиленный)": { "ru": "Огненный шар (усиленный)", "en": "Fireball (Upcast)", "es": "Bola de fuego (ampliada)", "de": "Feuerball (aufgewertet)", "fr": "Boule de feu (surpuissante)", "zh": "火球术（升阶）" },
+  "Полёт": { "ru": "Полёт", "en": "Fly", "es": "Volar", "de": "Fliegen", "fr": "Vol", "zh": "飞行术" },
+  // Level 4
+  "Конус холода": { "ru": "Конус холода", "en": "Cone of Cold", "es": "Cono de frío", "de": "Kegel der Kälte", "fr": "Cône de froid", "zh": "寒冰锥" },
+  "Массовое лечение ран": { "ru": "Массовое лечение ран", "en": "Mass Cure Wounds", "es": "Curar heridas en masa", "de": "Massenwundenheilung", "fr": "Soins de masse", "zh": "群体治疗术" },
+  "Стена огня": { "ru": "Стена огня", "en": "Wall of Fire", "es": "Muro de fuego", "de": "Feuerwand", "fr": "Mur de feu", "zh": "火墙术" },
+  "Каменная кожа": { "ru": "Каменная кожа", "en": "Stoneskin", "es": "Piel de piedra", "de": "Steinhaut", "fr": "Peau de pierre", "zh": "石肤术" },
+  "Оборот": { "ru": "Оборот", "en": "Polymorph", "es": "Polimorfar", "de": "Polymorph", "fr": "Polymorphie", "zh": "变形术" },
+  // Level 5
+  "Ледяной шторм": { "ru": "Ледяной шторм", "en": "Ice Storm", "es": "Tormenta de hielo", "de": "Eissturm", "fr": "Tempête de glace", "zh": "冰风暴" },
+  "Оберег от смерти": { "ru": "Оберег от смерти", "en": "Death Ward", "es": "Resguardo contra la muerte", "de": "Todeswache", "fr": "Gardien de mort", "zh": "防死结界" },
+  "Конус холода (усиленный)": { "ru": "Конус холода (усиленный)", "en": "Cone of Cold (Upcast)", "es": "Cono de frío (ampliado)", "de": "Kegel der Kälte (aufgewertet)", "fr": "Cône de froid (surpuissant)", "zh": "寒冰锥（升阶）" },
+  "Смертоносное облако": { "ru": "Смертоносное облако", "en": "Cloudkill", "es": "Nube mortífera", "de": "Todeswolke", "fr": "Nuage mortel", "zh": "致命云雾" },
+  "Массовое лечение ран (усиленное)": { "ru": "Массовое лечение ран (усиленное)", "en": "Mass Cure Wounds (Upcast)", "es": "Curar heridas en masa (ampliada)", "de": "Massenwundenheilung (aufgewertet)", "fr": "Soins de masse (surpuissants)", "zh": "群体治疗术（升阶）" },
+  "Каменная стена": { "ru": "Каменная стена", "en": "Wall of Stone", "es": "Muro de piedra", "de": "Steinwand", "fr": "Mur de pierre", "zh": "石墙术" },
+  "Огненный столп": { "ru": "Огненный столп", "en": "Flame Strike", "es": "Columna de llama", "de": "Flammenschlag", "fr": "Colonne de flamme", "zh": "焰击术" },
+};
+
+/**
+ * Translate a spell name (given as the Russian `name` field from
+ * spellbook.ts) into the UI language. Falls back to the Russian name when no
+ * translation is available, so unknown spells still render correctly.
+ */
+export function localizeSpell(lang: Lang, ruName: string): string {
+  const entry = SPELL_I18N[ruName];
   if (entry && entry[lang]) return entry[lang];
   return ruName;
 }

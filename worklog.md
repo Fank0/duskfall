@@ -2569,3 +2569,37 @@ Stage Summary:
 - 9 D&D DM narrative conventions added to system prompt
 - Fallback placeholder features NPC in tavern with crypt-clearing quest
 - All changes compile cleanly (lint 0, tsc 0)
+
+---
+Task ID: spell-i18n-dict
+Agent: general-purpose (Z.ai Code)
+Task: Create a SPELL_I18N dictionary translating all spellbook spell names into the 6 supported UI languages (ru, en, es, de, fr, zh), then wire it into SpellbookPanel.tsx via a new localizeSpell() helper.
+
+Work Log:
+- Read worklog.md (last 2 sections) for project context (audio/SFX rewrite + DM LLM upgrade to Claude 3.5 Sonnet via OpenRouter).
+- Inventory of spell data (spellbook.ts):
+  * Confirmed 34 spells total spanning cantrips (4) → level 1 (8) → level 2 (5) → level 3 (5) → level 4 (5) → level 5 (7).
+  * Each spell exposes `name` (Russian, source of truth) and `nameEn` (English subtitle).
+- Studied existing i18n.ts dictionary pattern (CLASS_I18N, RACE_I18N, BACKGROUND_I18N, ITEM_I18N, ABILITY_I18N) and the `localizeAbility(lang, ruName)` helper signature, which I mirrored for `localizeSpell`.
+- Added SPELL_I18N dictionary (34 entries × 6 languages) to i18n.ts after `localizeAbility`:
+  * Russian column always identical to the dictionary key (matches existing pattern).
+  * English column sourced from each spell's `nameEn` field, ensuring consistency (verified programmatically: 0 mismatches across all 34 entries).
+  * Spanish / German / French / Chinese translations use SRD 5e official localized names; "(усиленный)" upcast suffixes localized appropriately (ampliada / aufgewertet / surpuissant(e) / 升阶).
+  * Comment headers group entries by level (Cantrips → Level 5) for navigation.
+- Added `localizeSpell(lang: Lang, ruName: string): string` helper next to SPELL_I18N with the same fallback semantics as `localizeAbility` (returns the Russian name if no entry / no translation for that lang is found, so unknown spells still render correctly).
+- Updated src/components/dnd/SpellbookPanel.tsx:
+  * Import: added `localizeSpell` to the existing `@/lib/game/i18n` import.
+  * SpellCard primary name: replaced `{spell.name}` with `{localizeSpell(lang, spell.name)}` so the title follows the active UI language.
+  * SpellCard subtitle: kept `spell.nameEn` as an English cross-reference, but suppressed it when `lang === "en"` to avoid rendering "Fire Bolt / Fire Bolt" twice. Level label is always shown.
+  * Search filter: extended the free-text filter to also match `localizeSpell(lang, s.name)` so users can search by the localized name (e.g. typing "Bola" finds Fireball when UI is Spanish). useMemo dependency array unchanged ([query, activeLevel, lang]).
+- Verification:
+  * `bun run lint` → 0 errors (exit 0).
+  * `bunx tsc --noEmit` → 0 errors (exit 0).
+  * Programmatic check (bun script iterating SPELLBOOK × 6 langs): 34/34 spells covered, 0 missing translations, 0 EN-vs-nameEn mismatches.
+- No spell data (spellbook.ts) was modified — only the translation dictionary and the panel UI were touched, per task constraints.
+
+Stage Summary:
+- SPELL_I18N: 34-entry × 6-language dictionary added to i18n.ts, mirroring the existing CLASS/RACE/ITEM/ABILITY_I18N pattern (Russian key → 6 localized values).
+- localizeSpell(lang, ruName) helper exported, with graceful Russian fallback for unknown keys.
+- SpellbookPanel.tsx now shows spell names in the active UI language; English name kept as a secondary subtitle only when UI ≠ English (avoids duplication); free-text search now matches localized spell names.
+- Verified: lint 0, tsc 0, full dictionary coverage (34/34 × 6 langs), EN column matches spell.nameEn 1:1.

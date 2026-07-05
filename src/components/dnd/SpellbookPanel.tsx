@@ -34,7 +34,7 @@ import {
   type SpellSchool,
 } from "@/lib/game/spellbook";
 import { cn } from "@/lib/utils";
-import { t } from "@/lib/game/i18n";
+import { t, localizeSpell } from "@/lib/game/i18n";
 import { useSettings } from "@/lib/game/settings";
 
 /** Level tabs: cantrips (0) + levels 1..5. */
@@ -69,7 +69,7 @@ function SpellCard({ spell }: { spell: Spell }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-serif text-sm font-bold text-amber-100">
-                {spell.name}
+                {localizeSpell(lang, spell.name)}
               </h3>
               <Badge
                 variant="outline"
@@ -79,7 +79,10 @@ function SpellCard({ spell }: { spell: Spell }) {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground italic">
-              {spell.nameEn} · {spellLevelLabel(tt, spell.level)}
+              {/* Show English name as a cross-reference only when the UI is
+                  not in English (avoids duplicate "Fire Bolt / Fire Bolt"). */}
+              {lang !== "en" && <>{spell.nameEn} · </>}
+              {spellLevelLabel(tt, spell.level)}
             </p>
           </div>
           <div className="text-right shrink-0">
@@ -202,7 +205,8 @@ export function SpellbookPanel({
   }
   const hasSpellSlots = slots.length > 0;
 
-  // Filter by level + free-text query (Russian name, English name, description).
+  // Filter by level + free-text query (Russian name, localized name, English
+  // name, school label, description).
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return SPELLBOOK.filter((s) => {
@@ -211,6 +215,7 @@ export function SpellbookPanel({
       return (
         s.name.toLowerCase().includes(q) ||
         s.nameEn.toLowerCase().includes(q) ||
+        localizeSpell(lang, s.name).toLowerCase().includes(q) ||
         s.description.toLowerCase().includes(q) ||
         tt(`spellbook.school.${s.school}`).toLowerCase().includes(q)
       );

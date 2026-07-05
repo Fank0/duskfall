@@ -16,9 +16,9 @@ import { cn } from "@/lib/utils";
 import { sfxClick, sfxMove, sfxSpellCast, sfxAbilityUse } from "@/lib/game/audio";
 
 const QUICK_ACTIONS = [
-  { labelKey: "actions.attack", icon: Swords, text: "Я обнажаю оружие и атакую ближайшего врага!" },
-  { labelKey: "actions.explore", icon: Eye, text: "Я внимательно осматриваю местность — ищу опасности, подсказки, тайники и спрятанные предметы." },
-  { labelKey: "game.move", icon: Footprints, text: "Я осторожно продвигаюсь вперёд, держа оружие наготове." },
+  { labelKey: "actions.attack", icon: Swords, text: "I draw my weapon and attack the nearest enemy!", sfx: "ability" },
+  { labelKey: "actions.explore", icon: Eye, text: "I carefully examine the area — looking for dangers, clues, hidden items.", sfx: "click" },
+  { labelKey: "game.move", icon: Footprints, text: "I carefully move forward, weapon ready.", sfx: "move", moveMode: true },
 ];
 
 /** How many messages to render initially (item 24: chat virtualization). */
@@ -36,6 +36,7 @@ interface ChatPanelProps {
   currentTurnName: string | null;
   onSend: (text: string) => void;
   onRest?: (restType: "short" | "long") => void;
+  onMoveMode?: () => void;
   /** Room code — required for the "Показать ещё" paginated loader. */
   roomCode?: string;
   /**
@@ -61,6 +62,7 @@ export const ChatPanel = memo(function ChatPanel({
   currentTurnName,
   onSend,
   onRest,
+  onMoveMode,
   roomCode,
   ttsEnabled = false,
 }: ChatPanelProps) {
@@ -125,6 +127,52 @@ export const ChatPanel = memo(function ChatPanel({
     if (message.role !== "dm" || !message.content.trim()) return;
     // Stop any current playback before starting a new one.
     stopTts();
+
+    // Use browser's built-in Web Speech API (free, no server needed).
+    // This works in all modern browsers and doesn't require GLM TTS API.
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      setTtsLoadingId(message.id);
+      try {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(message.content);
+        // Set language based on UI language
+        const langMap: Record<string, string> = {
+          ru: "ru-RU",
+          en: "en-US",
+          es: "es-ES",
+          de: "de-DE",
+          fr: "fr-FR",
+          zh: "zh-CN",
+        };
+        utterance.lang = langMap[lang] || "ru-RU";
+        utterance.rate = 0.95;
+        utterance.pitch = 0.85;
+        utterance.volume = Math.max(0, Math.min(1, ttsVolumeSetting));
+
+        // Try to find a voice matching the language
+        const voices = window.speechSynthesis.getVoices();
+        const matchingVoice = voices.find((v) => v.lang.startsWith(lang));
+        if (matchingVoice) {
+          utterance.voice = matchingVoice;
+        }
+
+        utterance.onstart = () => setTtsPlayingId(message.id);
+        utterance.onend = () => setTtsPlayingId(null);
+        utterance.onerror = () => setTtsPlayingId(null);
+
+        audioRef.current = { stop: () => window.speechSynthesis.cancel() } as any;
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        toast.error(tt("ui.tts_failed"));
+      } finally {
+        setTtsLoadingId((cur) => (cur === message.id ? null : cur));
+      }
+      return;
+    }
+
+    // Fallback: try server-side TTS (GLM API)
     setTtsLoadingId(message.id);
     try {
       const res = await fetch("/api/game/tts", {
@@ -164,7 +212,7 @@ export const ChatPanel = memo(function ChatPanel({
       audioRef.current = audio;
       await audio.play();
     } catch {
-      toast.error("Не удалось озвучить текст");
+      toast.error(tt("ui.tts_failed"));
       // Clean up any partial state.
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
@@ -174,7 +222,7 @@ export const ChatPanel = memo(function ChatPanel({
     } finally {
       setTtsLoadingId((cur) => (cur === message.id ? null : cur));
     }
-  }, [lang, ttsVoiceSetting, ttsVolumeSetting, stopTts]);
+  }, [lang, ttsVoiceSetting, ttsVolumeSetting, stopTts, tt]);
 
   // Auto-play: when ttsEnabled and a NEW non-streaming DM message arrives in
   // the recent (live) snapshot, trigger TTS for it. The streaming bubble has
@@ -453,11 +501,15 @@ export const ChatPanel = memo(function ChatPanel({
             disabled={!canAct}
             onClick={() => {
               try {
-                if (q.labelKey === "actions.attack") sfxAbilityUse();
-                else if (q.labelKey === "game.move") sfxMove();
+                if (q.sfx === "ability") sfxAbilityUse();
+                else if (q.sfx === "move") sfxMove();
                 else sfxClick();
               } catch {}
-              submit(q.text);
+              if (q.moveMode && onMoveMode) {
+                onMoveMode();
+              } else {
+                submit(tt(q.labelKey + "_text") || q.text);
+              }
             }}
             className="flex items-center gap-1 rounded-full border border-border/60 bg-stone-900/50 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >

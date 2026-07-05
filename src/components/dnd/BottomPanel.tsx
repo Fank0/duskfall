@@ -171,14 +171,14 @@ export const BottomPanel = memo(function BottomPanel({
   // Equipment — find equipped items by id from inventory
   const eq = player.equipment || {};
   const equippedSlots: { slot: string; label: string; item?: InventoryItemState }[] = [
-    { slot: "eqWeapon", labelKey: "equip.weapon" },
-    { slot: "eqShield", labelKey: "equip.shield" },
-    { slot: "eqHead", labelKey: "equip.head" },
-    { slot: "eqChest", labelKey: "equip.chest" },
-    { slot: "eqLegs", labelKey: "equip.legs" },
-    { slot: "eqHands", labelKey: "equip.hands" },
-    { slot: "eqAccessory1", labelKey: "equip.acc1" },
-    { slot: "eqAccessory2", labelKey: "equip.acc2" },
+    { slot: "weapon", labelKey: "equip.weapon" },
+    { slot: "shield", labelKey: "equip.shield" },
+    { slot: "head", labelKey: "equip.head" },
+    { slot: "chest", labelKey: "equip.chest" },
+    { slot: "legs", labelKey: "equip.legs" },
+    { slot: "hands", labelKey: "equip.hands" },
+    { slot: "accessory1", labelKey: "equip.acc1" },
+    { slot: "accessory2", labelKey: "equip.acc2" },
   ].map(({ slot, labelKey }) => {
     const id = (eq as any)[slot] as string | null | undefined;
     const item = id ? inventory.find((i) => i.id === id) : undefined;

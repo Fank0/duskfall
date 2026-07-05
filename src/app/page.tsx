@@ -1339,6 +1339,10 @@ export default function Home() {
               currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
               onSend={sendAction}
               onRest={handleRest}
+              onMoveMode={() => {
+                // Show a toast telling the player to click a cell on the grid
+                toast(tt("ui.click_to_move_hint"));
+              }}
               roomCode={session.roomCode}
               ttsEnabled={settings.ttsEnabled}
             />
