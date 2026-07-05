@@ -35,20 +35,20 @@ export function FullCharacterSheet({
     Object.values(player.equipment).includes(i.id)
   );
 
-  const stats: { key: string; label: string; val: number }[] = [
-    { key: "str", label: tt("character.str"), val: player.str },
-    { key: "dex", label: tt("character.dex"), val: player.dex },
-    { key: "con", label: tt("character.con"), val: player.con },
-    { key: "int", label: tt("character.int"), val: player.int },
-    { key: "wis", label: tt("character.wis"), val: player.wis },
-    { key: "cha", label: tt("character.cha"), val: player.cha },
+  const stats: { key: string; label: string; val: number; icon: string }[] = [
+    { key: "str", label: tt("character.str"), val: player.str, icon: "💪" },
+    { key: "dex", label: tt("character.dex"), val: player.dex, icon: "🏹" },
+    { key: "con", label: tt("character.con"), val: player.con, icon: "❤️" },
+    { key: "int", label: tt("character.int"), val: player.int, icon: "📖" },
+    { key: "wis", label: tt("character.wis"), val: player.wis, icon: "🦉" },
+    { key: "cha", label: tt("character.cha"), val: player.cha, icon: "🎭" },
   ];
 
   const vitals: { icon: React.ReactNode; label: string; value: string; color: string }[] = [
-    { icon: <Heart className="h-4 w-4" />, label: tt("character.hp"), value: `${player.hp}/${player.maxHp}`, color: "text-red-400" },
-    { icon: <Shield className="h-4 w-4" />, label: tt("character.ac"), value: `${player.ac}`, color: "text-sky-300" },
-    { icon: <Coins className="h-4 w-4" />, label: tt("character.gold_short"), value: `${player.gold}`, color: "text-amber-300" },
-    { icon: <Zap className="h-4 w-4" />, label: tt("character.level_short"), value: `${player.level}`, color: "text-purple-300" },
+    { icon: <span className="text-base">❤️</span>, label: tt("character.hp"), value: `${player.hp}/${player.maxHp}`, color: "text-red-400" },
+    { icon: <span className="text-base">🛡️</span>, label: tt("character.ac"), value: `${player.ac}`, color: "text-sky-300" },
+    { icon: <span className="text-base">💰</span>, label: tt("character.gold_short"), value: `${player.gold}`, color: "text-amber-300" },
+    { icon: <span className="text-base">⭐</span>, label: tt("character.level_short"), value: `${player.level}`, color: "text-purple-300" },
   ];
 
   return (
@@ -113,6 +113,7 @@ export function FullCharacterSheet({
           <div className="grid grid-cols-6 gap-1.5">
             {stats.map((s) => (
               <div key={s.key} className="rounded-lg border border-border/50 bg-stone-900/50 p-2 text-center">
+                <div className="text-base leading-none">{s.icon}</div>
                 <div className="text-[9px] font-semibold uppercase text-muted-foreground">{s.label}</div>
                 <div className="text-lg font-bold font-mono text-amber-200">{s.val}</div>
                 <div className="text-[10px] text-muted-foreground">

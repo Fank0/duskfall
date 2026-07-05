@@ -41,13 +41,13 @@ const FullCharacterSheet = dynamic(
   { ssr: false }
 );
 
-const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
-  { key: "str", short: "character.str" },
-  { key: "dex", short: "character.dex" },
-  { key: "con", short: "character.con" },
-  { key: "int", short: "character.int" },
-  { key: "wis", short: "character.wis" },
-  { key: "cha", short: "character.cha" },
+const STAT_LABELS: { key: keyof PlayerState; short: string; icon: string }[] = [
+  { key: "str", short: "character.str", icon: "💪" },
+  { key: "dex", short: "character.dex", icon: "🏹" },
+  { key: "con", short: "character.con", icon: "❤️" },
+  { key: "int", short: "character.int", icon: "📖" },
+  { key: "wis", short: "character.wis", icon: "🦉" },
+  { key: "cha", short: "character.cha", icon: "🎭" },
 ];
 
 export const CharacterSheet = memo(function CharacterSheet({
@@ -370,8 +370,9 @@ export const CharacterSheet = memo(function CharacterSheet({
                 const val = player[s.key] as number;
                 const mod = abilityModifier(val);
                 return (
-                  <div key={s.key} className="rounded border border-border/40 bg-stone-900/50 px-1 py-0.5 text-center">
-                    <div className="text-[10px] text-muted-foreground">{tt(s.short)}</div>
+                  <div key={s.key} className="rounded border border-border/40 bg-stone-900/50 px-1 py-0.5 text-center" title={tt(s.short)}>
+                    <div className="text-[10px] leading-none">{s.icon}</div>
+                    <div className="text-[8px] uppercase text-muted-foreground">{tt(s.short)}</div>
                     <div className="text-xs font-bold leading-tight">{val}</div>
                     <div className={cn("text-[9px] font-mono", mod >= 0 ? "text-emerald-400" : "text-red-400")}>
                       {mod >= 0 ? "+" : ""}
