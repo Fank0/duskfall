@@ -4,12 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Skull,
   Users,
   Plus,
@@ -273,15 +267,21 @@ export function Lobby({
         </div>
       </div>
 
-      {/* ===== Auth modal (opens from top-right "Login" button) ===== */}
-      <Dialog open={authOpen} onOpenChange={setAuthOpen}>
-        <DialogContent className="max-w-md p-0">
-          <DialogHeader className="sr-only">
-            <DialogTitle>{tt("lobby.login")}</DialogTitle>
-          </DialogHeader>
-          <AuthScreen onAuthenticated={handleAuthenticated} />
-        </DialogContent>
-      </Dialog>
+      {/* ===== Auth overlay (opens from top-right "Login" button) ===== */}
+      {authOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setAuthOpen(false)}>
+          <div className="w-full max-w-md p-4" onClick={(e) => e.stopPropagation()}>
+            <AuthScreen onAuthenticated={handleAuthenticated} />
+            <button
+              type="button"
+              onClick={() => setAuthOpen(false)}
+              className="mt-2 w-full rounded-md border border-border/60 bg-stone-900/60 py-2 text-xs text-muted-foreground transition-colors hover:bg-stone-800/60 hover:text-foreground"
+            >
+              {tt("ui.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
 
       <MySavesDialog
         open={savesOpen}
