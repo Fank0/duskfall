@@ -230,7 +230,7 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
   }
   const allItems = await db.inventoryItem.findMany({ where: { roomId, playerName: input.name } });
   const weapon = allItems.find((it) => it.itemType === "weapon" || it.equipSlot === "weapon");
-  const armor = allItems.find((it) => it.equipSlot === "chest" || it.itemType === "armor" || it.acBonus > 0);
+  const armor = allItems.find((it) => (it.equipSlot === "chest" || it.itemType === "armor" || (it.acBonus > 0 && it.equipSlot !== "shield")) && it.equipSlot !== "shield");
   const shield = allItems.find((it) => it.equipSlot === "shield");
   const eqData: Record<string, string> = {};
   if (weapon) eqData.eqWeapon = weapon.id;
