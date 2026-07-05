@@ -46,8 +46,17 @@ export async function seedRoomContent(roomId: string, input: CreatePlayerInput) 
   const loc = randomStartLocation();
 
   // Hidden enemies from the chosen location.
+  // D&D 5e: assign resistances/immunities based on monster type.
   await db.monster.createMany({
-    data: loc.monsters.map((m) => ({ ...m, roomId, isActive: false })),
+    data: loc.monsters.map((m) => {
+      const { resistances, immunities, conditionImmunities } = getMonsterDefenses(m.name);
+      return {
+        ...m, roomId, isActive: false,
+        resistances: JSON.stringify(resistances),
+        immunities: JSON.stringify(immunities),
+        conditionImmunities: JSON.stringify(conditionImmunities),
+      };
+    }),
   });
 
   // NO placeholder scene — the room/create route generates a real image
@@ -318,4 +327,47 @@ function getCastingStat(charClass: string, int: number, wis: number, cha: number
   if (chaClasses.includes(charClass)) return cha;
   if (intClasses.includes(charClass)) return int;
   return wis;
+}
+
+/** D&D 5e: assign resistances/immunities based on monster name keywords. */
+function getMonsterDefenses(name: string): { resistances: string[]; immunities: string[]; conditionImmunities: string[] } {
+  const lower = name.toLowerCase();
+  const resistances: string[] = [];
+  const immunities: string[] = [];
+  const conditionImmunities: string[] = [];
+
+  // Undead (skeletons, zombies, ghouls) — immune to poison, resistant to piercing.
+  if (lower.includes("скелет") || lower.includes("зомби") || lower.includes("нежить") || lower.includes("мертв")) {
+    immunities.push("poison");
+    conditionImmunities.push("poisoned");
+    resistances.push("piercing");
+  }
+  // Fire elementals / dragons — immune/resistant to fire.
+  if (lower.includes("элементал") || lower.includes("огн") || lower.includes("дракон") || lower.includes("саламандр")) {
+    immunities.push("fire");
+  }
+  // Cold creatures — immune to cold.
+  if (lower.includes("лёд") || lower.includes("лед") || lower.includes("холод") || lower.includes("мороз")) {
+    immunities.push("cold");
+  }
+  // Shadows / shadow creatures — resistant to non-magical weapons.
+  if (lower.includes("тен") || lower.includes("тёмн") || lower.includes("темн")) {
+    resistances.push("slashing", "piercing", "bludgeoning");
+    conditionImmunities.push("frightened");
+  }
+  // Demons/devils — resistant to fire, cold, lightning (non-magical weapons).
+  if (lower.includes("демон") || lower.includes("бес") || lower.includes("дьявол")) {
+    resistances.push("fire", "cold", "lightning");
+  }
+  // Constructs (golems) — immune to psychic, poison.
+  if (lower.includes("голем") || lower.includes("конструкт")) {
+    immunities.push("poison", "psychic");
+    conditionImmunities.push("charmed", "frightened", "poisoned");
+  }
+  // Swamp/bog creatures — resistant to acid.
+  if (lower.includes("болот") || lower.includes("тряв") || lower.includes("слизь")) {
+    resistances.push("acid");
+  }
+
+  return { resistances, immunities, conditionImmunities };
 }

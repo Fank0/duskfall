@@ -139,6 +139,9 @@ function toMonster(m: any): MonsterState {
     isActive: m.isActive,
     isBoss: Boolean(m.isBoss),
     specialAbility: m.specialAbility ?? "",
+    resistances: m.resistances ? (typeof m.resistances === "string" ? JSON.parse(m.resistances) : m.resistances) : [],
+    immunities: m.immunities ? (typeof m.immunities === "string" ? JSON.parse(m.immunities) : m.immunities) : [],
+    conditionImmunities: m.conditionImmunities ? (typeof m.conditionImmunities === "string" ? JSON.parse(m.conditionImmunities) : m.conditionImmunities) : [],
   };
 }
 
@@ -707,8 +710,14 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
         : "";
       const display = activeDisplayName(m);
       const atkTag = ` | Атака +${m.attackBonus} | Урон ${m.damageNotation}`;
+      // D&D 5e: show resistances/immunities in DM context.
+      let resTag = "";
+      const res = m.resistances ?? [];
+      const imm = m.immunities ?? [];
+      if (Array.isArray(res) && res.length > 0) resTag += ` | Сопротивление: ${res.join(", ")}`;
+      if (Array.isArray(imm) && imm.length > 0) resTag += ` | Иммунитет: ${imm.join(", ")}`;
       lines.push(
-        `Монстр: ${display} (HP ${m.hp}/${m.maxHp}, AC ${m.ac}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag} — ${m.description}`
+        `Монстр: ${display} (HP ${m.hp}/${m.maxHp}, AC ${m.ac}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag}${resTag} — ${m.description}`
       );
     }
   }
@@ -979,10 +988,25 @@ export async function addDatabaseItemToInventory(
   invalidateSnapshotCache(roomId);
 }
 
-export async function damageMonster(roomId: string, monsterId: string, amount: number) {
+export async function damageMonster(roomId: string, monsterId: string, amount: number, damageType?: string) {
   const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
   if (!m) return { hp: 0, died: false };
-  const newHp = Math.max(0, m.hp - amount);
+
+  // D&D 5e: apply resistances (half damage) and immunities (no damage).
+  let finalAmount = amount;
+  let resistances: string[] = [];
+  let immunities: string[] = [];
+  try {
+    resistances = m.resistances ? JSON.parse(m.resistances) : [];
+    immunities = m.immunities ? JSON.parse(m.immunities) : [];
+  } catch {}
+  if (damageType && immunities.includes(damageType)) {
+    finalAmount = 0;
+  } else if (damageType && resistances.includes(damageType)) {
+    finalAmount = Math.floor(finalAmount / 2);
+  }
+
+  const newHp = Math.max(0, m.hp - finalAmount);
   await db.monster.update({
     where: { id: m.id },
     data: { hp: newHp, isActive: newHp > 0 },

@@ -273,6 +273,12 @@ export interface MonsterState {
   isBoss?: boolean;
   /** Special-ability blurb shown in the monster's description (bosses). */
   specialAbility?: string;
+  /** D&D 5e: damage types the monster resists (half damage). */
+  resistances?: string[];
+  /** D&D 5e: damage types the monster is immune to (no damage). */
+  immunities?: string[];
+  /** D&D 5e: conditions the monster is immune to. */
+  conditionImmunities?: string[];
 }
 
 export interface InventoryItemState {

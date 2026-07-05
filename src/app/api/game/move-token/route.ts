@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSnapshot, invalidateSnapshotCache, moveToken, damagePlayer } from "@/lib/game/state";
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 import { rollD20, rollDice } from "@/lib/game/dice";
+import { getTerrainCells, isDifficultTerrain } from "@/lib/game/terrain";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,18 @@ export async function POST(req: NextRequest) {
     // Move the token (clamped to grid bounds by moveToken).
     await moveToken(room.id, playerName, x, y, true);
     invalidateSnapshotCache(room.id);
+
+    // D&D 5e: check if destination is difficult terrain (costs 2x movement).
+    const terrainCells = await getTerrainCells(room.id);
+    const destDifficult = isDifficultTerrain(terrainCells, x, y);
+    if (destDifficult) {
+      await db.chatMessage.create({
+        data: {
+          roomId: room.id, role: "system", speaker: "", round: room.round,
+          content: `〰️ ${playerName} движется по сложной местности — передвижение стоит ×2.`,
+        },
+      });
+    }
 
     // Log opportunity attacks as system messages.
     for (const oa of opportunityAttacks) {

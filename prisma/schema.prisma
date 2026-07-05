@@ -222,6 +222,16 @@ model Monster {
   // ===== Dungeon generator (Пункт 36) =====
   isBoss         Boolean  @default(false)
   specialAbility String   @default("")
+  // ===== D&D 5e resistances & immunities =====
+  // JSON array of damage types the monster resists (half damage).
+  // e.g. ["fire","bludgeoning"]
+  resistances    String   @default("[]")
+  // JSON array of damage types the monster is immune to (no damage).
+  // e.g. ["poison","psychic"]
+  immunities     String   @default("[]")
+  // JSON array of conditions the monster is immune to.
+  // e.g. ["poisoned","charmed","frightened"]
+  conditionImmunities String @default("[]")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
