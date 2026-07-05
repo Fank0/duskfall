@@ -169,7 +169,7 @@ export const BottomPanel = memo(function BottomPanel({
   // quick-use whenever isYourTurn was false, which during exploration meant
   // every non-current-explorer player couldn't drink a potion or cast a
   // utility spell out of their turn.
-  const canQuickUse = Boolean(onQuickAction) && (!combatActive || isYourTurn);
+  const canQuickUse = Boolean(onQuickAction) && (!combatActive || isYourTurn) && !isThinking;
 
   // Equipment — find equipped items by id from inventory
   const eq = player.equipment || {};

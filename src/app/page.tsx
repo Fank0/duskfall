@@ -1284,7 +1284,7 @@ export default function Home() {
         {/* ===== TOP: 3 columns ===== */}
         <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
           {/* ===== LEFT: Party + Character sheet (compact) + Dice log ===== */}
-          <aside className="flex flex-col gap-2 lg:w-[22%] lg:shrink-0 lg:overflow-hidden">
+          <aside className="flex flex-col gap-2 overflow-y-auto lg:w-[22%] lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
             <PartyPanel
               players={snapshot.players}
               youName={session.playerName}

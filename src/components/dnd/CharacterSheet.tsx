@@ -362,6 +362,39 @@ export const CharacterSheet = memo(function CharacterSheet({
           </div>
         )}
 
+        {/* Quick action buttons — always visible (even in compact mode) */}
+        {isYou && (onEquip || onCraft) && (
+          <div className="flex items-center gap-1 pb-1">
+            {isYou && onEquip && onUnequip && (
+              <button
+                type="button"
+                onClick={() => setEquipOpen(true)}
+                className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-stone-800/60"
+              >
+                <Shirt className="inline h-3 w-3" /> {tt("character.equipment")}
+              </button>
+            )}
+            {isYou && hasAnyStation && onCraft && (
+              <button
+                type="button"
+                onClick={() => setCraftOpen(true)}
+                className="rounded border border-purple-700/40 bg-purple-950/30 px-2 py-0.5 text-[10px] text-purple-200 transition-colors hover:bg-purple-950/50"
+              >
+                <Hammer className="inline h-3 w-3" /> {tt("character.crafting")}
+              </button>
+            )}
+            {isYou && (
+              <button
+                type="button"
+                onClick={() => setFullSheetOpen(true)}
+                className="ml-auto rounded border border-sky-700/40 bg-sky-950/30 px-2 py-0.5 text-[10px] text-sky-200 transition-colors hover:bg-sky-950/50"
+              >
+                {tt("character.full_sheet")}
+              </button>
+            )}
+          </div>
+        )}
+
         {!compact && (
           <>
             {/* Stats */}

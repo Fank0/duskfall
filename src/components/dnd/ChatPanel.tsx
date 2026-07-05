@@ -366,8 +366,9 @@ export const ChatPanel = memo(function ChatPanel({
   }, [older]);
 
   // Input is locked whenever it's not your turn (combat OR exploration),
-  // unless you're the only player.
-  const locked = !isYourTurn && !isDead;
+  // unless you're the only player. Also locked while DM is thinking (processing
+  // player action + monster turns).
+  const locked = (!isYourTurn && !isDead) || isThinking;
   const canAct = !isThinking && !isDead && !locked;
 
   function submit(text?: string) {

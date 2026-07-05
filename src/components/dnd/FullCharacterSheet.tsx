@@ -1,8 +1,7 @@
 "use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { Heart, Shield, Coins, Zap, Star, Scroll as ScrollIcon, Shirt } from "lucide-react";
 import type { PlayerState, InventoryItemState, ConditionState } from "@/lib/game/types";
 import { abilityModifier } from "@/lib/game/dice";
@@ -52,7 +51,7 @@ export function FullCharacterSheet({
   ];
 
   return (
-    <ScrollArea className="fantasy-scroll max-h-[80vh]">
+    <div className="fantasy-scroll max-h-[75vh] overflow-y-auto pr-2">
       <div className="space-y-4 p-2">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -258,6 +257,6 @@ export function FullCharacterSheet({
           </div>
         </div>
       </div>
-    </ScrollArea>
+    </div>
   );
 }
