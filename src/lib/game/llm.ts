@@ -1,15 +1,14 @@
-// Unified LLM client — multi-provider fallback chain.
+// Unified LLM client — multi-provider fallback chain (FREE models only).
 //
-// ANALYSIS: Best models for D&D DM (narrative quality + Russian + JSON):
-//   1. Claude 3.5 Sonnet — best narrative/creativity, follows rules
-//   2. GPT-4o — excellent Russian, logic, JSON
-//   3. GLM-4.6 — good Russian, free (z.ai)
-//   4. Gemini 2.0 Flash — fast, free
-//   5. Qwen3 — good Russian, free (OpenRouter)
-//   6. Llama 3.3 — open, free
+// ANALYSIS: Best FREE models for D&D DM (narrative quality + Russian + JSON):
+//   1. DeepSeek V3 (OpenRouter free) — best narrative/creativity, follows rules
+//   2. GLM-4.6 (z.ai) — good Russian, fast, free
+//   3. Gemini 2.0 Flash (Google) — fast, free
+//   4. Qwen3 (OpenRouter free) — good Russian, follows instructions
+//   5. Llama 3.3 70B (OpenRouter free) — open, decent
 //
-// PRIORITY CHAIN (tried in order if the primary provider fails):
-//   1. OpenRouter (Claude/GPT-4o/Qwen3 — if API key set)
+// PRIORITY CHAIN (all FREE, tried in order):
+//   1. OpenRouter — DeepSeek V3 → Qwen3 → Llama 3.3 (free models)
 //   2. GLM (z.ai) — glm-4.6 → glm-4-plus → glm-4-air → glm-4-flash
 //   3. Gemini (Google) — gemini-2.0-flash → gemini-1.5-flash
 //   4. Ollama (local) — configurable model (default llama3.2)
@@ -17,14 +16,14 @@
 //
 // === ENVIRONMENT VARIABLES (one set per provider) ===
 //
-// OpenRouter (primary — provides access to Claude, GPT-4o, Qwen3):
+// OpenRouter (primary — free models: DeepSeek V3, Qwen3, Llama 3.3):
 //   OPENROUTER_API_KEY=sk-or-v1-...        (https://openrouter.ai/keys)
-//   OPENROUTER_MODEL=anthropic/claude-3.5-sonnet  (or gpt-4o, qwen3)
+//   OPENROUTER_MODEL=deepseek/deepseek-chat:free  (DeepSeek V3 — best free narrative)
 //
 // GLM (fallback 1, free z.ai):
 //   GLM_API_KEY=...                        (z.ai API key)
 //
-// Gemini (fallback 2):
+// Gemini (fallback 2, free):
 //   GEMINI_API_KEY=...                     (https://aistudio.google.com/apikey)
 //
 // Ollama (fallback 3, local, no key needed):
@@ -92,8 +91,9 @@ function geminiConfig(): ProviderConfig | null {
 }
 
 /**
- * OpenRouter — PRIMARY provider. Provides access to the best models for D&D DM:
- * Claude 3.5 Sonnet (best narrative), GPT-4o (best Russian), Qwen3 (free).
+ * OpenRouter — PRIMARY provider. Provides access to the best FREE models for D&D DM:
+ * DeepSeek V3 (best narrative), Qwen3 (good Russian), Llama 3.3 (decent).
+ * All models are FREE (no cost).
  */
 function openRouterConfig(): ProviderConfig | null {
   // Accept OPENROUTER_API_KEY, or detect an OpenRouter key in QWEN_API_KEY/LLM_API_KEY.
@@ -108,16 +108,16 @@ function openRouterConfig(): ProviderConfig | null {
     provider: "openrouter",
     baseUrl: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
     apiKey,
-    // Default: Claude 3.5 Sonnet (best narrative quality for D&D DM).
-    // Fallbacks: GPT-4o (excellent Russian), Qwen3 (free), Llama 3.3 (free).
-    model: process.env.OPENROUTER_MODEL || "anthropic/claude-3.5-sonnet",
+    // Default: DeepSeek V3 (best FREE narrative model for D&D DM).
+    // Fallbacks: Qwen3 (free), Llama 3.3 (free), Nemotron (free).
+    model: process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat:free",
     fallbackModels: parseList(process.env.OPENROUTER_FALLBACK_MODELS).length
       ? parseList(process.env.OPENROUTER_FALLBACK_MODELS)
       : [
-          "openai/gpt-4o",
           "qwen/qwen3-next-80b-a3b-instruct:free",
           "meta-llama/llama-3.3-70b-instruct:free",
           "nvidia/nemotron-3-super-120b-a12b:free",
+          "deepseek/deepseek-r1:free",
         ],
   };
 }
