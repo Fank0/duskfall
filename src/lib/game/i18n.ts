@@ -2694,6 +2694,21 @@ const ITEM_I18N: Record<string, Record<Lang, string>> = {
   "Свиток лечения": { "ru": "Свиток лечения", "en": "Scroll of Cure Wounds", "es": "Pergamino de Curar Heridas", "de": "Schriftrolle der Wundenheilung", "fr": "Parchemin de Soins", "zh": "治疗卷轴" },
   "Зелье невидимости": { "ru": "Зелье невидимости", "en": "Potion of Invisibility", "es": "Poción de invisibilidad", "de": "Trank der Unsichtbarkeit", "fr": "Potion d'invisibilité", "zh": "隐形药水" },
   "Зелье силы": { "ru": "Зелье силы", "en": "Potion of Strength", "es": "Poción de fuerza", "de": "Trank der Stärke", "fr": "Potion de force", "zh": "力量药水" },
+  // New items (D&D 5e SRD)
+  "Зелье великой силы": { "ru": "Зелье великой силы", "en": "Potion of Giant Strength", "es": "Poción de fuerza de gigante", "de": "Trank der Riesenstärke", "fr": "Potion de force de géant", "zh": "巨人力量药水" },
+  "Зелье скорости": { "ru": "Зелье скорости", "en": "Potion of Speed", "es": "Poción de velocidad", "de": "Trank der Geschwindigkeit", "fr": "Potion de vitesse", "zh": "加速药水" },
+  "Зелье героизма": { "ru": "Зелье героизма", "en": "Potion of Heroism", "es": "Poción de heroísmo", "de": "Trank des Heldentums", "fr": "Potion d'héroïsme", "zh": "英雄药水" },
+  "Свиток удержания личности": { "ru": "Свиток удержания личности", "en": "Scroll of Hold Person", "es": "Pergamino de Inmovilizar Persona", "de": "Schriftrolle der Personenfesthaltung", "fr": "Parchemin d'Immobilisation de Personne", "zh": "定身术卷轴" },
+  "Свиток воскрешения": { "ru": "Свиток воскрешения", "en": "Scroll of Revivify", "es": "Pergamino de Revivificar", "de": "Schriftrolle der Wiederbelebung", "fr": "Parchemin de Résurrection", "zh": "复活卷轴" },
+  "Кольцо защиты +2": { "ru": "Кольцо защиты +2", "en": "Ring of Protection +2", "es": "Anillo de protección +2", "de": "Ring des Schutzes +2", "fr": "Anneau de protection +2", "zh": "防护戒指+2" },
+  "Амулет здоровья": { "ru": "Амулет здоровья", "en": "Amulet of Health", "es": "Amuleto de salud", "de": "Amulett der Gesundheit", "fr": "Amulette de santé", "zh": "健康护身符" },
+  "Плащ эльфийской крови": { "ru": "Плащ эльфийской крови", "en": "Cloak of Elvenkind", "es": "Capa élfica", "de": "Elfenumhang", "fr": "Cape elfique", "zh": "精灵斗篷" },
+  "Сапоги стремительности": { "ru": "Сапоги стремительности", "en": "Boots of Striding", "es": "Botas de rapidez", "de": "Stiefel des Springens", "fr": "Bottes de vélocité", "zh": "疾行之靴" },
+  "Очки ночного видения": { "ru": "Очки ночного видения", "en": "Goggles of Night", "es": "Gafas de visión nocturna", "de": "Nachtsichtbrille", "fr": "Lunettes de vision nocturne", "zh": "夜视眼镜" },
+  "Пылающий клинок": { "ru": "Пылающий клинок", "en": "Flame Tongue", "es": "Hoja flamígera", "de": "Flammenzunge", "fr": "Lame de feu", "zh": "焰舌剑" },
+  "Ледяной клинок": { "ru": "Ледяной клинок", "en": "Frost Brand", "es": "Marca de escarcha", "de": "Frostmarke", "fr": "Lame de givre", "zh": "霜印剑" },
+  "Эльфийская кольчуга": { "ru": "Эльфийская кольчуга", "en": "Elven Chain", "es": "Cota de malla élfica", "de": "Elfenkette", "fr": "Cotte de mailles elfique", "zh": "精灵链甲" },
+  "Щит заклинателя": { "ru": "Щит заклинателя", "en": "Spellguard Shield", "es": "Escudo antimagia", "de": "Zauberschutzschild", "fr": "Bouclier anti-sort", "zh": "法术守卫盾" },
 };
 
 /** Translate game data (race/class/background/item names) into the UI language. */
