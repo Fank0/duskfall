@@ -2423,3 +2423,33 @@ Stage Summary:
 - LoadingScreen i18n'd
 - onCraft stub fixed — crafting button now works from BottomPanel
 - Passive perception added to DM context + system prompt (D&D 5e stealth/ambush mechanic)
+
+---
+Task ID: accessibility-oa-i18n
+Agent: main-agent
+Task: Accessibility (reduced-motion + font sizes), i18n CombatGrid strings, opportunity attacks
+
+Work Log:
+- Added prefers-reduced-motion media query to globals.css — disables all decorative animations (flicker, pulse-glow, fade-up, crit-burst, ping, spin) for users with vestibular disorders
+- Increased text-[8px] → text-[10px] and text-[7px] → text-[9px] in CharacterSheet (22 + 3 instances) — WCAG accessibility (8px is below recommended minimum)
+- i18n'd CombatGrid hardcoded strings:
+  * "Мир" → t(lang, "game.world")
+  * "no one on grid" → t(lang, "grid.empty") (new key added to all 6 languages)
+  * "раундов" → t(lang, "ui.rounds") (new key added to all 6 languages)
+  * "спасбросок" → t(lang, "ui.save_throw") (new key added to all 6 languages)
+- Updated ConditionIcons component to accept lang prop (was using settings.lang which wasn't in scope)
+- Implemented D&D 5e Opportunity Attacks in move-token API:
+  * When player moves out of a monster's reach (adjacent cell → non-adjacent)
+  * Monster gets a free attack roll vs player AC
+  * On hit: damage applied via damagePlayer()
+  * System message logged in chat
+  * Only triggers in combat (not exploration)
+  * Returns opportunityAttacks array in response
+- Added 3 new i18n keys (grid.empty, ui.rounds, ui.save_throw) to all 6 languages
+- lint: 0 errors, tsc: 0 errors
+
+Stage Summary:
+- Accessibility: prefers-reduced-motion guard + larger font sizes (WCAG compliance)
+- CombatGrid: 4 hardcoded strings i18n'd
+- D&D 5e Opportunity Attacks: fully implemented in move-token API
+- 3 new i18n keys across 6 languages

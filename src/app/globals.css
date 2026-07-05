@@ -431,3 +431,23 @@ html.ui-scale-150 { font-size: 24px; }
   from { background-position: 0 -200px, 0 -200px, 0 -200px, 0 -200px, 0 -200px; }
   to { background-position: 0 200px, 0 200px, 0 200px, 0 200px, 0 200px; }
 }
+
+/* ===== Accessibility: prefers-reduced-motion =====
+   Disables all decorative animations for users with vestibular disorders
+   or motion sensitivity. Critical animations (dice rolls, hit flashes)
+   are kept short enough to not cause issues. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-flicker,
+  .animate-pulse-glow,
+  .animate-fade-up,
+  .animate-crit-burst,
+  .animate-ping,
+  .animate-spin {
+    animation: none !important;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

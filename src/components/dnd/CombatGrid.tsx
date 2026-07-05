@@ -413,7 +413,7 @@ export const CombatGrid = memo(function CombatGrid({
               </span>
             ) : (
               <span className="flex items-center gap-1 rounded-full border border-emerald-800/60 bg-emerald-950/40 px-2 py-0.5 text-emerald-300">
-                <MapPin className="h-3 w-3" /> Мир
+                <MapPin className="h-3 w-3" /> {t(settings.lang, "game.world")}
               </span>
             )}
           </div>
@@ -601,7 +601,7 @@ export const CombatGrid = memo(function CombatGrid({
                         background: `radial-gradient(circle at center, ${aoeColor.core} 0%, ${aoeColor.edge} 80%)`,
                         animation: "fadeOutAoe 2s ease-out forwards",
                       }}
-                      title={aoe ? `${aoeColor.label} (спасбросок ${aoe.saveAbility ?? "ТЕЛ"} DC ${aoe.saveDC ?? 12})` : ""}
+                      title={aoe ? `${aoeColor.label} (${t(settings.lang, "ui.save_throw")} ${aoe.saveAbility ?? "ТЕЛ"} DC ${aoe.saveDC ?? 12})` : ""}
                     />
                   )}
                 </div>
@@ -680,7 +680,7 @@ export const CombatGrid = memo(function CombatGrid({
             </span>
           ))}
           {alivePlayers.length === 0 && activeMonsters.length === 0 && (
-            <span className="italic">no one on grid</span>
+            <span className="italic">{t(settings.lang, "grid.empty")}</span>
           )}
         </div>
       </CardContent>
@@ -805,7 +805,7 @@ function gridExtrasEqual(
 }
 
 /** Small vertical stack of condition emoji icons shown at the top-right of a token. */
-function ConditionIcons({ conditions }: { conditions: ConditionState[] }) {
+function ConditionIcons({ conditions, lang }: { conditions: ConditionState[]; lang: Lang }) {
   if (conditions.length === 0) return null;
   return (
     <div className="absolute -right-1 -top-1 z-10 flex flex-col items-center gap-px">
@@ -817,7 +817,7 @@ function ConditionIcons({ conditions }: { conditions: ConditionState[] }) {
         return (
           <span
             key={c.id}
-            title={`${name} (${c.duration} раундов)`}
+            title={`${name} (${c.duration} ${t(lang, "ui.rounds")})`}
             className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-black/50 text-[9px] leading-none shadow-sm"
             style={{ background: `${color}cc` }}
           >
@@ -919,7 +919,7 @@ function PlayerToken({
           </span>
         )}
         <BuffAura conditions={conditions} />
-        <ConditionIcons conditions={conditions} />
+        <ConditionIcons conditions={conditions} lang={lang} />
 
         {/* HP bar — thin (3px), at bottom of token, color gradient green→yellow→red. */}
         <div
@@ -995,7 +995,7 @@ function MonsterToken({
       >
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{monster.label}</span>
         <BuffAura conditions={conditions} />
-        <ConditionIcons conditions={conditions} />
+        <ConditionIcons conditions={conditions} lang={lang} />
 
         {/* HP bar — thin (3px), at bottom of token, color gradient green→yellow→red. */}
         <div

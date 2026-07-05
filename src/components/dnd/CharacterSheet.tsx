@@ -159,14 +159,14 @@ export const CharacterSheet = memo(function CharacterSheet({
           <div className="flex items-center gap-1">
             <h3 className="truncate font-serif text-sm font-bold gold-text">{player.name}</h3>
             {isYou && (
-              <Badge variant="outline" className="shrink-0 border-primary/60 px-1 text-[8px] text-primary">
+              <Badge variant="outline" className="shrink-0 border-primary/60 px-1 text-[10px] text-primary">
                 {tt("common.you").toUpperCase()}
               </Badge>
             )}
             {player.isHost && <Crown className="h-3 w-3 shrink-0 text-amber-300" />}
             {dead && <Skull className="h-3.5 w-3.5 shrink-0 text-red-400" />}
             {isTurn && (
-              <Badge className="ml-auto shrink-0 bg-primary px-1.5 text-[8px]">{tt("game.your_turn").split("!")[0].toUpperCase()}</Badge>
+              <Badge className="ml-auto shrink-0 bg-primary px-1.5 text-[10px]">{tt("game.your_turn").split("!")[0].toUpperCase()}</Badge>
             )}
           </div>
           <p className="text-[10px] text-muted-foreground">
@@ -329,7 +329,7 @@ export const CharacterSheet = memo(function CharacterSheet({
             <div className="flex items-center gap-1.5 pb-1">
               <Skull className="h-3 w-3 text-red-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("character.conditions")}</span>
-              <Badge variant="secondary" className="ml-auto text-[8px]">{conditions.length}</Badge>
+              <Badge variant="secondary" className="ml-auto text-[10px]">{conditions.length}</Badge>
             </div>
             <ul className="flex flex-wrap gap-1">
               {conditions.map((c) => {
@@ -346,7 +346,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                   >
                     <span>{icon}</span>
                     <span className="font-medium">{name}</span>
-                    <span className="text-[8px] opacity-70">{c.duration} р</span>
+                    <span className="text-[10px] opacity-70">{c.duration} р</span>
                   </li>
                 );
               })}
@@ -363,7 +363,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                 const mod = abilityModifier(val);
                 return (
                   <div key={s.key} className="rounded border border-border/40 bg-stone-900/50 px-1 py-0.5 text-center">
-                    <div className="text-[8px] text-muted-foreground">{tt(s.short)}</div>
+                    <div className="text-[10px] text-muted-foreground">{tt(s.short)}</div>
                     <div className="text-xs font-bold leading-tight">{val}</div>
                     <div className={cn("text-[9px] font-mono", mod >= 0 ? "text-emerald-400" : "text-red-400")}>
                       {mod >= 0 ? "+" : ""}
@@ -381,7 +381,7 @@ export const CharacterSheet = memo(function CharacterSheet({
               <div className="flex items-center gap-1.5">
                 <Shirt className="h-3 w-3 text-amber-300" />
                 <span className="text-[11px] font-semibold gold-text">{tt("character.equipment")}</span>
-                <Badge variant="secondary" className="text-[8px]">{equippedCount}/8</Badge>
+                <Badge variant="secondary" className="text-[10px]">{equippedCount}/8</Badge>
               </div>
               <div className="flex items-center gap-1">
                 {isYou && hasAnyStation && onCraft && (
@@ -421,9 +421,9 @@ export const CharacterSheet = memo(function CharacterSheet({
               <Backpack className="h-3 w-3 text-amber-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("character.inventory")}</span>
               {isYou && onQuickAction && (
-                <span className="ml-1 text-[8px] italic text-amber-300/70">{tt("ui.click_use")}</span>
+                <span className="ml-1 text-[10px] italic text-amber-300/70">{tt("ui.click_use")}</span>
               )}
-              <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
+              <Badge variant="secondary" className="ml-auto text-[10px]">{inventory.length}</Badge>
             </div>
             <ScrollArea className="fantasy-scroll max-h-40 pr-1">
               {inventory.length === 0 ? (
@@ -451,7 +451,7 @@ export const CharacterSheet = memo(function CharacterSheet({
                       >
                         <div className="flex items-center justify-between">
                           <span className="truncate text-[11px] font-medium">{item.itemName}</span>
-                          {item.quantity > 1 && <Badge variant="outline" className="text-[8px]">x{item.quantity}</Badge>}
+                          {item.quantity > 1 && <Badge variant="outline" className="text-[10px]">x{item.quantity}</Badge>}
                         </div>
                         {item.description && (
                           <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{item.description}</p>
@@ -470,9 +470,9 @@ export const CharacterSheet = memo(function CharacterSheet({
               <Sparkles className="h-3 w-3 text-amber-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("character.abilities")}</span>
               {isYou && onQuickAction && (
-                <span className="ml-1 text-[8px] italic text-amber-300/70">{tt("ui.click_apply")}</span>
+                <span className="ml-1 text-[10px] italic text-amber-300/70">{tt("ui.click_apply")}</span>
               )}
-              <Badge variant="secondary" className="ml-auto text-[8px]">
+              <Badge variant="secondary" className="ml-auto text-[10px]">
                 {computeAbilities(player, inventory).length}
               </Badge>
             </div>
@@ -524,20 +524,20 @@ export const CharacterSheet = memo(function CharacterSheet({
                         </span>
                         <div className="flex shrink-0 items-center gap-1">
                           {a.consumable && (
-                            <Badge className="bg-amber-900/60 text-[7px] text-amber-200">{tt("ui.consumable")}</Badge>
+                            <Badge className="bg-amber-900/60 text-[9px] text-amber-200">{tt("ui.consumable")}</Badge>
                           )}
                           {a.slotLevel && a.slotLevel > 0 && (
-                            <Badge variant="outline" className="text-[7px] border-purple-700/50 text-purple-300">
+                            <Badge variant="outline" className="text-[9px] border-purple-700/50 text-purple-300">
                               яч.{a.slotLevel}
                             </Badge>
                           )}
                           {a.uses && a.uses > 1 && (
-                            <Badge variant="outline" className="text-[8px]">x{a.uses}</Badge>
+                            <Badge variant="outline" className="text-[10px]">x{a.uses}</Badge>
                           )}
                           <Badge
                             variant="outline"
                             className={cn(
-                              "text-[7px]",
+                              "text-[9px]",
                               a.source === "race" ? "border-emerald-700/50 text-emerald-300" :
                               a.source === "class" ? "border-sky-700/50 text-sky-300" :
                               a.source === "talent" ? "border-purple-700/50 text-purple-300" :
@@ -724,7 +724,7 @@ function shallowArrayIdentity<T>(a: T[], b: T[]): boolean {
 function Vital({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {
   return (
     <div className="rounded border border-border/50 bg-stone-900/50 px-1.5 py-1 text-center">
-      <div className={cn("flex items-center justify-center gap-0.5 text-[8px] uppercase", accent)}>
+      <div className={cn("flex items-center justify-center gap-0.5 text-[10px] uppercase", accent)}>
         {icon}
         {label}
       </div>
@@ -749,7 +749,7 @@ function ActionPip({ icon, label, used, color, availableLabel }: { icon: React.R
   return (
     <div
       className={cn(
-        "flex flex-1 items-center justify-center gap-0.5 rounded border px-1 py-0.5 text-[8px] font-semibold uppercase transition-all",
+        "flex flex-1 items-center justify-center gap-0.5 rounded border px-1 py-0.5 text-[10px] font-semibold uppercase transition-all",
         colorClasses[color],
       )}
       style={!used ? { boxShadow: `0 0 4px ${glowColor[color]}` } : undefined}
