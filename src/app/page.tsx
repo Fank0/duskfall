@@ -324,7 +324,7 @@ export default function Home() {
           body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, action: text, lang }),
         });
         if (!res.ok || !res.body) {
-          toast.error("Мастер не ответил.");
+          toast.error(tt("ui.dm_no_response"));
           return;
         }
         const reader = res.body.getReader();
@@ -535,7 +535,7 @@ export default function Home() {
             });
         }
       } catch {
-        toast.error("Ошибка связи с Мастером.");
+        toast.error(tt("ui.dm_connection_error"));
       } finally {
         setIsThinking(false);
       }
@@ -561,7 +561,7 @@ export default function Home() {
         toast.error(data.error ?? "Не удалось перезапустить.");
       }
     } catch {
-      toast.error("Ошибка перезапуска.");
+      toast.error(tt("ui.reset_error"));
     } finally {
       setIsThinking(false);
     }
@@ -571,7 +571,7 @@ export default function Home() {
     if (!session) return;
     navigator.clipboard?.writeText(session.roomCode).then(() => {
       setCopied(true);
-      toast.success(`Код комнаты скопирован: ${session.roomCode}`);
+      toast.success(tt("ui.room_code_copied", { code: session.roomCode }));
       setTimeout(() => setCopied(false), 2000);
     });
   }, [session]);
@@ -588,7 +588,7 @@ export default function Home() {
       if (data.ok) {
         setSnapshot(data.snapshot);
         pingRoom(session.roomCode);
-        toast.success(`Новый талант: ${data.talent?.name ?? ""}!`);
+        toast.success(tt("ui.new_talent", { name: data.talent?.name ?? "" }));
         try { sfxLevelUp(); } catch {}
       } else {
         toast.error(data.error ?? "Не удалось выбрать талант.");
@@ -609,7 +609,7 @@ export default function Home() {
       if (data.ok) {
         setSnapshot(data.snapshot);
         pingRoom(session.roomCode);
-        toast.success(`Характеристика повышена: +2 к ${stat.toUpperCase()}!`);
+        toast.success(tt("ui.stat_increased", { stat: stat.toUpperCase() }));
       } else {
         toast.error(data.error ?? "Не удалось применить ASI.");
       }
@@ -629,7 +629,7 @@ export default function Home() {
       if (data.ok) {
         setSnapshot(data.snapshot);
         pingRoom(session.roomCode);
-        toast.success("Предмет экипирован.");
+        toast.success(tt("ui.item_equipped"));
       } else {
         toast.error(data.error ?? "Не удалось экипировать предмет.");
       }
@@ -649,7 +649,7 @@ export default function Home() {
       if (data.ok) {
         setSnapshot(data.snapshot);
         pingRoom(session.roomCode);
-        toast.success("Предмет снят.");
+        toast.success(tt("ui.item_unequipped"));
       } else {
         toast.error(data.error ?? "Не удалось снять предмет.");
       }
@@ -658,7 +658,7 @@ export default function Home() {
   );
 
   const craftItem = useCallback(
-    async (recipeId: string): Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }> => {
+    async (recipeId?: string): Promise<{ success: boolean; result?: string; roll?: number; dc?: number; error?: string }> => {
       if (!session) return { success: false, error: "Нет сессии." };
       try {
         const res = await fetch("/api/game/craft", {
@@ -672,16 +672,16 @@ export default function Home() {
           pingRoom(session.roomCode);
           const c = data.craft;
           if (c?.success) {
-            toast.success(`Создано: ${c.result ?? "предмет"}! (бросок ${c.roll} vs DC ${c.dc})`);
+            toast.success(tt("ui.crafted", { item: c.result ?? tt("ui.scene_title"), roll: c.roll, dc: c.dc }));
           } else {
-            toast.error(`Крафт провалился (бросок ${c?.roll} vs DC ${c?.dc}).`);
+            toast.error(tt("ui.craft_failed", { roll: c?.roll ?? 0, dc: c?.dc ?? 0 }));
           }
           return { success: Boolean(c?.success), result: c?.result, roll: c?.roll, dc: c?.dc };
         }
         toast.error(data.error ?? "Не удалось скрафтить.");
         return { success: false, error: data.error };
       } catch {
-        toast.error("Ошибка крафта.");
+        toast.error(tt("ui.craft_error"));
         return { success: false, error: "Ошибка крафта." };
       }
     },
@@ -707,7 +707,7 @@ export default function Home() {
           toast.error(data.error ?? "Не удалось отдохнуть.");
         }
       } catch {
-        toast.error("Ошибка отдыха.");
+        toast.error(tt("ui.rest_error"));
       } finally {
         setIsThinking(false);
       }
@@ -755,7 +755,7 @@ export default function Home() {
           toast.error(data.error ?? "Не удалось войти в комнату.");
         }
       } catch {
-        toast.error("Ошибка перемещения.");
+        toast.error(tt("ui.move_error"));
       } finally {
         setIsMovingRoom(false);
       }
@@ -779,12 +779,12 @@ export default function Home() {
       if (data.ok) {
         setSnapshot(data.snapshot);
         pingRoom(session.roomCode);
-        toast.success(`Новое подземелье: ${data.biome ?? ""} (глубина ${data.depth ?? 1})`);
+        toast.success(tt("ui.new_dungeon", { biome: data.biome ?? "", depth: data.depth ?? 1 }));
       } else {
         toast.error(data.error ?? "Не удалось создать новое подземелье.");
       }
     } catch {
-      toast.error("Ошибка генерации подземелья.");
+      toast.error(tt("ui.dungeon_error"));
     } finally {
       setIsNewDungeonBusy(false);
     }
@@ -823,7 +823,7 @@ export default function Home() {
           return null;
         }
       } catch {
-        toast.error("Ошибка диалога.");
+        toast.error(tt("ui.dialogue_error"));
         return null;
       } finally {
         setIsDialogueBusy(false);
@@ -1402,7 +1402,7 @@ export default function Home() {
             onQuickAction={sendAction}
             onUnequip={(slot) => unequipItem(slot as any)}
             hasAnyStation={snapshot.hasAlchemy || snapshot.hasForge || snapshot.hasEnchant}
-            onCraft={() => {/* crafting opens via CharacterSheet — keep stub */}}
+            onCraft={craftItem}
             combatActive={snapshot.combatActive}
             nearestMonsterName={nearestMonsterName}
             onRequestTargeting={requestAbilityTargeting}
@@ -1486,6 +1486,8 @@ export default function Home() {
 }
 
 function LoadingScreen() {
+  const settings = useSettings();
+  const tt = (key: string, params?: Record<string, string | number>) => t(settings.lang, key, params);
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
       <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-primary/60 bg-stone-900 animate-flicker">
@@ -1494,7 +1496,7 @@ function LoadingScreen() {
       <h1 className="font-serif text-2xl font-bold gold-text text-glow">DUSKFALL</h1>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin text-amber-300" />
-        <span className="font-serif italic">Туман сгущается…</span>
+        <span className="font-serif italic">{tt("ui.loading_atmosphere")}</span>
       </div>
       <div className="mt-4 w-full max-w-md space-y-2">
         <Skeleton className="h-24 w-full rounded-lg" />

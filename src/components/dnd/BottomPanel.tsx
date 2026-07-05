@@ -100,7 +100,7 @@ export const BottomPanel = memo(function BottomPanel({
   onQuickAction?: (text: string) => void;
   onUnequip?: (slot: string) => void | Promise<void>;
   hasAnyStation?: boolean;
-  onCraft?: () => void;
+  onCraft?: (recipeId?: string) => void;
   /** True while combat is active — enables targeted damage text. */
   combatActive?: boolean;
   /** Name of the nearest active monster — used as damage target in text. */
@@ -355,7 +355,7 @@ export const BottomPanel = memo(function BottomPanel({
           {hasAnyStation && onCraft && (
             <button
               type="button"
-              onClick={onCraft}
+              onClick={() => onCraft()}
               className="mt-1 rounded border border-purple-700/40 bg-purple-950/30 px-2 py-0.5 text-[9px] text-purple-200 transition-colors hover:bg-purple-950/50"
               title={tt("character.crafting")}
             >

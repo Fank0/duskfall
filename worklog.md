@@ -2396,3 +2396,30 @@ Stage Summary:
 - encounterLabelRu renamed and i18n'd (was shadowing imported t function)
 - 5 combat/event toasts i18n'd
 - Magic number /16 replaced with GRID_SIZE constant
+
+---
+Task ID: toast-i18n-craft-passive
+Agent: main-agent
+Task: i18n all remaining toasts, fix onCraft stub, add passive perception, i18n LoadingScreen
+
+Work Log:
+- Added 20 new i18n keys (ui.dm_no_response, ui.dm_connection_error, ui.reset_error, ui.game_reset, ui.reset_hint, ui.room_code_copied, ui.new_talent, ui.stat_increased, ui.item_equipped, ui.item_unequipped, ui.crafted, ui.craft_failed, ui.craft_error, ui.rest_error, ui.move_error, ui.new_dungeon, ui.dungeon_error, ui.dialogue_error, ui.loading_atmosphere, ui.scene_title) to all 6 languages
+- Replaced 16 hardcoded Russian toasts in page.tsx with tt() calls:
+  * DM no response, DM connection error, reset error
+  * Room code copied, new talent, stat increased
+  * Item equipped/unequipped, crafted/craft failed/craft error
+  * Rest error, move error, new dungeon, dungeon error, dialogue error
+- Fixed LoadingScreen: added useSettings + tt, replaced "Туман сгущается…" with tt("ui.loading_atmosphere")
+- Fixed onCraft stub: BottomPanel onCraft now calls the real craftItem function (was empty stub)
+  * Updated onCraft type in BottomPanel to accept optional recipeId
+  * Updated craftItem in page.tsx to accept optional recipeId
+- Added passive perception to DM context: "Пассивное восприятие N" (10 + WIS modifier) for each player
+- Added passive perception rule to DM system prompt: explains how hidden enemies/traps with stealth DC below passive perception are automatically noticed
+- lint: 0 errors, tsc: 0 errors
+
+Stage Summary:
+- 20 new i18n keys across 6 languages
+- 16 toasts i18n'd
+- LoadingScreen i18n'd
+- onCraft stub fixed — crafting button now works from BottomPanel
+- Passive perception added to DM context + system prompt (D&D 5e stealth/ambush mechanic)
