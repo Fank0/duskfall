@@ -17,7 +17,7 @@ export interface Ability {
   id: string;
   name: string;
   description: string;
-  source: "race" | "class" | "talent" | "scroll" | "spell";
+  source: "race" | "class" | "talent" | "scroll" | "spell" | "subclass";
   sourceLabel: string;
   consumable?: boolean; // true for scrolls (consumed on use)
   castNotation?: string; // damage/heal roll when activated (e.g. "8d6")

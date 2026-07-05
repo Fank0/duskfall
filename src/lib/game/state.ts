@@ -589,16 +589,27 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     if (p.backstory && p.backstory.trim().length > 0) {
       lines.push(`  Предыстория ${p.name}: ${p.backstory.trim()}`);
     }
-    // ===== Selected talents (so DM knows player's capabilities) =====
+    // ===== Selected talents + subclass (so DM knows player's capabilities) =====
     if (p.selectedTalents && p.selectedTalents.length > 0) {
       const { getTalentsForClass } = await import("./talents");
+      const { getSubclassById, isSubclassTalent } = await import("./subclasses");
       const cid = getClassIdByCharClass(p.charClass);
       const allClassTalents = getTalentsForClass(cid);
-      const picked = p.selectedTalents
-        .map((id: string) => allClassTalents.find((t) => t.id === id))
-        .filter((t: any) => t);
-      if (picked.length > 0) {
-        lines.push(`  Таланты ${p.name}: ${picked.map((t: any) => `${t.name} (${t.description?.slice(0, 60) ?? ""})`).join(", ")}`);
+      const talentParts: string[] = [];
+      let subclassInfo = "";
+      for (const id of p.selectedTalents) {
+        if (isSubclassTalent(id)) {
+          const sub = getSubclassById(id.replace("sub_", ""));
+          if (sub) subclassInfo = ` | Подкласс: ${sub.name} (${sub.description.slice(0, 80)})`;
+          continue;
+        }
+        const t = allClassTalents.find((t: any) => t.id === id);
+        if (t) talentParts.push(`${t.name} (${t.description?.slice(0, 60) ?? ""})`);
+      }
+      if (talentParts.length > 0) {
+        lines.push(`  Таланты ${p.name}: ${talentParts.join(", ")}${subclassInfo}`);
+      } else if (subclassInfo) {
+        lines.push(`  Таланты ${p.name}: (нет)${subclassInfo}`);
       }
     }
     // ===== Computed abilities (race/class/talent/scroll — so DM knows what player CAN do) =====

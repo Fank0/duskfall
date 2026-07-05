@@ -525,7 +525,8 @@ export type TalentEffect =
   | { type: "reroll_miss_once" } // reroll one missed attack per turn
   | { type: "save_bonus"; value: number } // bonus to ability checks
   | { type: "hp_bonus"; value: number } // +max HP (and current)
-  | { type: "asi"; stat: StatKey; value: number }; // +value to a chosen stat (ASI)
+  | { type: "asi"; stat: StatKey; value: number } // +value to a chosen stat (ASI)
+  | { type: "passive" }; // passive effect (subclass, no mechanical computation needed)
 
 export interface Talent {
   id: string;
@@ -537,6 +538,8 @@ export interface Talent {
   tier?: 1 | 2;
   /** Required talent id (for tier-2 talents). The player must already have this talent. */
   requires?: string;
+  /** Source: talent (level-up pick) or subclass (chosen at level 3). */
+  source?: "talent" | "subclass";
 }
 
 /** A starting location + opening hook for a fresh adventure. */
