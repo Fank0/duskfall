@@ -255,6 +255,8 @@ export interface PlayerState {
   passivePerception: number;
   /** Spell save DC = 8 + proficiency bonus + casting stat mod. */
   spellSaveDC: number;
+  /** D&D 5e class resources (Rage, Lay on Hands, Ki, etc.). */
+  classResources: Record<string, { current: number; max: number }>;
 }
 
 export interface MonsterState {

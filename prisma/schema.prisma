@@ -196,6 +196,11 @@ model Player {
   // Spell save DC = 8 + proficiency bonus + casting stat modifier.
   // Pre-calculated and stored for DM context.
   spellSaveDC         Int      @default(12)
+  // D&D 5e class resources (JSON). Stores current/max for Rage, Lay on Hands,
+  // Ki, Bardic Inspiration, Channel Divinity, Wild Shape, Sorcery Points,
+  // Action Surge, Second Wind, Arcane Recovery.
+  // e.g. {"rage":{"current":2,"max":2},"layOnHands":{"current":5,"max":5}}
+  classResources      String   @default("{}")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

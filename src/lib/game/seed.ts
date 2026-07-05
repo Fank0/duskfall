@@ -193,6 +193,8 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       passivePerception: 10 + abilityModifier(finalWis) + (getSkillProficiencies(input.background.id).includes("perception") ? 2 : 0),
       // Spell save DC = 8 + proficiency + casting stat modifier (INT for wizard, WIS for cleric/druid, CHA for sorcerer/warlock/bard/paladin).
       spellSaveDC: 8 + 2 + abilityModifier(getCastingStat(p.charClass, finalInt, finalWis, finalCha)),
+      // D&D 5e class resources.
+      classResources: JSON.stringify(getClassResources(p.charClass, 1, finalCha)),
     },
   });
   // Starting inventory: class items + background item.
@@ -370,4 +372,63 @@ function getMonsterDefenses(name: string): { resistances: string[]; immunities: 
   }
 
   return { resistances, immunities, conditionImmunities };
+}
+
+/** D&D 5e: compute class resources based on class, level, and CHA modifier.
+ *  Returns a map of resource name → { current, max }. */
+function getClassResources(charClass: string, level: number, chaScore: number): Record<string, { current: number; max: number }> {
+  const lc = charClass.toLowerCase();
+  const chaMod = Math.floor((chaScore - 10) / 2);
+  const res: Record<string, { current: number; max: number }> = {};
+
+  // Barbarian: Rage — 2/day at L1, 3 at L6, 4 at L12, 5 at L16, 6 at L20.
+  if (lc === "barbarian") {
+    const rageMax = level >= 20 ? 6 : level >= 17 ? 6 : level >= 16 ? 5 : level >= 12 ? 4 : level >= 6 ? 3 : 2;
+    res.rage = { current: rageMax, max: rageMax };
+  }
+  // Paladin: Lay on Hands = 5×level HP pool. Channel Divinity 1/rest.
+  if (lc === "paladin") {
+    res.layOnHands = { current: 5 * level, max: 5 * level };
+    const cdMax = level >= 18 ? 3 : level >= 6 ? 2 : 1;
+    res.channelDivinity = { current: cdMax, max: cdMax };
+  }
+  // Monk: Ki points = level (starts at L2, but we grant 1 at L1 for playability).
+  if (lc === "monk") {
+    const kiMax = Math.max(1, level);
+    res.ki = { current: kiMax, max: kiMax };
+  }
+  // Bard: Bardic Inspiration = CHA mod per long rest ( regained on short rest at L5+).
+  if (lc === "bard") {
+    const biMax = Math.max(1, chaMod);
+    res.bardicInspiration = { current: biMax, max: biMax };
+  }
+  // Cleric: Channel Divinity 1/rest at L1, 2 at L6, 3 at L18.
+  if (lc === "cleric") {
+    const cdMax = level >= 18 ? 3 : level >= 6 ? 2 : 1;
+    res.channelDivinity = { current: cdMax, max: cdMax };
+  }
+  // Druid: Wild Shape 2/short rest (starts at L2, grant at L1 for playability).
+  if (lc === "druid") {
+    res.wildShape = { current: 2, max: 2 };
+  }
+  // Sorcerer: Sorcery Points = level (starts at L2, grant 1 at L1).
+  if (lc === "sorcerer") {
+    const spMax = Math.max(1, level);
+    res.sorceryPoints = { current: spMax, max: spMax };
+  }
+  // Fighter: Action Surge 1/short rest (L2+), Second Wind 1/short rest.
+  if (lc === "fighter") {
+    res.secondWind = { current: 1, max: 1 };
+    if (level >= 2) {
+      res.actionSurge = { current: level >= 17 ? 2 : 1, max: level >= 17 ? 2 : 1 };
+    }
+  }
+  // Wizard: Arcane Recovery 1/day.
+  if (lc === "wizard") {
+    res.arcaneRecovery = { current: 1, max: 1 };
+  }
+  // Warlock: already handled by pact magic slots, but add Eldritch Invocations flavor.
+  // Ranger: no special resources at low levels.
+
+  return res;
 }

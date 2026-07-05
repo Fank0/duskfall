@@ -155,9 +155,38 @@ export function FullCharacterSheet({
           </div>
         </div>
 
-        <Separator />
+        {/* Class Resources (Rage, Ki, Lay on Hands, etc.) */}
+        {player.classResources && Object.keys(player.classResources).length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <h3 className="mb-2 text-sm font-semibold gold-text">{tt("char.resources")}</h3>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {Object.entries(player.classResources).map(([key, r]) => {
+                  const labelMap: Record<string, string> = {
+                    rage: "🔥 Ярость", layOnHands: "✋ Возложение рук", ki: "🌀 Ци",
+                    bardicInspiration: "🎵 Вдохновение", channelDivinity: "✨ Божественность",
+                    wildShape: "🐺 Дикий облик", sorceryPoints: "💎 Очки коварства",
+                    actionSurge: "⚡ Прилив действий", secondWind: "💨 Второе дыхание",
+                    arcaneRecovery: "📖 Маг. восстановление",
+                  };
+                  if (!r || r.max <= 0) return null;
+                  return (
+                    <div key={key} className="rounded border border-border/50 bg-stone-900/50 p-2 text-center">
+                      <div className="text-[10px] font-medium text-amber-200">{labelMap[key] ?? key}</div>
+                      <div className="text-sm font-bold font-mono">
+                        <span className={r.current === 0 ? "text-red-400" : "text-foreground"}>{r.current}</span>
+                        <span className="text-muted-foreground">/{r.max}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
 
-        {/* Skills & Saving Throws */}
+        <Separator />
         <div className="grid grid-cols-2 gap-4">
           <div>
             <h3 className="mb-2 text-sm font-semibold gold-text">{tt("char.skills")}</h3>

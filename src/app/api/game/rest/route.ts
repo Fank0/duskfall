@@ -86,9 +86,24 @@ export async function POST(req: NextRequest) {
       if (player.charClass.toLowerCase() === "warlock") {
         lines.push("Ячейки заклинаний колдуна восстановлены.");
       }
+      // D&D 5e: restore short-rest resources (Ki, Action Surge, Second Wind, Channel Divinity, Wild Shape).
+      let shortRestResources = "";
+      try {
+        const resources = player.classResources ? JSON.parse(player.classResources) : {};
+        const SHORT_REST_KEYS = ["ki", "actionSurge", "secondWind", "channelDivinity", "wildShape"];
+        for (const key of SHORT_REST_KEYS) {
+          if (resources[key]) {
+            resources[key].current = resources[key].max;
+          }
+        }
+        shortRestResources = JSON.stringify(resources);
+      } catch {}
       // Increment short rest counter (BG3)
       const newCount = player.shortRestsUsed + 1;
-      await db.player.update({ where: { id: player.id }, data: { shortRestsUsed: newCount } });
+      await db.player.update({
+        where: { id: player.id },
+        data: { shortRestsUsed: newCount, classResources: shortRestResources || "{}" },
+      });
       lines.push(`Короткие отдыхи: ${newCount}/${MAX_SHORT_RESTS}.`);
     } else {
       // Long rest: full HP + all slots restored + reset short rest counter.
@@ -99,6 +114,17 @@ export async function POST(req: NextRequest) {
       lines.push(`Долгий отдых: HP восстановлены до ${player.maxHp}.`);
       await restoreAllSpellSlots(room.id, playerName);
       lines.push("Все ячейки заклинаний восстановлены.");
+      // D&D 5e: restore class resources on long rest.
+      let restoredResources = "";
+      try {
+        const resources = player.classResources ? JSON.parse(player.classResources) : {};
+        const restored: Record<string, { current: number; max: number }> = {};
+        for (const [key, val] of Object.entries(resources)) {
+          const r = val as { current: number; max: number };
+          restored[key] = { current: r.max, max: r.max };
+        }
+        restoredResources = JSON.stringify(restored);
+      } catch {}
       // Reset short rest counter + BG3/D&D 5e fields
       await db.player.update({
         where: { id: player.id },
@@ -109,6 +135,7 @@ export async function POST(req: NextRequest) {
           deathSaveSuccess: 0,
           deathSaveFailure: 0,
           concentratingOn: "",
+          classResources: restoredResources || "{}",
         },
       });
       lines.push(`Короткие отдыхи восстановлены: 0/${MAX_SHORT_RESTS}.`);

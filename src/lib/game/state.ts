@@ -119,6 +119,7 @@ function toPlayer(p: any): PlayerState {
     saveProficiencies: p.saveProficiencies ? JSON.parse(p.saveProficiencies) : [],
     passivePerception: p.passivePerception ?? 10,
     spellSaveDC: p.spellSaveDC ?? 12,
+    classResources: p.classResources ? JSON.parse(p.classResources) : {},
   };
 }
 
@@ -558,8 +559,30 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     let extraAttackInfo = "";
     const numAttacks = getExtraAttacks(p.charClass, p.level);
     if (numAttacks > 1) extraAttackInfo = ` | Атак за ход: ${numAttacks}`;
+    // D&D 5e: class resources (Rage, Lay on Hands, Ki, etc.)
+    let resourceInfo = "";
+    const resources = p.classResources ?? {};
+    const resKeys = Object.keys(resources);
+    if (resKeys.length > 0) {
+      const parts: string[] = [];
+      for (const key of resKeys) {
+        const r = resources[key];
+        if (r && r.max > 0) {
+          const labelMap: Record<string, string> = {
+            rage: "Ярость", layOnHands: "Возложение рук", ki: "Ци",
+            bardicInspiration: "Вдохновение", channelDivinity: "Божественность",
+            wildShape: "Дикий облик", sorceryPoints: "Очки колдовства",
+            actionSurge: "Прилив действий", secondWind: "Второе дыхание",
+            arcaneRecovery: "Магическое восстановление",
+          };
+          const label = labelMap[key] ?? key;
+          parts.push(`${label}: ${r.current}/${r.max}`);
+        }
+      }
+      if (parts.length > 0) resourceInfo = ` | Ресурсы: ${parts.join(", ")}`;
+    }
     lines.push(
-      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${resourceInfo}${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
     );
     // Backstory (player-authored): let the DM weave the hero's history into
     // the narrative — call back to NPCs, places, oaths, regrets.
