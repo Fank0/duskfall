@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
-  Shirt, Hammer, Star, Search, Bed, Moon, Wind, ShieldOff, Clock,
+  Shirt, Hammer, Star, Search, Bed, Moon, Wind, ShieldOff, Clock, Footprints,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -31,6 +31,7 @@ import {
  *  These use your Action (D&D 5e action economy). Shown in the abilities
  *  section only during combat. */
 const COMBAT_ACTIONS = [
+  { key: "move", labelKey: "game.move", hintKey: "actions.move_hint", icon: Footprints, text: null as string | null, moveMode: true },
   { key: "dash", labelKey: "actions.dash", hintKey: "actions.dash_hint", icon: Wind, text: "Я использую действие «Рывок» — удваиваю скорость передвижения в этом ходу." },
   { key: "disengage", labelKey: "actions.disengage", hintKey: "actions.disengage_hint", icon: ShieldOff, text: "Я использую действие «Отход» — отступаю, не провоцируя атак по возможности." },
   { key: "dodge", labelKey: "actions.dodge", hintKey: "actions.dodge_hint", icon: Shield, text: "Я использую действие «Уклонение» — все атаки по мне до моего следующего хода с помехой, бонусы к Ловкости тоже." },
@@ -88,6 +89,7 @@ export const BottomPanel = memo(function BottomPanel({
   onUnequip,
   hasAnyStation = false,
   onCraft,
+  onMoveMode,
   combatActive = false,
   nearestMonsterName,
   onRequestTargeting,
@@ -102,6 +104,7 @@ export const BottomPanel = memo(function BottomPanel({
   onUnequip?: (slot: string) => void | Promise<void>;
   hasAnyStation?: boolean;
   onCraft?: (recipeId?: string) => void;
+  onMoveMode?: () => void;
   /** True while combat is active — enables targeted damage text. */
   combatActive?: boolean;
   /** Name of the nearest active monster — used as damage target in text. */
@@ -557,11 +560,21 @@ export const BottomPanel = memo(function BottomPanel({
                   key={q.key}
                   type="button"
                   disabled={!canQuickUse}
-                  onClick={() => onQuickAction(q.text)}
+                  onClick={() => {
+                    if ((q as any).moveMode) {
+                      // Move mode: don't send text, just show toast hint.
+                      // The grid is already clickable in combat for movement.
+                      onMoveMode?.();
+                    } else if (q.text) {
+                      onQuickAction?.(q.text);
+                    }
+                  }}
                   title={tt(q.hintKey)}
                   className={cn(
                     "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium transition-all",
-                    "border-amber-700/40 bg-amber-950/20 text-amber-200",
+                    (q as any).moveMode
+                      ? "border-sky-700/40 bg-sky-950/20 text-sky-200"
+                      : "border-amber-700/40 bg-amber-950/20 text-amber-200",
                     canQuickUse && "cursor-pointer hover:border-amber-500/60 hover:bg-amber-950/40",
                     !canQuickUse && "cursor-default opacity-40",
                   )}

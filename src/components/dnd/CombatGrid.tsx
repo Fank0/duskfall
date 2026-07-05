@@ -87,6 +87,10 @@ export interface CombatGridProps {
   onMoveClick?: (x: number, y: number) => void;
   /** The current player's name (for click-to-move — only this player's token moves). */
   yourName?: string;
+  /** The current player's position (for range highlighting during targeting). */
+  yourPosition?: { x: number; y: number } | null;
+  /** Range in cells for the current targeting action (1 = melee, 5 = ranged, 6 = move). */
+  targetingRange?: number;
 }
 
 /**
@@ -111,6 +115,8 @@ export const CombatGrid = memo(function CombatGrid({
   onCellTargetClick,
   onMoveClick,
   yourName,
+  yourPosition,
+  targetingRange,
 }: CombatGridProps) {
   const settings = useSettings();
   const tokenShape = settings.tokenShape;
@@ -343,6 +349,24 @@ export const CombatGrid = memo(function CombatGrid({
     return set;
   }, [activeMonsters]);
 
+  // ===== Range highlighting: show reachable cells during targeting =====
+  const rangeCells = useMemo(() => {
+    if (!yourPosition || !targetingRange || targetingMode === "none") return null;
+    const set = new Set<string>();
+    const px = yourPosition.x;
+    const py = yourPosition.y;
+    for (let dx = -targetingRange; dx <= targetingRange; dx++) {
+      for (let dy = -targetingRange; dy <= targetingRange; dy++) {
+        const x = px + dx;
+        const y = py + dy;
+        if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
+        if (Math.hypot(dx, dy) > targetingRange) continue;
+        set.add(`${x},${y}`);
+      }
+    }
+    return set;
+  }, [yourPosition, targetingRange, targetingMode]);
+
   // ===== Item 3: targeting-mode helpers =====
   const monsterByCell = useMemo(() => {
     const m = new Map<string, MonsterState>();
@@ -480,14 +504,15 @@ export const CombatGrid = memo(function CombatGrid({
               const trapDiscovered = trapMap?.get(`${x},${y}`);
               const isTrap = trapMap?.has(`${x},${y}`);
               const isThreat = threatCells?.has(`${x},${y}`);
+              const inRange = rangeCells?.has(`${x},${y}`);
               const terrainType = terrainMap?.get(`${x},${y}`);
               // Item 3 — targeting-mode cell flags:
               const monsterInCell = targetingMode === "ability" || targetingMode === "item" ? monsterByCell.get(`${x},${y}`) : undefined;
               const playerInCell = targetingMode === "ability" || targetingMode === "item" ? playerByCell.get(`${x},${y}`) : undefined;
               const isAoeTargetCell = targetingMode === "aoe";
-              // Click-to-move: when not in targeting mode, clicking an empty
-              // cell moves the current player's token there (if onMoveClick provided).
-              const canMoveHere = targetingMode === "none" && onMoveClick && !monsterInCell && !playerInCell && terrainType !== "full_cover";
+              // Click-to-move: ONLY in combat. When not in combat, the grid
+              // is display-only (no click handlers on empty cells).
+              const canMoveHere = combatActive && targetingMode === "none" && onMoveClick && !monsterInCell && !playerInCell && terrainType !== "full_cover";
               const cellClick =
                 monsterInCell && onMonsterTargetClick
                   ? () => onMonsterTargetClick(monsterInCell.id)
@@ -534,6 +559,12 @@ export const CombatGrid = memo(function CombatGrid({
                     <div
                       className="pointer-events-none absolute inset-0 z-10 rounded-[2px] bg-red-700/15"
                       title={t(settings.lang, "ui.threat_zone")}
+                    />
+                  )}
+                  {/* Range highlight: shows reachable cells during targeting (blue glow) */}
+                  {inRange && !isThreat && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[3] rounded-[2px] bg-sky-500/10 border border-sky-400/20"
                     />
                   )}
                   {/* D&D 5e terrain features */}
