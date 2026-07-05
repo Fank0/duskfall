@@ -169,6 +169,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.hide": "Скрыться",
     "actions.dash": "Рывок",
     "actions.dash_hint": "Удвоить скорость передвижения в этом ходу",
+    "actions.move_hint": "Кликните по клетке на сетке для перемещения",
+    "ui.move_combat_hint": "Кликните по клетке на сетке, чтобы переместиться туда",
     "actions.disengage": "Отход",
     "actions.disengage_hint": "Отступить, не провоцируя атаки по возможности",
     "actions.dodge": "Уклонение",
@@ -576,6 +578,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.talk": "Talk",
     "actions.search": "Search",
     "actions.hide": "Hide",
+    "actions.move_hint": "Click a cell on the grid to move there",
+    "ui.move_combat_hint": "Click a cell on the grid to move there",
     "actions.dash": "Dash",
     "actions.dash_hint": "Double your movement speed this turn",
     "actions.disengage": "Disengage",
@@ -977,6 +981,8 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     "actions.explore": "Explorar",
     "actions.talk": "Hablar",
+    "actions.move_hint": "Haz clic en una casilla para moverte allí",
+    "ui.move_combat_hint": "Haz clic en una casilla para moverte allí",
     "actions.search": "Registrar",
     "actions.hide": "Esconderse",
     "actions.dash": "Cargar",
@@ -1373,6 +1379,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.explore_text": "Ich untersuche sorgfältig die Umgebung — suche nach Gefahren, Hinweisen, versteckten Gegenständen.",
 
 
+    "actions.move_hint": "Klicke auf ein Feld um dich dorthin zu bewegen",
+    "ui.move_combat_hint": "Klicke auf ein Feld um dich dorthin zu bewegen",
     "actions.explore": "Umsehen",
     "actions.talk": "Sprechen",
     "actions.search": "Durchsuchen",
@@ -1770,6 +1778,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "Petite étiquette sous chaque jeton sur la grille",
     "actions.explore_text": "J'examine attentivement la zone — cherche dangers, indices, objets cachés.",
     "ui.music_hint": "Musique atmosphérique selon l'ambiance (monde/combat/tension)",
+    "actions.move_hint": "Cliquez sur une case pour vous y déplacer",
+    "ui.move_combat_hint": "Cliquez sur une case pour vous y déplacer",
 
 
     "actions.explore": "Explorer",
@@ -2168,6 +2178,8 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.show_token_names_hint": "网格上每个指示物下方的小标签",
     "ui.music_hint": "按氛围生成的环境音乐（世界/战斗/紧张）",
     "actions.explore_text": "我仔细检查该区域——寻找危险、线索和隐藏物品。",
+    "actions.move_hint": "点击格子移动到那里",
+    "ui.move_combat_hint": "点击格子移动到那里",
 
     "rest.short_rest": "短休",
     "rest.long_rest": "长休",

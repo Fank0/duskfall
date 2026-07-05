@@ -1339,10 +1339,6 @@ export default function Home() {
               currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
               onSend={sendAction}
               onRest={handleRest}
-              onMoveMode={() => {
-                // Show a toast telling the player to click a cell on the grid
-                toast(tt("ui.click_to_move_hint"));
-              }}
               roomCode={session.roomCode}
               ttsEnabled={settings.ttsEnabled}
             />
@@ -1396,6 +1392,8 @@ export default function Home() {
               onCellTargetClick={handleCellTargetClick}
               onMoveClick={handleMoveClick}
               yourName={session?.playerName}
+              yourPosition={you ? { x: you.posX, y: you.posY } : null}
+              targetingRange={targetingMode !== "none" ? (targetingMode === "aoe" ? 8 : 1) : undefined}
             />
           </aside>
         </div>
@@ -1415,6 +1413,9 @@ export default function Home() {
             onUnequip={(slot) => unequipItem(slot as any)}
             hasAnyStation={snapshot.hasAlchemy || snapshot.hasForge || snapshot.hasEnchant}
             onCraft={craftItem}
+            onMoveMode={() => {
+              toast(tt("ui.move_combat_hint"));
+            }}
             combatActive={snapshot.combatActive}
             nearestMonsterName={nearestMonsterName}
             onRequestTargeting={requestAbilityTargeting}

@@ -18,7 +18,7 @@ import { sfxClick, sfxMove, sfxSpellCast, sfxAbilityUse } from "@/lib/game/audio
 const QUICK_ACTIONS = [
   { labelKey: "actions.attack", icon: Swords, text: "I draw my weapon and attack the nearest enemy!", sfx: "ability" },
   { labelKey: "actions.explore", icon: Eye, text: "I carefully examine the area — looking for dangers, clues, hidden items.", sfx: "click" },
-  { labelKey: "game.move", icon: Footprints, text: "I carefully move forward, weapon ready.", sfx: "move", moveMode: true },
+  { labelKey: "game.move", icon: Footprints, text: "I carefully move forward, weapon ready.", sfx: "move" },
 ];
 
 /** How many messages to render initially (item 24: chat virtualization). */
@@ -36,7 +36,6 @@ interface ChatPanelProps {
   currentTurnName: string | null;
   onSend: (text: string) => void;
   onRest?: (restType: "short" | "long") => void;
-  onMoveMode?: () => void;
   /** Room code — required for the "Показать ещё" paginated loader. */
   roomCode?: string;
   /**
@@ -62,7 +61,6 @@ export const ChatPanel = memo(function ChatPanel({
   currentTurnName,
   onSend,
   onRest,
-  onMoveMode,
   roomCode,
   ttsEnabled = false,
 }: ChatPanelProps) {
@@ -505,11 +503,7 @@ export const ChatPanel = memo(function ChatPanel({
                 else if (q.sfx === "move") sfxMove();
                 else sfxClick();
               } catch {}
-              if (q.moveMode && onMoveMode) {
-                onMoveMode();
-              } else {
-                submit(tt(q.labelKey + "_text") || q.text);
-              }
+              submit(tt(q.labelKey + "_text") || q.text);
             }}
             className="flex items-center gap-1 rounded-full border border-border/60 bg-stone-900/50 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
