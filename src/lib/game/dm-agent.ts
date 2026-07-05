@@ -68,7 +68,7 @@ import {
   rollCounterattack,
 } from "./talents";
 import { getSpellById } from "./spellbook";
-import { knownSpellsForPlayer } from "./abilities";
+import { knownSpellsForPlayer, computeAbilities } from "./abilities";
 import type {
   DMResolution,
   ResolvedRoll,
@@ -96,6 +96,37 @@ function scaleCantripDamage(notation: string, charLevel: number): string {
   else if (charLevel >= 11) multiplier = 3;
   else if (charLevel >= 5) multiplier = 2;
   return `${baseDice * multiplier}d${dieSize}${suffix}`;
+}
+
+/** Infer D&D 5e damage type from ability name or spell properties.
+ *  Returns one of: fire, cold, lightning, acid, poison, thunder, radiant,
+ *  necrotic, psychic, force, slashing, piercing, bludgeoning, or undefined. */
+function inferDamageType(notation: string, actor: PlayerState | null): string | undefined {
+  if (!actor) return undefined;
+  // Check the actor's abilities for the current spell/ability being used.
+  // The notation alone doesn't tell us the damage type, but we can infer
+  // from the actor's known abilities by matching the notation.
+  const abilities = computeAbilities(actor, []);
+  for (const a of abilities) {
+    if (a.castNotation === notation) {
+      // Check ability name/description for damage type keywords.
+      const text = `${a.name} ${a.description}`.toLowerCase();
+      if (text.includes("огн") || text.includes("fire")) return "fire";
+      if (text.includes("холод") || text.includes("cold") || text.includes("лёд") || text.includes("лед")) return "cold";
+      if (text.includes("молни") || text.includes("lightning") || text.includes("гром")) return "lightning";
+      if (text.includes("кислот") || text.includes("acid")) return "acid";
+      if (text.includes("яд") || text.includes("poison")) return "poison";
+      if (text.includes("излуч") || text.includes("radiant") || text.includes("свят") || text.includes("священ")) return "radiant";
+      if (text.includes("некро") || text.includes("necrotic") || text.includes("тёмн") || text.includes("темн")) return "necrotic";
+      if (text.includes("псих") || text.includes("psychic")) return "psychic";
+      if (text.includes("сил") && text.includes("force")) return "force";
+      if (text.includes("рубящ")) return "slashing";
+      if (text.includes("колющ")) return "piercing";
+      if (text.includes("дробящ") || text.includes("bludgeon")) return "bludgeoning";
+    }
+  }
+  // Default: slashing for weapons.
+  return undefined;
 }
 
 
@@ -1234,16 +1265,22 @@ async function resolvePlayerAction(
         },
       });
     } else if (m) {
-      const dmg = rollDice(branch.monsterDamage.notation);
+      // D&D 5e: scale cantrip damage based on actor's level.
+      // Fire Bolt: 1d10 at L1-4, 2d10 at L5-10, 3d10 at L11-16, 4d10 at L17+.
+      const actorLevel = actor?.level ?? 1;
+      const scaledNotation = scaleCantripDamage(branch.monsterDamage.notation, actorLevel);
+      const dmg = rollDice(scaledNotation);
       // Talent: bonus flat damage + vampiric Heal.
       const bonus = damageBonusFromTalents(actor);
       damageDealtToMonster = dmg.total + bonus;
       await logDiceRoll(roomId, round, actorName, {
-        label: `Урон по: ${m.name}` + (bonus ? ` (+${bonus} талант)` : ""),
-        notation: branch.monsterDamage.notation + (bonus ? `+${bonus}` : ""),
+        label: `Урон по: ${m.name}` + (scaledNotation !== branch.monsterDamage.notation ? ` (${scaledNotation} — масштабирование заговора)` : "") + (bonus ? ` (+${bonus} талант)` : ""),
+        notation: scaledNotation + (bonus ? `+${bonus}` : ""),
         modifier: bonus, result: dmg.raw, total: damageDealtToMonster, purpose: "player_damage",
       });
-      const result = await damageMonster(roomId, m.id, damageDealtToMonster);
+      // Determine damage type from notation for resistance/immunity checks.
+      const damageType = inferDamageType(branch.monsterDamage.notation, actor);
+      const result = await damageMonster(roomId, m.id, damageDealtToMonster, damageType);
       // Vampiric heal.
       const vampHeal = rollVampiricHeal(actor, damageDealtToMonster);
       if (vampHeal > 0) {
