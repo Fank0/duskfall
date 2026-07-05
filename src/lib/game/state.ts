@@ -546,20 +546,11 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       : "";
     let skillInfo = "нет";
     let saveInfo = "нет";
-    try {
-      const parsed: unknown = JSON.parse(p.skillProficiencies || "[]");
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const arr = parsed as string[];
-        skillInfo = arr.length > 0 ? arr.join(", ") : "нет";
-      }
-    } catch {}
-    try {
-      const parsed: unknown = JSON.parse(p.saveProficiencies || "[]");
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const arr = parsed as string[];
-        saveInfo = arr.length > 0 ? arr.join(", ") : "нет";
-      }
-    } catch {}
+    // p is PlayerState — skillProficiencies/saveProficiencies are already string[] (parsed in toPlayer)
+    const skills = p.skillProficiencies;
+    if (Array.isArray(skills) && skills.length > 0) skillInfo = skills.join(", ");
+    const saves = p.saveProficiencies;
+    if (Array.isArray(saves) && saves.length > 0) saveInfo = saves.join(", ");
     lines.push(
       `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
     );
