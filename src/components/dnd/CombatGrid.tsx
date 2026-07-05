@@ -162,6 +162,9 @@ export const CombatGrid = memo(function CombatGrid({
       };
 
   const tokenEntries: TokenEntry[] = useMemo(() => {
+    // Outside combat, the grid is empty — no tokens shown.
+    // Tokens (players + monsters) only appear when combat is active.
+    if (!combatActive) return [];
     const cellMap = new Map<string, PlayerState[]>();
     for (const p of alivePlayers) {
       const k = `${p.posX},${p.posY}`;
@@ -199,7 +202,7 @@ export const CombatGrid = memo(function CombatGrid({
       });
     }
     return entries;
-  }, [alivePlayers, activeMonsters, condsByTarget, currentTurnName]);
+  }, [combatActive, alivePlayers, activeMonsters, condsByTarget, currentTurnName]);
 
   // ===== Animation state =====
   // Animations are driven by refs + Web Animations API to avoid setState-in-effect.
