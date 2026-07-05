@@ -4,6 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Skull,
   Users,
   Plus,
@@ -51,6 +57,7 @@ export function Lobby({
   const [account, setAccount] = useState<AuthenticatedAccount | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [savesOpen, setSavesOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
@@ -90,6 +97,7 @@ export function Lobby({
 
   const handleAuthenticated = useCallback((acc: AuthenticatedAccount) => {
     setAccount(acc);
+    setAuthOpen(false);
   }, []);
 
   const handleContinueSave = useCallback(
@@ -129,6 +137,49 @@ export function Lobby({
       />
       <div className="vignette pointer-events-none fixed inset-0 z-0" />
 
+      {/* ===== Top-right account button ===== */}
+      <div className="fixed right-4 top-4 z-20">
+        {!authChecked ? (
+          <div className="flex items-center gap-2 rounded-md border border-border/40 bg-stone-900/60 px-3 py-2 text-xs text-muted-foreground backdrop-blur">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary/70" />
+          </div>
+        ) : account ? (
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 border-amber-800/40 bg-stone-900/60 text-amber-200 backdrop-blur hover:bg-stone-800/60"
+              onClick={() => setSavesOpen(true)}
+            >
+              <Save className="h-3.5 w-3.5" /> {tt("lobby.my_saves")}
+            </Button>
+            <div className="flex items-center gap-1.5 rounded-md border border-emerald-800/40 bg-emerald-950/30 px-2.5 py-1.5 text-sm backdrop-blur">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+              </span>
+              <span className="font-medium text-emerald-200">{account.username}</span>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1 text-muted-foreground hover:text-foreground"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            className="gap-1.5 border border-primary/40 bg-gradient-to-r from-primary/90 to-primary/70 backdrop-blur hover:from-primary hover:to-primary/85"
+            onClick={() => setAuthOpen(true)}
+          >
+            <LogIn className="h-4 w-4" /> {tt("lobby.login")}
+          </Button>
+        )}
+      </div>
+
       {/* ===== Content ===== */}
       <div className="relative z-10 flex w-full flex-col items-center">
         {/* Title block */}
@@ -151,47 +202,6 @@ export function Lobby({
               {tt("lobby.subtitle")}
             </p>
           </div>
-        </div>
-
-        {/* ===== Account bar ===== */}
-        <div className="mb-3 w-full max-w-md">
-          {!authChecked ? (
-            <div className="flex items-center justify-center gap-2 rounded-md border border-border/40 bg-stone-900/30 px-3 py-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary/70" />{" "}
-              {tt("lobby.checking_session")}
-            </div>
-          ) : account ? (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-800/40 bg-emerald-950/20 px-3 py-2 shadow-[inset_0_1px_0_0_oklch(0.5_0.05_145/0.12)]">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                </span>
-                <UserIcon className="h-4 w-4 text-emerald-400" />
-                <span className="font-medium text-emerald-200">{account.username}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 border-amber-800/40 bg-amber-950/20 text-amber-200 hover:bg-stone-800/50"
-                  onClick={() => setSavesOpen(true)}
-                >
-                  <Save className="h-3.5 w-3.5" /> {tt("lobby.my_saves")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="gap-1.5 text-muted-foreground hover:text-foreground"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-3.5 w-3.5" /> {tt("lobby.sign_out")}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <AuthScreen onAuthenticated={handleAuthenticated} />
-          )}
         </div>
 
         {/* ===== Gather-party card ===== */}
@@ -262,6 +272,16 @@ export function Lobby({
           </p>
         </div>
       </div>
+
+      {/* ===== Auth modal (opens from top-right "Login" button) ===== */}
+      <Dialog open={authOpen} onOpenChange={setAuthOpen}>
+        <DialogContent className="max-w-md p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{tt("lobby.login")}</DialogTitle>
+          </DialogHeader>
+          <AuthScreen onAuthenticated={handleAuthenticated} />
+        </DialogContent>
+      </Dialog>
 
       <MySavesDialog
         open={savesOpen}

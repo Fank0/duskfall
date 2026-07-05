@@ -544,12 +544,13 @@ export const BottomPanel = memo(function BottomPanel({
         </div>
 
         {/* Divider */}
-        {combatActive && onQuickAction && <div className="hidden lg:block w-px bg-border/40" />}
+        {onQuickAction && <div className="hidden lg:block w-px bg-border/40" />}
 
         {/* ===== Combat actions (BG3/D&D 5e) — Dash, Disengage, Dodge, Help, Ready =====
-            Always visible in the abilities section. These use your Action (D&D 5e action economy). */}
-        {combatActive && onQuickAction && (
-          <div className="flex flex-col gap-1 lg:w-auto">
+            Always visible but greyed out outside combat. Shows the player what
+            options they'll have in battle. */}
+        {onQuickAction && (
+          <div className={cn("flex flex-col gap-1 lg:w-auto transition-opacity", !combatActive && "opacity-40")}>
             <div className="flex items-center gap-1.5">
               <Swords className="h-3.5 w-3.5 text-amber-400" />
               <span className="text-[11px] font-semibold gold-text">{tt("ui.combat_actions")}</span>
@@ -559,7 +560,7 @@ export const BottomPanel = memo(function BottomPanel({
                 <button
                   key={q.key}
                   type="button"
-                  disabled={!canQuickUse}
+                  disabled={!canQuickUse || !combatActive}
                   onClick={() => {
                     if ((q as any).moveMode) {
                       // Move mode: don't send text, just show toast hint.
