@@ -36,6 +36,10 @@ const CraftingPanel = dynamic(
   () => import("./CraftingPanel").then((m) => m.CraftingPanel),
   { ssr: false }
 );
+const FullCharacterSheet = dynamic(
+  () => import("./FullCharacterSheet").then((m) => m.FullCharacterSheet),
+  { ssr: false }
+);
 
 const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
   { key: "str", short: "character.str" },
@@ -97,6 +101,7 @@ export const CharacterSheet = memo(function CharacterSheet({
 }) {
   const [equipOpen, setEquipOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
+  const [fullSheetOpen, setFullSheetOpen] = useState(false);
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
   const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
@@ -144,8 +149,11 @@ export const CharacterSheet = memo(function CharacterSheet({
         isYou && "border-primary/50"
       )}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-3 py-2.5">
+      {/* Header — click to open full character sheet */}
+      <div
+        className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-stone-900/40"
+        onClick={() => setFullSheetOpen(true)}
+      >
         <div
           className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold text-white"
           style={{
@@ -601,6 +609,35 @@ export const CharacterSheet = memo(function CharacterSheet({
           onOpenChange={setCraftOpen}
           onCraft={onCraft}
         />
+      )}
+
+      {/* Full character sheet modal — opens when clicking the header. */}
+      {fullSheetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setFullSheetOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-lg border border-amber-800/40 bg-stone-950/95 p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-serif text-lg font-bold gold-text">{tt("character.full_sheet")}</h2>
+              <button
+                type="button"
+                onClick={() => setFullSheetOpen(false)}
+                className="rounded-md border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:bg-stone-800/60 hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <FullCharacterSheet
+              player={player}
+              inventory={inventory}
+              conditions={conditions}
+            />
+          </div>
+        </div>
       )}
     </Card>
   );

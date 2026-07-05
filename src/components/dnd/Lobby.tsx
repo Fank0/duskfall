@@ -12,10 +12,8 @@ import {
   Save,
   User as UserIcon,
   Loader2,
-  Sparkles,
-  Swords,
-  Languages,
   Flame,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import { CharacterCreator } from "./CharacterCreator";
@@ -52,6 +50,7 @@ export function Lobby({
   const [authChecked, setAuthChecked] = useState(false);
   const [savesOpen, setSavesOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
 
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
@@ -246,12 +245,15 @@ export function Lobby({
           </CardContent>
         </Card>
 
-        {/* ===== Feature badges ===== */}
-        <div className="mt-4 grid w-full max-w-md grid-cols-2 gap-2 sm:grid-cols-4">
-          <FeatureBadge icon={Sparkles} label="AI DM" />
-          <FeatureBadge icon={Swords} label="Tactical Combat" />
-          <FeatureBadge icon={Users} label="Multiplayer" />
-          <FeatureBadge icon={Languages} label="6 Languages" />
+        {/* ===== Action buttons ===== */}
+        <div className="mt-4 flex w-full max-w-md flex-col gap-2">
+          <Button
+            variant="outline"
+            className="gap-2 border-sky-800/40 bg-sky-950/20 text-sky-200 hover:bg-sky-950/40"
+            onClick={() => setTutorialOpen(true)}
+          >
+            <BookOpen className="h-4 w-4" /> {tt("lobby.tutorial")}
+          </Button>
         </div>
 
         {/* ===== Footer hint ===== */}
@@ -288,26 +290,76 @@ export function Lobby({
         onOpenChange={setSavesOpen}
         onContinue={handleContinueSave}
       />
+
+      {/* ===== Tutorial overlay ===== */}
+      {tutorialOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setTutorialOpen(false)}>
+          <div
+            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-lg border border-amber-800/40 bg-stone-950/95 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-serif text-xl font-bold gold-text">{tt("tutorial.title")}</h2>
+              <button
+                type="button"
+                onClick={() => setTutorialOpen(false)}
+                className="rounded-md border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:bg-stone-800/60 hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-4 text-sm leading-relaxed text-stone-300">
+              <section>
+                <h3 className="mb-1 font-semibold text-amber-300">{tt("tutorial.what_is")}</h3>
+                <p className="text-muted-foreground">{tt("tutorial.what_is_text")}</p>
+              </section>
+              <section>
+                <h3 className="mb-1 font-semibold text-amber-300">{tt("tutorial.how_to_play")}</h3>
+                <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+                  <li>{tt("tutorial.step1")}</li>
+                  <li>{tt("tutorial.step2")}</li>
+                  <li>{tt("tutorial.step3")}</li>
+                  <li>{tt("tutorial.step4")}</li>
+                  <li>{tt("tutorial.step5")}</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="mb-1 font-semibold text-amber-300">{tt("tutorial.combat")}</h3>
+                <p className="text-muted-foreground">{tt("tutorial.combat_text")}</p>
+                <ul className="ml-4 mt-1 list-disc space-y-1 text-muted-foreground">
+                  <li>{tt("tutorial.combat1")}</li>
+                  <li>{tt("tutorial.combat2")}</li>
+                  <li>{tt("tutorial.combat3")}</li>
+                  <li>{tt("tutorial.combat4")}</li>
+                  <li>{tt("tutorial.combat5")}</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="mb-1 font-semibold text-amber-300">{tt("tutorial.abilities")}</h3>
+                <p className="text-muted-foreground">{tt("tutorial.abilities_text")}</p>
+              </section>
+              <section>
+                <h3 className="mb-1 font-semibold text-amber-300">{tt("tutorial.terrain")}</h3>
+                <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+                  <li>〰️ {tt("tutorial.terrain_difficult")}</li>
+                  <li>🌳 {tt("tutorial.terrain_cover")}</li>
+                  <li>🪨 {tt("tutorial.terrain_full")}</li>
+                  <li>⬆️ {tt("tutorial.terrain_high")}</li>
+                </ul>
+              </section>
+              <section>
+                <h3 className="mb-1 font-semibold text-amber-300">{tt("tutorial.tips")}</h3>
+                <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+                  <li>{tt("tutorial.tip1")}</li>
+                  <li>{tt("tutorial.tip2")}</li>
+                  <li>{tt("tutorial.tip3")}</li>
+                </ul>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/** Small decorative highlight badge shown below the gather-party card. */
-function FeatureBadge({
-  icon: Icon,
-  label,
-}: {
-  icon: LucideIcon;
-  label: string;
-}) {
-  return (
-    <div className="group flex flex-col items-center gap-1.5 rounded-lg border border-border/50 bg-stone-900/40 px-2 py-2.5 text-center transition-all hover:-translate-y-0.5 hover:border-amber-700/40 hover:bg-stone-900/70 hover:shadow-[0_6px_18px_-8px_oklch(0.7_0.15_75/0.4)]">
-      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-700/30 bg-amber-950/30 text-amber-400/80 transition-colors group-hover:border-amber-600/50 group-hover:text-amber-300">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80 transition-colors group-hover:text-amber-200/80">
-        {label}
-      </span>
-    </div>
-  );
-}

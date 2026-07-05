@@ -298,6 +298,39 @@ export function SettingsMenu({
               </div>
             </div>
           </section>
+
+          {/* ===== Gameplay settings ===== */}
+          <section className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-300/80">{tt("ui.gameplay")}</h3>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm">{tt("ui.floating_text")}</div>
+                <div className="text-[10px] text-muted-foreground">{tt("ui.floating_text_hint")}</div>
+              </div>
+              <Switch checked={settings.showFloatingText} onCheckedChange={(v) => settings.setShowFloatingText(Boolean(v))} />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm">{tt("ui.grid_coords")}</div>
+                <div className="text-[10px] text-muted-foreground">{tt("ui.grid_coords_hint")}</div>
+              </div>
+              <Switch checked={settings.showGridCoords} onCheckedChange={(v) => settings.setShowGridCoords(Boolean(v))} />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm">{tt("ui.auto_tts")}</div>
+                <div className="text-[10px] text-muted-foreground">{tt("ui.auto_tts_hint")}</div>
+              </div>
+              <Switch checked={settings.autoTts} onCheckedChange={(v) => settings.setAutoTts(Boolean(v))} />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm">{tt("ui.confirm_rest")}</div>
+                <div className="text-[10px] text-muted-foreground">{tt("ui.confirm_rest_hint")}</div>
+              </div>
+              <Switch checked={settings.confirmRest} onCheckedChange={(v) => settings.setConfirmRest(Boolean(v))} />
+            </div>
+          </section>
         </div>
       </DialogContent>
     </Dialog>
