@@ -109,6 +109,8 @@ export interface DMResolution {
   saveDC?: number;
   /** Elemental flavor of the AoE (drives the overlay color). */
   aoeElement?: string; // "fire" | "cold" | "lightning" | "acid" | "force" | "poison" | "thunder"
+  /** Spell slot level used (for upcast damage scaling). 0 = cantrip/no slot. */
+  slotLevel?: number;
 }
 
 export interface ResolvedRoll {

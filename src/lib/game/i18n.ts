@@ -2797,6 +2797,21 @@ const SPELL_I18N: Record<string, Record<Lang, string>> = {
   "Массовое лечение ран (усиленное)": { "ru": "Массовое лечение ран (усиленное)", "en": "Mass Cure Wounds (Upcast)", "es": "Curar heridas en masa (ampliada)", "de": "Massenwundenheilung (aufgewertet)", "fr": "Soins de masse (surpuissants)", "zh": "群体治疗术（升阶）" },
   "Каменная стена": { "ru": "Каменная стена", "en": "Wall of Stone", "es": "Muro de piedra", "de": "Steinwand", "fr": "Mur de pierre", "zh": "石墙术" },
   "Огненный столп": { "ru": "Огненный столп", "en": "Flame Strike", "es": "Columna de llama", "de": "Flammenschlag", "fr": "Colonne de flamme", "zh": "焰击术" },
+  // New spells
+  "Клинок зелёного пламени": { "ru": "Клинок зелёного пламени", "en": "Green-Flame Blade", "es": "Hoja de llama verde", "de": "Grüne Flamme", "fr": "Lame de flammes vertes", "zh": "绿焰之刃" },
+  "Громовой клинок": { "ru": "Громовой клинок", "en": "Booming Blade", "es": "Hoja resonante", "de": "Donnerklinge", "fr": "Lame grondante", "zh": "雷鸣之刃" },
+  "Разумный шип": { "ru": "Разумный шип", "en": "Mind Sliver", "es": "Astilla mental", "de": "Geistessplitter", "fr": "Éclat mental", "zh": "心灵刺" },
+  "Напутствие": { "ru": "Напутствие", "en": "Guidance", "es": "Guía", "de": "Wegweisung", "fr": "Guidance", "zh": "指引术" },
+  "Дубинка друида": { "ru": "Дубинка друида", "en": "Shillelagh", "es": "Porra druídica", "de": "Druidenkeule", "fr": "Gourdin druidique", "zh": "德鲁伊棍棒" },
+  "Лечащее слово": { "ru": "Лечащее слово", "en": "Healing Word", "es": "Palabra curativa", "de": "Heilendes Wort", "fr": "Mot de guérison", "zh": "治愈真言" },
+  "Проклятие": { "ru": "Проклятие", "en": "Bane", "es": "Maldición", "de": "Fluch", "fr": "Malédiction", "zh": "灾祸术" },
+  "Метка охотника": { "ru": "Метка охотника", "en": "Hunter's Mark", "es": "Marca del cazador", "de": "Mal des Jägers", "fr": "Marque du chasseur", "zh": "猎人印记" },
+  "Туманный шаг": { "ru": "Туманный шаг", "en": "Misty Step", "es": "Paso brumoso", "de": "Nebelschritt", "fr": "Pas brumeux", "zh": "迷踪步" },
+  "Духовное оружие": { "ru": "Духовное оружие", "en": "Spiritual Weapon", "es": "Arma espiritual", "de": "Geistwaffe", "fr": "Arme spirituelle", "zh": "灵体武器" },
+  "Духовные стражи": { "ru": "Духовные стражи", "en": "Spirit Guardians", "es": "Guardianes espirituales", "de": "Geisterwächter", "fr": "Gardiens spirituels", "zh": "灵体守护者" },
+  "Контрзаклинание": { "ru": "Контрзаклинание", "en": "Counterspell", "es": "Contrahechizo", "de": "Gegenzauber", "fr": "Contresort", "zh": "反制法术" },
+  "Увядание": { "ru": "Увядание", "en": "Blight", "es": "Marchitez", "de": "Verdorrung", "fr": "Flétrissure", "zh": "枯萎术" },
+  "Изгнание": { "ru": "Изгнание", "en": "Banishment", "es": "Destierro", "de": "Verbannung", "fr": "Bannissement", "zh": "放逐术" },
 };
 
 /**

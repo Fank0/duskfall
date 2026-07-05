@@ -129,6 +129,37 @@ function inferDamageType(notation: string, actor: PlayerState | null): string | 
   return undefined;
 }
 
+/** D&D 5e: upcast damage scaling — when a spell is cast using a higher-level
+ *  spell slot, its damage increases. e.g. Fireball at L4 = 9d6 (base 8d6 + 1d6
+ *  per level above 3rd). Magic Missile at L2 = 4 darts (base 3 + 1 per level).
+ *  This function takes the base notation, the spell's base level, and the slot
+ *  level used, and returns the scaled notation. */
+function upcastSpellDamage(notation: string, spellLevel: number, slotLevel: number): string {
+  if (!notation || slotLevel <= spellLevel) return notation;
+  const levelDiff = slotLevel - spellLevel;
+  // Match patterns like "8d6", "1d8", "3d8+1"
+  const match = notation.match(/^(\d+)d(\d+)(.*)$/);
+  if (!match) return notation;
+  const baseDice = parseInt(match[1], 10);
+  const dieSize = parseInt(match[2], 10);
+  const suffix = match[3] || "";
+  // Most spells add 1 die per upcast level (Fireball: +1d6, Cure Wounds: +1d8).
+  return `${baseDice + levelDiff}d${dieSize}${suffix}`;
+}
+
+/** Infer the base spell level from the actor's known spells by matching
+ *  the damage notation. Returns 0 for cantrips or unknown spells. */
+function inferSpellBaseLevel(actor: PlayerState | null, notation: string): number {
+  if (!actor) return 0;
+  const knownSpells = knownSpellsForPlayer(actor);
+  for (const spell of knownSpells) {
+    if (spell.damage === notation) {
+      return spell.level;
+    }
+  }
+  return 0;
+}
+
 
 // ---------- BG3/D&D 5e: concentration checks on damage ----------
 /** When a concentrating character takes damage, they must make a CON save
@@ -1122,15 +1153,22 @@ async function resolvePlayerAction(
     );
 
     const damageNotation = branch.monsterDamage.notation;
+    // D&D 5e: upcast damage scaling — if the spell was cast with a higher slot,
+    // scale the damage dice (+1 die per slot level above base).
+    const slotLevel = plan.slotLevel ?? 0;
+    const spellBaseLevel = inferSpellBaseLevel(actor, damageNotation);
+    const scaledNotation = spellBaseLevel > 0 && slotLevel > spellBaseLevel
+      ? upcastSpellDamage(damageNotation, spellBaseLevel, slotLevel)
+      : damageNotation;
     // Roll the spell damage once (the same base roll applies to all targets;
     // each target's save determines full vs half). Per d20 fantasy RPG, damage is
     // rolled once for the whole spell.
-    const baseDmgRoll = rollDice(damageNotation);
+    const baseDmgRoll = rollDice(scaledNotation);
     const baseDamage = baseDmgRoll.total;
 
     await logDiceRoll(roomId, round, actorName, {
-      label: `Урон заклинания (${element})`,
-      notation: damageNotation,
+      label: `Урон заклинания (${element})` + (scaledNotation !== damageNotation ? ` [${scaledNotation} — усиление]` : ""),
+      notation: scaledNotation,
       modifier: 0,
       result: baseDmgRoll.raw,
       total: baseDamage,
