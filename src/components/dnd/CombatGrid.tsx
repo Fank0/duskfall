@@ -325,12 +325,14 @@ export const CombatGrid = memo(function CombatGrid({
 
   // ===== D&D 5e terrain: difficult (mud), cover (pillars/trees), high ground, water =====
   const terrainMap = useMemo(() => {
+    // Terrain only renders during combat — outside combat the grid is empty.
+    if (!combatActive) return null;
     const cells = gridExtras?.terrainCells;
     if (!cells?.length) return null;
     const m = new Map<string, string>();
     for (const c of cells) m.set(`${c.x},${c.y}`, c.type);
     return m;
-  }, [gridExtras?.terrainCells]);
+  }, [combatActive, gridExtras?.terrainCells]);
 
   // ===== Threat range: faint red zone around ranged monsters (item 20) =====
   const threatCells = useMemo(() => {
