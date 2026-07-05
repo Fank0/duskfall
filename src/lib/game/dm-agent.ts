@@ -255,6 +255,13 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Игры для d20 fantas
 6. АТМОСФЕРА: тёмное фэнтези, мрачное, опасное, моральная серость.
 7. ВОСПРИЯТИЕ: герой знает только то, что описал Мастер в недавних событиях. Не позволяй действовать на основе скрытой информации. У каждого героя есть Пассивное восприятие = 10 + мод МУД (указано в контексте). Если скрытый враг/ловушка/тайник имеет DC скрытности ниже пассивного восприятия — герой автоматически замечает его. Если выше — нужен активный поиск (действие «Обыскать»).
 
+=== ДОПОЛНИТЕЛЬНАЯ АТАКА И МУЛЬТИАТАКА (D&D 5e) ===
+В контексте под каждым героем указано «Атак за ход: N» (если N > 1). Это означает, что герой делает N атак за одно Действие.
+- Если герой атакует оружием и у него 2+ атаки — планируй 2+ броска атаки (success.monsterDamage можно указать с суммарным уроном или описать обе атаки).
+- Воин (Fighter) на ур.5+ — 2 атаки, ур.11+ — 3 атаки, ур.20 — 4 атаки.
+- Варвар, Паладин, Следопыт, Монах на ур.5+ — 2 атаки.
+- Заговоры (cantrips) масштабируются автоматически: ур.5+ — 2 кубика, ур.11+ — 3 кубика, ур.17+ — 4 кубика. Указывай базовый урон (1d10), бэкенд масштабирует автоматически.
+
 === D&D КОНВЕНЦИИ ПОВЕСТВОВАНИЯ (КАК ВЕДЁТ НАСТОЯЩИЙ МАСТЕР) ===
 1. SHOW, DON'T TELL: Не говори "монстр выглядит опасным" — опиши его клыки, размер, запах гнили. Не говори "NPC подозрителен" — опиши как он отводит взгляд, нервно теребит рукав.
 2. АКТИВНЫЕ ДЕЙСТВИЯ: Описывай последствия действий игрока, а не пассивную сцену. "Ты открываешь дверь — изнутри доносится гниющий запах" лучше чем "Дверь закрыта".
@@ -1616,12 +1623,28 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   const targetAC = effectiveAC(targetState) + condAcBonus + coverBonus;
 
   // If target is on high ground, monster attacks with disadvantage.
+  // D&D 5e: Multiattack — bosses and monsters with "двойн"/"две атаки" in
+  // specialAbility attack 2 times per turn.
+  const hasMultiattack = m.isBoss ||
+    (m.specialAbility && (
+      m.specialAbility.toLowerCase().includes("двойн") ||
+      m.specialAbility.toLowerCase().includes("две атаки") ||
+      m.specialAbility.toLowerCase().includes("тройн") ||
+      m.specialAbility.toLowerCase().includes("multiattack")
+    ));
+  const numAttacks = hasMultiattack ? 2 : 1;
+
+  let totalDamageToPlayer = 0;
+  let anyHit = false;
+
+  for (let attackNum = 0; attackNum < numAttacks; attackNum++) {
+    const attackLabel = numAttacks > 1 ? ` (атака ${attackNum + 1}/${numAttacks})` : "";
   const atk = targetOnHighGround
     ? rollD20Advantage("disadvantage", m.attackBonus)
     : rollD20(m.attackBonus);
   const hit = atk.total >= targetAC;
   rolls.push({
-    label: `Атака ${m.name}${targetOnHighGround ? " (помеха — цель на возвышенности)" : ""}${coverBonus > 0 ? ` (цель в укрытии +${coverBonus} AC)` : ""}`,
+    label: `Атака ${m.name}${attackLabel}${targetOnHighGround ? " (помеха — цель на возвышенности)" : ""}${coverBonus > 0 ? ` (цель в укрытии +${coverBonus} AC)` : ""}`,
     notation: "1d20", modifier: m.attackBonus,
     result: atk.rolls[0], total: atk.total, target: targetAC, success: hit,
     purpose: "monster_attack",
@@ -1629,21 +1652,27 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   await logDiceRoll(roomId, round, m.name, rolls[rolls.length - 1]);
 
   if (!hit) {
-    return {
-      taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
-      monsterName: m.name, moved: false,
-      narrativeLine: `${m.name} бьёт по ${targetName}, но промахивается (${atk.total} против AC ${targetAC}).`,
-    };
+    if (attackNum === numAttacks - 1 && !anyHit) {
+      return {
+        taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
+        monsterName: m.name, moved: false,
+        narrativeLine: `${m.name} бьёт по ${targetName}, но промахивается (${atk.total} против AC ${targetAC}).`,
+      };
+    }
+    continue;
   }
+  anyHit = true;
 
   const rawDmg = rollDice(m.damageNotation);
   // Talent: damage reduction.
   const dmg = applyDamageReduction(targetState, rawDmg.total);
   await logDiceRoll(roomId, round, m.name, {
-    label: `Урон: ${m.name}` + (dmg < rawDmg.total ? ` (−${rawDmg.total - dmg} сопр.)` : ""),
+    label: `Урон: ${m.name}${attackLabel}` + (dmg < rawDmg.total ? ` (−${rawDmg.total - dmg} сопр.)` : ""),
     notation: m.damageNotation, modifier: 0, result: rawDmg.raw, total: dmg, purpose: "monster_damage",
   });
   await damagePlayer(roomId, targetName, dmg);
+  totalDamageToPlayer += dmg;
+  } // end multiattack loop
 
   // Talent: counterattack — the target may strike back.
   const counterDmg = rollCounterattack(targetState);
@@ -1665,9 +1694,9 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   }
 
   return {
-    taken: true, rolls, damageToPlayer: dmg, damagedPlayer: targetName,
+    taken: true, rolls, damageToPlayer: totalDamageToPlayer, damagedPlayer: targetName,
     monsterName: m.name, moved: false,
-    narrativeLine: `${m.name} бьёт ${targetName} и попадает! ${dmg} урона (${atk.total} против AC ${targetAC}).${counterLine}`,
+    narrativeLine: `${m.name} бьёт ${targetName} и попадает! ${totalDamageToPlayer} урона${numAttacks > 1 ? ` (${numAttacks} атаки)` : ""}.${counterLine}`,
   };
 }
 

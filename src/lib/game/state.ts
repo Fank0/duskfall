@@ -554,8 +554,12 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     if (Array.isArray(skills) && skills.length > 0) skillInfo = skills.join(", ");
     const saves = p.saveProficiencies;
     if (Array.isArray(saves) && saves.length > 0) saveInfo = saves.join(", ");
+    // D&D 5e: Extra Attack — Fighters level 5+ get 2 attacks, level 11+ get 3, level 20+ get 4.
+    let extraAttackInfo = "";
+    const numAttacks = getExtraAttacks(p.charClass, p.level);
+    if (numAttacks > 1) extraAttackInfo = ` | Атак за ход: ${numAttacks}`;
     lines.push(
-      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
     );
     // Backstory (player-authored): let the DM weave the hero's history into
     // the narrative — call back to NPCs, places, oaths, regrets.
@@ -1622,6 +1626,25 @@ export const MAX_LEVEL = 17;
 /** Proficiency bonus by level (5e standard). */
 export function proficiencyForLevel(level: number): number {
   return 2 + Math.floor((level - 1) / 4);
+}
+
+/** D&D 5e: Extra Attack — number of attacks per Action by class & level.
+ *  Fighter: 2 at L5, 3 at L11, 4 at L20.
+ *  Barbarian, Paladin, Ranger, Monk: 2 at L5.
+ *  Other classes: 1. */
+export function getExtraAttacks(charClass: string, level: number): number {
+  const lc = charClass.toLowerCase();
+  if (lc === "fighter") {
+    if (level >= 20) return 4;
+    if (level >= 11) return 3;
+    if (level >= 5) return 2;
+    return 1;
+  }
+  if (["barbarian", "paladin", "ranger", "monk"].includes(lc)) {
+    if (level >= 5) return 2;
+    return 1;
+  }
+  return 1;
 }
 
 /** Award XP to a player; sets pendingLevelUp if a threshold is crossed.

@@ -385,22 +385,55 @@ export function isCasterClass(classId: string): boolean {
 }
 
 /** Full-caster spell slots per level (d20 fantasy RPG SRD, levels 1-5). */
+/** Full-caster (wizard, sorcerer, cleric, druid, bard, warlock) spell slots
+ *  per level. Full D&D 5e SRD progression (levels 1-20). */
 const FULL_CASTER_SLOTS: Record<number, Record<string, number>> = {
   1: { "1": 2 },
   2: { "1": 3 },
   3: { "1": 4, "2": 2 },
   4: { "1": 4, "2": 3 },
   5: { "1": 4, "2": 3, "3": 2 },
+  6: { "1": 4, "2": 3, "3": 3 },
+  7: { "1": 4, "2": 3, "3": 3, "4": 1 },
+  8: { "1": 4, "2": 3, "3": 3, "4": 2 },
+  9: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 1 },
+  10: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2 },
+  11: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2, "6": 1 },
+  12: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2, "6": 1 },
+  13: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2, "6": 1, "7": 1 },
+  14: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2, "6": 1, "7": 1 },
+  15: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2, "6": 1, "7": 1, "8": 1 },
+  16: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2, "6": 1, "7": 1, "8": 1 },
+  17: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 2, "6": 1, "7": 1, "8": 1, "9": 1 },
+  18: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 3, "6": 1, "7": 1, "8": 1, "9": 1 },
+  19: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 3, "6": 2, "7": 1, "8": 1, "9": 1 },
+  20: { "1": 4, "2": 3, "3": 3, "4": 3, "5": 3, "6": 2, "7": 2, "8": 1, "9": 1 },
 };
 
-/** Half-caster (paladin/ranger) spell slots per level. Level 1 has none — we
- *  simplify and grant 2 level-1 slots so the system is usable from level 1. */
+/** Half-caster (paladin/ranger) spell slots per level. Full D&D 5e SRD progression.
+ *  Level 1 has none — we simplify and grant 2 level-1 slots so the system is
+ *  usable from level 1. */
 const HALF_CASTER_SLOTS: Record<number, Record<string, number>> = {
   1: { "1": 2 },
   2: { "1": 2 },
   3: { "1": 3 },
   4: { "1": 3, "2": 1 },
   5: { "1": 4, "2": 2 },
+  6: { "1": 4, "2": 2 },
+  7: { "1": 4, "2": 3 },
+  8: { "1": 4, "2": 3 },
+  9: { "1": 4, "2": 3, "3": 1 },
+  10: { "1": 4, "2": 3, "3": 1 },
+  11: { "1": 4, "2": 3, "3": 2 },
+  12: { "1": 4, "2": 3, "3": 2 },
+  13: { "1": 4, "2": 3, "3": 2, "4": 1 },
+  14: { "1": 4, "2": 3, "3": 2, "4": 1 },
+  15: { "1": 4, "2": 3, "3": 2, "4": 1 },
+  16: { "1": 4, "2": 3, "3": 2, "4": 1 },
+  17: { "1": 4, "2": 3, "3": 3, "4": 1 },
+  18: { "1": 4, "2": 3, "3": 3, "4": 1 },
+  19: { "1": 4, "2": 3, "3": 3, "4": 2 },
+  20: { "1": 4, "2": 3, "3": 3, "4": 2, "5": 1 },
 };
 
 /** Half-caster classes (paladin, ranger). */
@@ -411,7 +444,7 @@ const HALF_CASTERS: Set<string> = new Set(["paladin", "ranger"]);
 export function maxSpellSlotsForLevel(charClass: string, level: number): Record<string, number> {
   const classId = getClassIdByCharClass(charClass);
   if (!isCasterClass(classId)) return {};
-  const clampedLevel = Math.max(1, Math.min(5, Math.floor(level) || 1));
+  const clampedLevel = Math.max(1, Math.min(20, Math.floor(level) || 1));
   const table = HALF_CASTERS.has(classId) ? HALF_CASTER_SLOTS : FULL_CASTER_SLOTS;
   // Clone so callers can mutate safely.
   const base = table[clampedLevel] ?? { "1": 2 };
