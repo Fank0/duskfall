@@ -187,7 +187,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     // ===== chat =====
     "chat.send_action": "Отправить действие",
-    "chat.action_placeholder": "Что вы делаете? (атакуйте, обыщите, поговорите, спрячьтесь…)",
+    "chat.action_placeholder": "Что вы делаете? (атакуйте, осмотрите, двигайтесь…)",
     "chat.dead_placeholder": "Герой пал. Ожидайте новой игры.",
     "chat.dice_empty": "Кости ещё не брошены…",
     "chat.waiting_placeholder": "Ожидание хода ({name} действует)…",
@@ -598,7 +598,7 @@ const DICT: Record<Lang, Record<string, string>> = {
 
     // ===== chat =====
     "chat.send_action": "Send action",
-    "chat.action_placeholder": "What do you do? (attack, search, talk, hide…)",
+    "chat.action_placeholder": "What do you do? (attack, explore, move…)",
     "chat.dead_placeholder": "The hero has fallen. Await a new game.",
     "chat.dice_empty": "Dice not yet rolled…",
     "chat.waiting_placeholder": "Waiting for turn ({name} acting)…",
@@ -1002,7 +1002,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.attack": "Atacar",
 
     "chat.send_action": "Enviar acción",
-    "chat.action_placeholder": "¿Qué haces? (atacar, registrar, hablar, esconderse…)",
+    "chat.action_placeholder": "¿Qué haces? (atacar, explorar, mover…)",
     "chat.dead_placeholder": "El héroe ha caído. Espera una nueva partida.",
     "chat.waiting_placeholder": "Esperando turno ({name} actúa)…",
     "chat.show_more": "Mostrar más",
@@ -1402,7 +1402,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.attack": "Angreifen",
 
     "chat.send_action": "Aktion senden",
-    "chat.action_placeholder": "Was tust du? (angreifen, durchsuchen, sprechen, verstecken…)",
+    "chat.action_placeholder": "Was tust du? (angreifen, umsehen, bewegen…)",
     "chat.dead_placeholder": "Der Held ist gefallen. Warte auf ein neues Spiel.",
     "chat.dice_empty": "Würfel noch nicht geworfen…",
     "chat.waiting_placeholder": "Warte auf Zug ({name} handelt)…",
@@ -1803,7 +1803,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.attack": "Attaquer",
 
     "chat.send_action": "Envoyer l'action",
-    "chat.action_placeholder": "Que faites-vous ? (attaquer, fouiller, parler, se cacher…)'action du héros… (Entrée pour envoyer)",
+    "chat.action_placeholder": "Que faites-vous ? (attaquer, explorer, se déplacer…)",
     "chat.dead_placeholder": "Le héros est tombé. Attendez une nouvelle partie.",
     "chat.waiting_placeholder": "En attente du tour ({name} agit)…",
     "chat.show_more": "Afficher plus",
@@ -2205,7 +2205,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "actions.attack": "攻击",
 
     "chat.send_action": "发送动作",
-    "chat.action_placeholder": "描述英雄的动作…（回车发送）",
+    "chat.action_placeholder": "你做什么？（攻击、观察、移动…）",
     "chat.dead_placeholder": "英雄已倒下。等待新游戏。",
     "chat.dice_empty": "骰子尚未投掷…",
     "chat.waiting_placeholder": "等待回合（{name} 行动中）…",

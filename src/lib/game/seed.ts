@@ -212,6 +212,22 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
   }
 
   // Auto-equip starting weapon + armor (so the player starts battle-ready).
+  // First, ensure the preset weapon exists in inventory (some presets like Druid
+  // have weaponName but don't include it in startItems — only a focus item).
+  const existingWeapon = await db.inventoryItem.findFirst({
+    where: { roomId, playerName: input.name, itemName: p.weaponName },
+  });
+  if (!existingWeapon) {
+    await db.inventoryItem.create({
+      data: {
+        roomId, playerName: input.name,
+        itemName: p.weaponName, itemType: "weapon", quantity: 1,
+        description: p.weaponNotation ? `Урон: ${p.weaponNotation}` : "",
+        equipSlot: "weapon",
+        damageNotation: p.weaponNotation || "1d6+2",
+      },
+    });
+  }
   const allItems = await db.inventoryItem.findMany({ where: { roomId, playerName: input.name } });
   const weapon = allItems.find((it) => it.itemType === "weapon" || it.equipSlot === "weapon");
   const armor = allItems.find((it) => it.equipSlot === "chest" || it.itemType === "armor" || it.acBonus > 0);

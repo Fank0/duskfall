@@ -544,11 +544,11 @@ export const BottomPanel = memo(function BottomPanel({
         </div>
 
         {/* Divider */}
-        {onQuickAction && <div className="hidden lg:block w-px bg-border/40" />}
+        {combatActive && onQuickAction && <div className="hidden lg:block w-px bg-border/40" />}
 
         {/* ===== Combat actions (BG3/D&D 5e) — Dash, Disengage, Dodge, Help, Ready =====
             Always visible in the abilities section. These use your Action (D&D 5e action economy). */}
-        {onQuickAction && (
+        {combatActive && onQuickAction && (
           <div className="flex flex-col gap-1 lg:w-auto">
             <div className="flex items-center gap-1.5">
               <Swords className="h-3.5 w-3.5 text-amber-400" />
