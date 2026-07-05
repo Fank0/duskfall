@@ -73,6 +73,7 @@ model Account {
   passwordHash String
   createdAt    DateTime  @default(now())
   saves        SaveSlot[]
+  discoveredMonsters DiscoveredMonster[]
 }
 
 /// A persistent save slot bound to an Account. Each account has 3 slots
@@ -424,4 +425,18 @@ model TerrainCell {
 
   @@unique([roomId, x, y])
   @@index([roomId])
+}
+
+/// Monsters discovered by a player during their adventures. Each account
+/// accumulates a bestiary of monsters they've encountered in combat.
+/// The BestiaryPanel shows only these discovered monsters (not the full list).
+model DiscoveredMonster {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  monsterName String   // Russian name (key into BESTIARY)
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, monsterName])
+  @@index([accountId])
 }

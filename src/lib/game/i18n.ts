@@ -395,6 +395,13 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.empty": "на сетке никого нет",
     "ui.rounds": "раундов",
     "ui.save_throw": "спасбросок",
+    "ui.save": "Сохранить",
+    "ui.save_game": "Сохранить игру",
+    "ui.save_game_hint": "Выберите слот для сохранения текущей игры. Сохранение привязано к вашему аккаунту.",
+    "ui.save_slot": "Слот",
+    "ui.save_slot_hint": "Сохранить текущую игру в этот слот",
+    "ui.save_success": "Игра сохранена!",
+    "ui.save_failed": "Не удалось сохранить игру.",
     "terrain.difficult": "Сложная местность (грязь/щебень) — передвижение ×2",
     "terrain.half_cover": "Укрытие (дерево/столб) — +2 AC",
     "terrain.full_cover": "Полное укрытие — блокирует линию огня, +5 AC",
@@ -428,6 +435,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "bestiary.loot": "Добыча",
     "bestiary.gold_short": "зм",
     "bestiary.empty": "Ничего не найдено по запросу «{query}».",
+    "bestiary.locked": "Бестиарий пуст. Сражайтесь с монстрами, чтобы открывать их записи!",
 
     // ===== spellbook =====
     "spellbook.spells_count": "{n} заклинаний",
@@ -847,6 +855,13 @@ const DICT: Record<Lang, Record<string, string>> = {
     "grid.empty": "no one on grid",
     "ui.rounds": "rounds",
     "ui.save_throw": "save",
+    "ui.save": "Save",
+    "ui.save_game": "Save Game",
+    "ui.save_game_hint": "Choose a slot to save your current game. Saves are tied to your account.",
+    "ui.save_slot": "Slot",
+    "ui.save_slot_hint": "Save current game to this slot",
+    "ui.save_success": "Game saved!",
+    "ui.save_failed": "Failed to save game.",
     "terrain.difficult": "Difficult terrain (mud/rubble) — movement ×2",
     "terrain.half_cover": "Cover (tree/pillar) — +2 AC",
     "terrain.full_cover": "Full cover — blocks line of fire, +5 AC",
@@ -879,6 +894,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "bestiary.special_ability": "⚡ Special Ability",
     "bestiary.loot": "Loot",
     "bestiary.gold_short": "gp",
+    "bestiary.locked": "Bestiary is empty. Fight monsters to unlock their entries!",
     "bestiary.empty": "Nothing found for \"{query}\".",
 
     // ===== spellbook =====

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { BookOpen, Search, Heart, Shield, Sword, Sparkles, Coins, Footprints, Ruler } from "lucide-react";
+import { BookOpen, Search, Heart, Shield, Sword, Sparkles, Coins, Footprints, Ruler, Lock } from "lucide-react";
 import {
   BESTIARY,
   MONSTER_CATEGORIES,
@@ -144,11 +144,36 @@ export function BestiaryPanel({
   const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<MonsterCategory | "all">("all");
+  const [discoveredNames, setDiscoveredNames] = useState<Set<string> | null>(null);
 
-  // Filter by category + free-text query (Russian name, English name, description).
+  // Load discovered monsters from the server (tied to account).
+  const loadDiscovered = useCallback(async () => {
+    try {
+      const res = await fetch("/api/game/bestiary", { cache: "no-store" });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.monsters)) {
+        setDiscoveredNames(new Set(data.monsters));
+      } else {
+        setDiscoveredNames(new Set()); // not logged in → empty bestiary
+      }
+    } catch {
+      setDiscoveredNames(new Set());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadDiscovered();
+    }
+  }, [open, loadDiscovered]);
+
+  // Filter: only show discovered monsters + category + free-text query.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return BESTIARY.filter((e) => {
+      // Only show monsters the player has discovered.
+      if (discoveredNames && !discoveredNames.has(e.name)) return false;
       if (activeCategory !== "all" && e.category !== activeCategory) return false;
       if (!q) return true;
       return (
@@ -158,7 +183,13 @@ export function BestiaryPanel({
         (e.specialAbility?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [query, activeCategory]);
+  }, [query, activeCategory, discoveredNames]);
+
+  // Total discovered count (for header + tabs).
+  const discoveredCount = useMemo(() => {
+    if (!discoveredNames) return 0;
+    return BESTIARY.filter((e) => discoveredNames.has(e.name)).length;
+  }, [discoveredNames]);
 
   // Group filtered entries by category for the active tab.
   const grouped = useMemo(() => {
@@ -186,7 +217,7 @@ export function BestiaryPanel({
             <BookOpen className="h-5 w-5 text-amber-300" />
             {tt("bestiary.title")}
             <Badge variant="outline" className="ml-1 border-amber-800/50 bg-amber-950/30 text-amber-200">
-              {tt("bestiary.creatures_count", { n: BESTIARY.length })}
+              {tt("bestiary.creatures_count", { n: discoveredCount })}
             </Badge>
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
@@ -217,7 +248,7 @@ export function BestiaryPanel({
               value="all"
               className="h-7 px-2 text-xs data-[state=active]:bg-amber-900/40 data-[state=active]:text-amber-100"
             >
-              {tt("bestiary.all_count", { n: BESTIARY.length })}
+              {tt("bestiary.all_count", { n: discoveredCount })}
             </TabsTrigger>
             {MONSTER_CATEGORIES.map((c) => {
               const colors = categoryColor(c);
@@ -240,8 +271,15 @@ export function BestiaryPanel({
           <TabsContent value={activeCategory} className="mt-2 min-h-0 flex-1 overflow-hidden">
             <div className="flex-1 overflow-y-auto pr-2 fantasy-scroll" style={{ maxHeight: "calc(85vh - 120px)" }}>
               {filtered.length === 0 ? (
-                <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                  {tt("bestiary.empty", { query })}
+                <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+                  {discoveredCount === 0 ? (
+                    <>
+                      <Lock className="h-8 w-8 opacity-30" />
+                      <span>{tt("bestiary.locked")}</span>
+                    </>
+                  ) : (
+                    <span>{tt("bestiary.empty", { query })}</span>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-2 pb-4 sm:grid-cols-2 xl:grid-cols-3">

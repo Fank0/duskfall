@@ -214,7 +214,14 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Игры для d20 fantas
 Если действие невозможно — верни category="invalid" и invalidReason (короткое объяснение на русском, почему невозможно). Ход при этом НЕ тратится.
 
 === НЕПРЕЛОЖНЫЕ ПРАВИЛА АТМОСФЕРЫ И РЕАЛИЗМА ===
-1. ПРЕДМЕТЫ: у героя есть ТОЛЬКО то, что в инвентаре. НЕ добавляй предметы по желанию игрока. Предметы добываются только через исследование/loot/награду.
+1. ПРЕДМЕТЫ: у героя есть ТОЛЬКО то, что в инвентаре. Предметы добываются через исследование/loot/награду от NPC. Ты (Мастер) можешь ВЫДАВАТЬ предметы через inventoryChanges (action="add") и ЗАБИРАТЬ через action="remove". При выдаче предмета придумай его характеристики по образцу существующих: имя, тип (weapon/armor/potion/scroll/misc), описание, AC бонус (для брони), урон (для оружия), slot экипировки.
+
+=== СОЗДАНИЕ НОВЫХ ОБЪЕКТОВ (D&D 5e) ===
+Ты можешь СОЗДАВАТЬ новые предметы, монстров и NPC. При создании ОБЯЗАТЕЛЬНО придумай полный набор характеристик:
+- ПРЕДМЕТ: имя, тип (weapon/armor/potion/scroll/misc/ring/amulet), описание, AC бонус (броня/щит), урон (оружие, например "1d8+2"), slot экипировки (weapon/shield/head/chest/legs/hands/accessory), цена в золоте, вес.
+- МОНСТР: имя, HP, maxHp, AC, bonus атаки, нотация урона (например "1d6+2"), позиция на сетке (X,Y), цвет, описание, specialAbility (для боссов). CR (Challenge Rating) = примерно HP/10 + AC/5.
+- NPC: имя, роль (merchant/questgiver/ally/enemy), disposition (friendly/neutral/hostile), location, notes.
+Придумывай характеристики СООТВЕТСТВУЮЩИЕ уровню группы: для ур.1-3 — HP 10-20, урон 1d6+2, AC 11-15.
 2. ЭПОХА: строго псевдосредневековое тёмное фэнтези. Запрещены огнестрел, порох, электричество, современные механизмы.
 3. УНИКАЛЬНОСТЬ: каждое приключение уникально. Не повторяй описания из предыдущих сессий. Создай уникальную атмосферу.
 4. СВОБОДА С ПОСЛЕДСТВИЯМИ: провальная проверка = реальное последствие. Не подыгрывай. Провал может привести к: ранению (доп. урон), потере предмета, ухудшению отношения NPC, обнаружению группой, активации ловушки. Сохраняй последствия в нарративе.
@@ -2129,6 +2136,19 @@ export async function resolvePlayerMechanics(
       if (pick) {
         await db.monster.update({ where: { id: pick.id }, data: { isActive: true } });
         revealedAny = true;
+        // Mark monster as discovered for the host's account (bestiary).
+        if (room.hostAccountId) {
+          try {
+            const existing = await db.discoveredMonster.findFirst({
+              where: { accountId: room.hostAccountId, monsterName: pick.name },
+            });
+            if (!existing) {
+              await db.discoveredMonster.create({
+                data: { accountId: room.hostAccountId, monsterName: pick.name },
+              });
+            }
+          } catch {}
+        }
         console.log(
           `[DM] opening combat: revealed only targeted monster "${pick.name}" (id ${pick.id})`
         );
@@ -2137,7 +2157,23 @@ export async function resolvePlayerMechanics(
     // Fallback: if no specific target was identified, reveal ALL hidden
     // monsters so combat can still proceed (preserves prior behavior).
     if (!revealedAny) {
+      const hiddenMonsters = await db.monster.findMany({ where: { roomId, isActive: false } });
       await db.monster.updateMany({ where: { roomId, isActive: false }, data: { isActive: true } });
+      // Mark all revealed monsters as discovered for the host's account.
+      if (room.hostAccountId) {
+        for (const m of hiddenMonsters) {
+          try {
+            const existing = await db.discoveredMonster.findFirst({
+              where: { accountId: room.hostAccountId, monsterName: m.name },
+            });
+            if (!existing) {
+              await db.discoveredMonster.create({
+                data: { accountId: room.hostAccountId, monsterName: m.name },
+              });
+            }
+          } catch {}
+        }
+      }
       console.log(
         `[DM] opening combat: no specific target identified ("${targetName ?? ""}") — revealed all hidden monsters as fallback`
       );
