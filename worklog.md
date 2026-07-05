@@ -2453,3 +2453,72 @@ Stage Summary:
 - CombatGrid: 4 hardcoded strings i18n'd
 - D&D 5e Opportunity Attacks: fully implemented in move-token API
 - 3 new i18n keys across 6 languages
+
+---
+Task ID: audio-sfx-ui-cleanup
+Agent: main-agent
+Task: Improve audio/SFX (BG3-style), add sounds to buttons, remove unused quick actions, fix DM English words
+
+Work Log:
+- Rewrote SFX system in audio.ts with BG3-style sounds:
+  * Added playNoise() helper for impacts/whooshes (filtered white noise)
+  * sfxHit: meaty impact (low thud + mid crunch + metallic ring)
+  * sfxCrit: dramatic ascending chord with shimmer + impact
+  * sfxMiss: sword cutting air (filtered noise sweep)
+  * sfxHeal: warm ascending bell with sparkle harmonic
+  * sfxLevelUp: triumphant fanfare with shimmer
+  * sfxMonsterDeath: impact + descending growl
+  * sfxCombatStart: dramatic drum + horn
+  * sfxDiceRoll: wooden clatter with noise component
+  * sfxClick: softer wooden tick (was harsh square wave)
+- Added 5 new SFX functions:
+  * sfxMove: soft footstep (BG3-style)
+  * sfxTargetSelect: magical lock-on sound (ascending chime)
+  * sfxTargetCancel: soft descending tone
+  * sfxSpellCast: magical whoosh + chime (BG3-style)
+  * sfxAbilityUse: short magical burst
+- Improved background music (playMusicNote):
+  * Peace mood: warm pad with harmonic fifth + occasional bell (ethereal BG3-style)
+  * Combat mood: sawtooth wave + rhythmic drum pulse (battle drums)
+  * Tension mood: deep drone with sharp filter
+  * Longer fades for peace (3.5s), smoother attack (0.8s)
+  * Softer filter for peace (1500Hz), brighter for combat (1000Hz)
+- Added sounds to quick action buttons:
+  * Attack → sfxAbilityUse()
+  * Move → sfxMove()
+  * Explore → sfxClick()
+- Added sounds to targeting system:
+  * requestAbilityTargeting → sfxTargetSelect() (entering targeting mode)
+  * cancelTargeting → sfxTargetCancel() (Esc/cancel)
+- Added sound to click-to-move:
+  * handleMoveClick → sfxMove() on click
+  * sfxHit() if opportunity attacks hit
+- Added sounds to ability/item triggers in BottomPanel:
+  * Spell abilities → sfxSpellCast()
+  * Other abilities → sfxAbilityUse()
+- Removed 'Скрыться' and 'Говорить' from QUICK_ACTIONS (user request)
+- Removed unused imports (MessageSquareQuote, Search, EyeOff)
+- Merged 'Обыскать' into 'Осмотреться':
+  * Combined text: "Я внимательно осматриваю местность — ищу опасности, подсказки, тайники и спрятанные предметы."
+  * Removed 'Обыскать' button (was redundant with 'Осмотреться')
+  * Difference was: Осмотреться = Perception (noticing), Обыскать = Investigation (searching)
+  * Now 'Осмотреться' covers both (simpler UX)
+- Fixed DM using English words:
+  * Strengthened language rule in SYSTEM_PROMPT_PLANNING:
+    - Added "ПЕРЕД ОТПРАВКОЙ ОТВЕТА — ПРОВЕРЬ КАЖДОЕ СЛОВО" checklist
+    - Added "ТИПИЧНЫЕ ОШИБКИ" section with examples (underneath, lazily, creeping, Faces)
+    - Added "НАКАЗАНИЕ" warning
+  * Added stripEnglishWords() function in sanitize.ts:
+    - Removes English words (2+ Latin letters)
+    - Keeps dice notation (1d20, 2d6), allowed abbreviations (HP, AC, DC, AoE, NPC)
+    - Applied to DM narrative before persisting to DB
+  * Now even if DM generates English words, they're stripped post-hoc
+- lint: 0 errors, tsc: 0 errors
+
+Stage Summary:
+- BG3-style SFX: all sounds rewritten with noise + tone layers for richer audio
+- 5 new SFX: move, target select/cancel, spell cast, ability use
+- Background music improved: ethereal peace pad, battle drums, deep tension drone
+- Sounds added to: attack, move, explore, targeting, click-to-move, abilities, spells
+- Quick actions simplified: removed Скрыться, Говорить, Обыскать (merged into Осмотреться)
+- DM English words: strengthened prompt + post-processing stripEnglishWords()

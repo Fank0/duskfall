@@ -18,6 +18,7 @@ import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
 import { t, localizeData, localizeAbility, type Lang } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
+import { sfxAbilityUse, sfxSpellCast } from "@/lib/game/audio";
 import type { PlayerState, InventoryItemState } from "@/lib/game/types";
 import {
   buildAbilityQuickText,
@@ -234,6 +235,14 @@ export const BottomPanel = memo(function BottomPanel({
     // Double-click protection — ignore if still in cooldown.
     if (disabledChips.has(id)) return;
     onQuickAction?.(text);
+    // Play ability/spell sound based on the chip type
+    try {
+      if (id.startsWith("abil:")) {
+        // Check if it's a spell (fuchsia) or ability
+        const isSpell = id.includes("spell");
+        if (isSpell) sfxSpellCast(); else sfxAbilityUse();
+      }
+    } catch {}
     setPulsing((prev) => new Set(prev).add(id));
     setDisabledChips((prev) => new Set(prev).add(id));
     setSentChips((prev) => new Set(prev).add(id));

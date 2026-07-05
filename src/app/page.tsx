@@ -23,6 +23,7 @@ import {
   resumeAudio, startMusic, stopMusic, setMusicVolume, setSfxVolume, setMusicEnabled,
   sfxDiceRoll, sfxHit, sfxCrit, sfxMiss, sfxHeal, sfxLevelUp, sfxConditionApply,
   sfxMonsterDeath, sfxClick, sfxError, sfxCombatStart, sfxTurnChange,
+  sfxMove, sfxTargetSelect, sfxTargetCancel, sfxSpellCast, sfxAbilityUse,
   startWeatherAmbient, stopWeatherAmbient, moodForState,
 } from "@/lib/game/audio";
 import { cn } from "@/lib/utils";
@@ -844,11 +845,13 @@ export default function Home() {
   const requestAbilityTargeting = useCallback((target: Ability | InventoryItemState, mode: "ability" | "aoe" | "item") => {
     setTargetingAbility(target);
     setTargetingMode(mode);
+    try { sfxTargetSelect(); } catch {}
   }, []);
 
   const cancelTargeting = useCallback(() => {
     setTargetingMode("none");
     setTargetingAbility(null);
+    try { sfxTargetCancel(); } catch {}
   }, []);
 
   // When the player clicks a monster token while in ability-targeting mode,
@@ -905,6 +908,7 @@ export default function Home() {
   // move their token there via the /api/game/move-token endpoint.
   const handleMoveClick = useCallback(async (x: number, y: number) => {
     if (!session || targetingMode !== "none") return;
+    try { sfxMove(); } catch {}
     try {
       const res = await fetch("/api/game/move-token", {
         method: "POST",
@@ -915,6 +919,10 @@ export default function Home() {
       if (data.ok) {
         setSnapshot(data.snapshot);
         pingRoom(session.roomCode);
+        // If opportunity attacks occurred, play hit sound
+        if (data.opportunityAttacks?.some((oa: any) => oa.hit)) {
+          try { sfxHit(); } catch {}
+        }
       }
     } catch {
       /* network blip — ignore */

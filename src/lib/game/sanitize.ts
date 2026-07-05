@@ -59,3 +59,35 @@ export function sanitizeAndTruncate(text: string, max: number): string {
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 1) + "…";
 }
+
+/**
+ * Remove English words from DM narrative output.
+ * The DM sometimes inserts English words (e.g. "underneath", "lazily",
+ * "creeping") despite being told not to. This function strips them as
+ * a post-processing step.
+ *
+ * Strategy: find sequences of Latin letters (2+ chars) that are NOT:
+ * - Dice notation (1d20, 2d6+3)
+ * - Numbers
+ * - Single-letter coordinates
+ * - Common game abbreviations (HP, AC, DC, AoE, NPC)
+ * Replace them with empty string.
+ */
+const ENGLISH_WORD_RE = /\b[A-Za-z]{2,}\b/g;
+const ALLOWED_ENGLISH = new Set([
+  "HP", "AC", "DC", "AoE", "NPC", "DM", "STR", "DEX", "CON", "INT", "WIS", "CHA",
+  "d20", "d12", "d10", "d8", "d6", "d4", "d100",
+  "vs",
+]);
+
+export function stripEnglishWords(text: string): string {
+  if (typeof text !== "string" || text.length === 0) return text;
+  return text.replace(ENGLISH_WORD_RE, (match) => {
+    // Keep dice notation (like "1d20", "2d6")
+    if (/^[0-9]*d[0-9]+/.test(match)) return match;
+    // Keep allowed English words
+    if (ALLOWED_ENGLISH.has(match)) return match;
+    // Remove everything else
+    return "";
+  }).replace(/\s+/g, " ").trim();
+}

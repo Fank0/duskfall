@@ -8,7 +8,7 @@ import { getSnapshot, invalidateSnapshotCache } from "@/lib/game/state";
 import { generateSceneImage } from "@/lib/game/scene-image";
 import { rateLimit, rateLimitedResponse } from "@/lib/game/rate-limit";
 import { validateActionText, validatePlayerName, validateRoomCode } from "@/lib/game/validate";
-import { sanitizeLLMOutput } from "@/lib/game/sanitize";
+import { sanitizeLLMOutput, stripEnglishWords } from "@/lib/game/sanitize";
 import { logger } from "@/lib/game/logger";
 import { metrics } from "@/lib/game/metrics";
 import { defaultLang, type Lang } from "@/lib/game/i18n";
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
         // Sanitize LLM output before storing (defense-in-depth, item 26).
         const room = await db.room.findUnique({ where: { code: roomCode } });
         if (room) {
-          const persistedContent = sanitizeLLMOutput(full || mech.branchNarrative);
+          const persistedContent = stripEnglishWords(sanitizeLLMOutput(full || mech.branchNarrative));
           await db.chatMessage.create({
             data: {
               roomId: room.id,

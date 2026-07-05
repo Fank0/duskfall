@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Send, Loader2, Skull, Swords, Eye, Footprints, MessageSquareQuote, Sparkles, Lock, Bed, Moon, ChevronUp, ChevronDown, Volume2, Square, Search, EyeOff,
+  Send, Loader2, Skull, Swords, Eye, Footprints, Sparkles, Lock, Bed, Moon, ChevronUp, ChevronDown, Volume2, Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ChatMessageState } from "@/lib/game/types";
@@ -13,14 +13,12 @@ import { sanitizeLLMOutput } from "@/lib/game/sanitize";
 import { useSettings } from "@/lib/game/settings";
 import { t } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
+import { sfxClick, sfxMove, sfxSpellCast, sfxAbilityUse } from "@/lib/game/audio";
 
 const QUICK_ACTIONS = [
   { labelKey: "actions.attack", icon: Swords, text: "Я обнажаю оружие и атакую ближайшего врага!" },
-  { labelKey: "actions.explore", icon: Eye, text: "Я внимательно осматриваю местность, ища опасности и подсказки." },
+  { labelKey: "actions.explore", icon: Eye, text: "Я внимательно осматриваю местность — ищу опасности, подсказки, тайники и спрятанные предметы." },
   { labelKey: "game.move", icon: Footprints, text: "Я осторожно продвигаюсь вперёд, держа оружие наготове." },
-  { labelKey: "actions.talk", icon: MessageSquareQuote, text: "Я осматриваюсь и обращаюсь к любому, кто может меня услышать." },
-  { labelKey: "actions.search", icon: Search, text: "Я обыскиваю помещение — ищу тайники, записки, спрятанные предметы." },
-  { labelKey: "actions.hide", icon: EyeOff, text: "Я пытаюсь укрыться в тенях и двигаюсь бесшумно." },
 ];
 
 /** How many messages to render initially (item 24: chat virtualization). */
@@ -453,7 +451,14 @@ export const ChatPanel = memo(function ChatPanel({
             key={q.labelKey}
             type="button"
             disabled={!canAct}
-            onClick={() => submit(q.text)}
+            onClick={() => {
+              try {
+                if (q.labelKey === "actions.attack") sfxAbilityUse();
+                else if (q.labelKey === "game.move") sfxMove();
+                else sfxClick();
+              } catch {}
+              submit(q.text);
+            }}
             className="flex items-center gap-1 rounded-full border border-border/60 bg-stone-900/50 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
           >
             <q.icon className="h-3 w-3" />
