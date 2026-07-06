@@ -14,7 +14,7 @@ import { metrics } from "@/lib/game/metrics";
 import { defaultLang, type Lang } from "@/lib/game/i18n";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300; // 5 minutes — DeepSeek V3 (free) can be slow
 
 // 10 actions per minute per player (item 25: rate limit on actions).
 const actionLimiter = rateLimit({ windowMs: 60_000, max: 10, label: "actions" });
