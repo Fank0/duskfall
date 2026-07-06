@@ -245,6 +245,9 @@ export interface PlayerState {
   reactionUsed: boolean;
   /** Spell name currently concentrating on (empty = none). */
   concentratingOn: string;
+  /** Action Points (ОД) — BG3/DOS2 hybrid. Pool spent on actions per turn. */
+  actionPoints: number;
+  maxActionPoints: number;
 }
 
 export interface MonsterState {

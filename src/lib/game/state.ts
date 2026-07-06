@@ -115,6 +115,8 @@ function toPlayer(p: any): PlayerState {
     bonusActionUsed: Boolean(p.bonusActionUsed),
     reactionUsed: Boolean(p.reactionUsed),
     concentratingOn: p.concentratingOn ?? "",
+    actionPoints: p.actionPoints ?? 4,
+    maxActionPoints: p.maxActionPoints ?? 4,
   };
 }
 
@@ -1587,6 +1589,14 @@ export const MAX_LEVEL = 17;
 /** Proficiency bonus by level (5e standard). */
 export function proficiencyForLevel(level: number): number {
   return 2 + Math.floor((level - 1) / 4);
+}
+
+/** Action Points (ОД) per turn by level — BG3/DOS2 hybrid. */
+export function maxActionPointsForLevel(level: number): number {
+  if (level >= 17) return 7;
+  if (level >= 11) return 6;
+  if (level >= 5) return 5;
+  return 4;
 }
 
 /** Award XP to a player; sets pendingLevelUp if a threshold is crossed.

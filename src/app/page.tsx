@@ -1341,6 +1341,8 @@ export default function Home() {
               onRest={handleRest}
               roomCode={session.roomCode}
               ttsEnabled={settings.ttsEnabled}
+              actionPoints={you?.actionPoints}
+              maxActionPoints={you?.maxActionPoints}
             />
           </section>
 

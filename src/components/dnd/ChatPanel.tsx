@@ -44,6 +44,10 @@ interface ChatPanelProps {
    * Volume/voice are read from useSettings inside the panel.
    */
   ttsEnabled?: boolean;
+  /** Action Points (ОД) — current pool for this turn. Displayed as pips. */
+  actionPoints?: number;
+  /** Max Action Points (ОД) per turn. */
+  maxActionPoints?: number;
 }
 
 /**
@@ -63,6 +67,8 @@ export const ChatPanel = memo(function ChatPanel({
   onRest,
   roomCode,
   ttsEnabled = false,
+  actionPoints,
+  maxActionPoints,
 }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -490,8 +496,30 @@ export const ChatPanel = memo(function ChatPanel({
         )}
       </div>
 
-      {/* Quick actions */}
-      <div className="flex flex-wrap gap-1.5 border-t border-border/50 px-3 pt-2">
+      {/* Quick actions + Action Points (ОД) pips */}
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-border/50 px-3 pt-2">
+        {/* Action Points (ОД) — shown only in combat, as pips like spell slots */}
+        {combatActive && actionPoints !== undefined && maxActionPoints !== undefined && (
+          <div
+            className="flex flex-col items-center gap-0.5 rounded px-1.5 py-0.5 border border-amber-700/40 bg-amber-950/30"
+            title="Очки действий (ОД) — тратятся на действия в бою. Когда ОД=0, ход переходит к противнику."
+          >
+            <span className="text-[8px] font-bold text-amber-300">ОД</span>
+            <div className="flex gap-0.5">
+              {Array.from({ length: maxActionPoints }).map((_, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "h-2.5 w-2.5 rounded-full border",
+                    i < actionPoints
+                      ? "border-amber-500 bg-amber-600"
+                      : "border-border/50 bg-stone-900/60"
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+        )}
         {QUICK_ACTIONS.map((q) => (
           <button
             key={q.labelKey}

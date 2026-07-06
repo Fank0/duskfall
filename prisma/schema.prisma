@@ -184,6 +184,11 @@ model Player {
   // Taking damage forces a CON save (DC 10 or half damage, whichever is
   // higher). On failure, concentration breaks and the spell ends.
   concentratingOn  String   @default("")
+  // ===== Action Points (ОД) — BG3/DOS2 hybrid =====
+  // Pool of points spent on actions per turn. When ОД=0, turn passes to enemy.
+  // Base: 4 at L1-4, 5 at L5-10, 6 at L11-16, 7 at L17-20.
+  actionPoints     Int      @default(4)
+  maxActionPoints  Int      @default(4)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

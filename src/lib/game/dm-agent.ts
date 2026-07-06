@@ -900,6 +900,7 @@ async function resolvePlayerAction(
     equipment: { weapon: null, shield: null, head: null, chest: null, legs: null, hands: null, accessory1: null, accessory2: null },
     tempHp: 0, isDying: false, deathSaveSuccess: 0, deathSaveFailure: 0,
     actionUsed: false, bonusActionUsed: false, reactionUsed: false, concentratingOn: "",
+    actionPoints: 4, maxActionPoints: 4,
   };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
@@ -1763,12 +1764,16 @@ async function advanceTurn(
         continue; // skip to next combatant
       }
       // BG3: reset action economy at the start of the player's turn.
+      const { maxActionPointsForLevel } = await import("./state");
+      const maxAP = maxActionPointsForLevel(p.level);
       await db.player.update({
         where: { id: p.id },
         data: {
           actionUsed: false,
           bonusActionUsed: false,
           reactionUsed: false,
+          actionPoints: maxAP,
+          maxActionPoints: maxAP,
         },
       });
       return { ended: false, monsterTurns, nextTurnName: current.combatantName, nextTurnType: "player" };
@@ -2226,12 +2231,46 @@ export async function resolvePlayerMechanics(
     nextTurnType = nextTurnName ? "player" : null;
   }
 
-  // BG3 action economy: mark the player's Action as used when they perform a
-  // combat action (attack, spell, Dash, etc.). The pips reset at the start of
-  // their next turn (handled in advanceTurn).
-  if (wasCombatActive && !combatEnded && res.category === "combat") {
+  // BG3 action economy: mark the player's Action as used + deduct Action Points (ОД).
+  // ОД costs: attack=2, cantrip=1, spell L1-2=2, L3-4=3, L5+=4, other=1.
+  // When ОД reaches 0, auto-advance the turn to the enemy.
+  if (wasCombatActive && !combatEnded) {
     try {
-      await markActionUsed(roomId, actorName, "action");
+      // Deduct Action Points.
+      const actionLowerAP = playerAction.toLowerCase();
+      let apCost = 1; // default
+      if (actionLowerAP.includes("заклинан") || actionLowerAP.includes("cast") || actionLowerAP.includes("магическ")) apCost = 2;
+      if (actionLowerAP.includes("огненн") && actionLowerAP.includes("шар")) apCost = 3;
+      if (res.category === "combat") apCost = Math.max(apCost, 2);
+      if (res.category === "other" || res.category === "exploration") apCost = 1;
+
+      const pAfter = await db.player.findFirst({ where: { name: actorName, roomId } });
+      if (pAfter) {
+        const currentAP = pAfter.actionPoints ?? 4;
+        const newAP = Math.max(0, currentAP - apCost);
+        await db.player.update({
+          where: { id: pAfter.id },
+          data: { actionPoints: newAP },
+        });
+        invalidateSnapshotCache(roomId);
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: `⚡ ${actorName} тратит ${apCost} ОД (осталось ${newAP}/${pAfter.maxActionPoints}).` },
+        });
+        // Auto-advance turn when ОД reaches 0.
+        if (newAP <= 0) {
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `⏭️ ${actorName} израсходовал все ОД — ход переходит к противнику.` },
+          });
+          try {
+            const { advanceTurn } = await import("./state");
+            await advanceTurn(roomCode);
+          } catch {}
+        }
+      }
+      // Also mark legacy actionUsed flag.
+      if (res.category === "combat") {
+        await markActionUsed(roomId, actorName, "action");
+      }
     } catch {}
   }
 
