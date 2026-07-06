@@ -257,6 +257,10 @@ export interface PlayerState {
   spellSaveDC: number;
   /** D&D 5e class resources (Rage, Lay on Hands, Ki, etc.). */
   classResources: Record<string, { current: number; max: number }>;
+  /** D&D 5e movement (item #2): speed in feet, feet used this turn, Dash flag. */
+  speed: number;
+  movementUsed: number;
+  dashActive: boolean;
 }
 
 export interface MonsterState {

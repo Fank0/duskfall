@@ -76,6 +76,46 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ===== D&D 5e Movement Points (ОХ) — item #2 =====
+    // Each cell = 5 feet. Speed defaults to 30 ft (6 cells). Difficult terrain
+    // costs 2x (10 ft per cell). Dash doubles available movement for the turn.
+    // In combat, movement is tracked per-turn (movementUsed resets each turn).
+    // Out of combat, movement is unrestricted (exploration mode).
+    let movementBlocked = false;
+    let movementMsg = "";
+    if (room.combatActive) {
+      const FEET_PER_CELL = 5;
+      const dx = Math.abs(x - wasFromX);
+      const dy = Math.abs(y - wasFromY);
+      // Chebyshev distance = cells moved (diagonal counts as 1 cell in 5e variant).
+      const cellsMoved = Math.max(dx, dy);
+      // Check difficult terrain on each cell along the path (simplified: check
+      // destination + intermediate cells). For now, check the destination.
+      const terrainCells = await getTerrainCells(room.id);
+      const destDifficult = isDifficultTerrain(terrainCells, x, y);
+      const feetPerCell = destDifficult ? FEET_PER_CELL * 2 : FEET_PER_CELL;
+      const feetCost = cellsMoved * feetPerCell;
+      const maxSpeed = player.dashActive ? player.speed * 2 : player.speed;
+      const remaining = maxSpeed - player.movementUsed;
+      if (feetCost > remaining) {
+        movementBlocked = true;
+        movementMsg = `Недостаточно очков движения: нужно ${feetCost} футов, осталось ${remaining} (скорость ${maxSpeed} футов, использовано ${player.movementUsed}).`;
+      } else {
+        // Deduct movement points.
+        await db.player.update({
+          where: { id: player.id },
+          data: { movementUsed: player.movementUsed + feetCost },
+        });
+        movementMsg = destDifficult
+          ? `〰️ ${playerName} движется по сложной местности — ${feetCost} футов (×2). Осталось ${remaining - feetCost} футов.`
+          : `${playerName} перемещается на ${cellsMoved} кл. (${feetCost} футов). Осталось ${remaining - feetCost} футов.`;
+      }
+    }
+
+    if (movementBlocked) {
+      return NextResponse.json({ ok: false, error: movementMsg }, { status: 400 });
+    }
+
     // Move the token (clamped to grid bounds by moveToken).
     await moveToken(room.id, playerName, x, y, true);
     invalidateSnapshotCache(room.id);
@@ -83,7 +123,13 @@ export async function POST(req: NextRequest) {
     // D&D 5e: check if destination is difficult terrain (costs 2x movement).
     const terrainCells = await getTerrainCells(room.id);
     const destDifficult = isDifficultTerrain(terrainCells, x, y);
-    if (destDifficult) {
+
+    // Write the movement-point system message (replaces the old difficult-terrain message).
+    if (room.combatActive && movementMsg) {
+      await db.chatMessage.create({
+        data: { roomId: room.id, role: "system", speaker: "", round: room.round, content: movementMsg },
+      });
+    } else if (destDifficult && !room.combatActive) {
       await db.chatMessage.create({
         data: {
           roomId: room.id, role: "system", speaker: "", round: room.round,

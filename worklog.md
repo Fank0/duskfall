@@ -2958,3 +2958,33 @@ Stage Summary:
 - 4 more restoration items done this round (#7, #9, #11, #12). Total now: 8/15 items complete (#1, #4, #7, #8, #9, #11, #12, #15).
 - Remaining: #2 (Movement Points), #3 (Attunement), #5 (Subclass wiring), #6 (Combat maneuvers), #10 (Targeted Attack button), #13 (Upcasting), #14 (Special abilities).
 - Artifacts: updated `src/lib/game/dm-agent.ts` (concentration), `src/lib/game/state.ts` (A* movement + cover AC in DM context), `PROJECT_HANDOFF.md`.
+
+---
+Task ID: 12
+Agent: main (Z.ai Code)
+Task: Continue restoring lost mechanics — items #2 (Movement Points), #13 (Upcasting), #14 (Special abilities).
+
+Work Log:
+- Item #2 (Movement Points / ОХ):
+  - Added 3 schema fields to Player: `speed` (Int, default 30 ft), `movementUsed` (Int, default 0), `dashActive` (Boolean, default false). Ran `bun run db:push`.
+  - Added fields to PlayerState in types.ts + toPlayer mapper in state.ts.
+  - Updated move-token route: in combat, calculates feet cost = cellsMoved × 5 (×2 for difficult terrain). Checks against maxSpeed (speed × 2 if dashActive, else speed) minus movementUsed. Blocks movement if insufficient + returns 400. Deducts movementUsed on success. Out of combat = unrestricted.
+  - Added Dash action handling in resolvePlayerMechanics: if action text contains "рывок"/"dash"/"удваиваю скорость", sets dashActive=true + actionUsed=true, writes chat message, advances turn. No LLM call needed. Rejects if already dashed.
+  - Movement reset at turn start: advanceTurn now resets movementUsed=0 + dashActive=false alongside action economy.
+  - DM context now shows player speed + remaining movement + [Рывок активен] flag.
+- Item #13 (Upcasting — single-target):
+  - The `upcastSpellDamage` function already existed but was only applied to the AoE path. Added it to the single-target damage path: after cantrip scaling, checks if slotLevel > spellBaseLevel and applies upcastSpellDamage (+1 die per slot level above base). Dice log label now shows "усиление ячейкой ур.N" when upcast.
+- Item #14 (Special abilities — more keyword groups):
+  - Added 4 new keyword groups to the monster special-ability auto-execution in runMonsterTurn:
+    - **Poison** (яд/poison/токсин): CON save DC 12 or poisoned 3 rounds.
+    - **Frighten** (ужас/страх/frighten/panic): WIS save DC 12 or frightened 3 rounds.
+    - **Stun** (оглуш/stun/шок): CON save DC 14 or stunned 1 round.
+    - **Blind** (ослеп/blind/тьма+глаз): CON save DC 12 or blinded 3 rounds.
+  - Each writes a system chat message with the save result.
+- Lint clean (0 errors, 0 warnings).
+- PROJECT_HANDOFF.md updated: items #2, #13, #14 marked DONE. Total now 11/15 complete.
+
+Stage Summary:
+- 3 more restoration items done this round (#2, #13, #14). Total: 11/15 items complete.
+- Remaining: #3 (Attunement), #5 (Subclass wiring), #6 (Combat maneuvers), #10 (Targeted Attack button).
+- Artifacts: `prisma/schema.prisma` (speed/movementUsed/dashActive fields), `src/lib/game/types.ts` (PlayerState fields), `src/lib/game/state.ts` (toPlayer mapper + DM context movement info), `src/app/api/game/move-token/route.ts` (movement budget enforcement), `src/lib/game/dm-agent.ts` (Dash action + upcast single-target + 4 new ability keyword groups), `PROJECT_HANDOFF.md`.

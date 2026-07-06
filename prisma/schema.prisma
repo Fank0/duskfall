@@ -201,6 +201,13 @@ model Player {
   // Action Surge, Second Wind, Arcane Recovery.
   // e.g. {"rage":{"current":2,"max":2},"layOnHands":{"current":5,"max":5}}
   classResources      String   @default("{}")
+  // ===== Movement Points (ОХ) — item #2 =====
+  // D&D 5e: speed in feet (default 30 ft = 6 cells). movementUsed = feet
+  // spent this turn. dashActive = whether the player has used Dash this turn
+  // (doubles available movement). Reset at the start of each turn.
+  speed               Int      @default(30)  // feet per turn (30 ft = 6 cells)
+  movementUsed        Int      @default(0)   // feet spent this turn
+  dashActive          Boolean  @default(false) // Dash action used this turn
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

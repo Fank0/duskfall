@@ -38,7 +38,7 @@ Lint: bun run lint
 After a git merge, these features were lost and need recreation:
 
 1. **EnemyPanel.tsx** — component showing enemies + HP + abilities + loot during combat — ✅ DONE (restored this round)
-2. **Movement Points (ОХ)** — schema fields (speed, movementUsed, dashActive) + logic in move-token route
+2. **Movement Points (ОХ)** — schema fields (speed, movementUsed, dashActive) + logic in move-token route — ✅ DONE (schema fields added, move-token enforces feet budget, Dash action handled directly, movement reset at turn start)
 3. **Attunement system** — requiresAttunement/attuned fields + /api/game/attune route + UI
 4. **11 SRD conditions** — restrained, grappled, paralyzed, charmed, exhaustion, etc. (conditions.ts) — ✅ DONE (added 8: restrained, grappled, paralyzed, charmed, exhaustion, deafened, invisible; total now 18)
 5. **Subclass wiring** — resolveTalents merging subclass pool, UI in LevelUpModal
@@ -49,8 +49,8 @@ After a git merge, these features were lost and need recreation:
 10. **Targeted Attack button** — clicking "Атаковать" enters targeting mode
 11. **Fire glow removal** — removed radial gradient around torches on grid — ✅ DONE (no torch glow exists; terrain types don't include fire, no radial gradient on grid)
 12. **Cover fix** — apply cover AC bonus to player attacks too — ✅ DONE (DM context now shows effective AC = base + cover bonus for monsters)
-13. **Upcasting** — single-target spell damage scaling
-14. **Special abilities** — more monster keyword groups (poison, frighten, stun, blind)
+13. **Upcasting** — single-target spell damage scaling — ✅ DONE (upcastSpellDamage now applied to single-target path, not just AoE)
+14. **Special abilities** — more monster keyword groups (poison, frighten, stun, blind) — ✅ DONE (added 4 new keyword groups: poison→poisoned, frighten→frightened, stun→stunned, blind→blinded, each with CON/WIS save)
 15. **weakened condition** — added to ATTACKER_DISADV_CONDS — ✅ DONE (weakened + restrained + paralyzed + exhaustion added)
 
 ### Key Files

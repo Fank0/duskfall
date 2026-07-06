@@ -122,6 +122,9 @@ function toPlayer(p: any): PlayerState {
     passivePerception: p.passivePerception ?? 10,
     spellSaveDC: p.spellSaveDC ?? 12,
     classResources: p.classResources ? JSON.parse(p.classResources) : {},
+    speed: p.speed ?? 30,
+    movementUsed: p.movementUsed ?? 0,
+    dashActive: p.dashActive ?? false,
   };
 }
 
@@ -584,7 +587,7 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       if (parts.length > 0) resourceInfo = ` | Ресурсы: ${parts.join(", ")}`;
     }
     lines.push(
-      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${resourceInfo}${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${resourceInfo}${slotInfo}${concInfo}${actionInfo} | Скорость ${p.speed ?? 30} футов${(p.movementUsed ?? 0) > 0 ? ` (использовано ${p.movementUsed}, осталось ${Math.max(0, (p.dashActive ? (p.speed ?? 30) * 2 : (p.speed ?? 30)) - (p.movementUsed ?? 0))})` : ""}${p.dashActive ? " [Рывок активен]" : ""} | Позиция (${p.posX},${p.posY})`
     );
     // Backstory (player-authored): let the DM weave the hero's history into
     // the narrative — call back to NPCs, places, oaths, regrets.

@@ -1322,13 +1322,27 @@ async function resolvePlayerAction(
       // D&D 5e: scale cantrip damage based on actor's level.
       // Fire Bolt: 1d10 at L1-4, 2d10 at L5-10, 3d10 at L11-16, 4d10 at L17+.
       const actorLevel = actor?.level ?? 1;
-      const scaledNotation = scaleCantripDamage(branch.monsterDamage.notation, actorLevel);
+      const cantripScaled = scaleCantripDamage(branch.monsterDamage.notation, actorLevel);
+      // D&D 5e: upcast damage scaling (item #13) — if the spell was cast with a
+      // higher slot, scale the damage dice (+1 die per slot level above base).
+      const slotLevel = plan.slotLevel ?? 0;
+      const spellBaseLevel = inferSpellBaseLevel(actor, branch.monsterDamage.notation);
+      const scaledNotation = (spellBaseLevel > 0 && slotLevel > spellBaseLevel)
+        ? upcastSpellDamage(cantripScaled, spellBaseLevel, slotLevel)
+        : cantripScaled;
       const dmg = rollDice(scaledNotation);
       // Talent: bonus flat damage + vampiric Heal.
       const bonus = damageBonusFromTalents(actor);
       damageDealtToMonster = dmg.total + bonus;
+      // Build a readable label for the dice log.
+      const scalingNote = scaledNotation !== branch.monsterDamage.notation
+        ? (slotLevel > spellBaseLevel && spellBaseLevel > 0
+            ? ` (${scaledNotation} — усиление ячейкой ур.${slotLevel})`
+            : ` (${scaledNotation} — масштабирование заговора)`)
+        : "";
+      const talentNote = bonus ? ` (+${bonus} талант)` : "";
       await logDiceRoll(roomId, round, actorName, {
-        label: `Урон по: ${m.name}` + (scaledNotation !== branch.monsterDamage.notation ? ` (${scaledNotation} — масштабирование заговора)` : "") + (bonus ? ` (+${bonus} талант)` : ""),
+        label: `Урон по: ${m.name}${scalingNote}${talentNote}`,
         notation: scaledNotation + (bonus ? `+${bonus}` : ""),
         modifier: bonus, result: dmg.raw, total: damageDealtToMonster, purpose: "player_damage",
       });
@@ -1832,6 +1846,51 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
           data: { roomId, role: "system", speaker: "", round, content: `🔥 ${m.name} использует.specialAbility: ${aoeDmg.total} урона по ${targetName}!` },
         });
       }
+      // ===== Item #14: more monster keyword groups =====
+      // Poison: apply poisoned condition (CON save DC 12 or poisoned 3 rounds).
+      if (ability.includes("яд") || ability.includes("poison") || ability.includes("токсин")) {
+        const saveMod = abilityModifier((target as any).con ?? 10);
+        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        if (saveRoll < 12) {
+          await applyCondition(roomId, targetName, "player", "poisoned", 3, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `🤢 ${m.name} отравляет ${targetName}! (спасбросок ${saveRoll} vs DC 12)` },
+          });
+        }
+      }
+      // Frighten: apply frightened condition (WIS save DC 12 or frightened 3 rounds).
+      if (ability.includes("ужас") || ability.includes("страх") || ability.includes("frighten") || ability.includes("panic")) {
+        const saveMod = abilityModifier((target as any).wis ?? 10);
+        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        if (saveRoll < 12) {
+          await applyCondition(roomId, targetName, "player", "frightened", 3, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `😨 ${m.name} вселяет ужас в ${targetName}! (спасбросок ${saveRoll} vs DC 12)` },
+          });
+        }
+      }
+      // Stun: apply stunned condition (CON save DC 14 or stunned 1 round).
+      if (ability.includes("оглуш") || ability.includes("stun") || ability.includes("шок")) {
+        const saveMod = abilityModifier((target as any).con ?? 10);
+        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        if (saveRoll < 14) {
+          await applyCondition(roomId, targetName, "player", "stunned", 1, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `💫 ${m.name} оглушает ${targetName}! (спасбросок ${saveRoll} vs DC 14)` },
+          });
+        }
+      }
+      // Blind: apply blinded condition (CON save DC 12 or blinded 3 rounds).
+      if (ability.includes("ослеп") || ability.includes("blind") || ability.includes("тьма") && ability.includes("глаз")) {
+        const saveMod = abilityModifier((target as any).con ?? 10);
+        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        if (saveRoll < 12) {
+          await applyCondition(roomId, targetName, "player", "blinded", 3, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `🙈 ${m.name} ослепляет ${targetName}! (спасбросок ${saveRoll} vs DC 12)` },
+          });
+        }
+      }
     }
   } // end multiattack loop
 
@@ -1997,6 +2056,9 @@ async function advanceTurn(
           actionUsed: false,
           bonusActionUsed: false,
           reactionUsed: false,
+          // D&D 5e: reset movement points (item #2).
+          movementUsed: 0,
+          dashActive: false,
         },
       });
       return { ended: false, monsterTurns, nextTurnName: current.combatantName, nextTurnType: "player" };
@@ -2212,6 +2274,77 @@ export async function resolvePlayerMechanics(
     introImagePrompt = intro.imagePrompt;
     await db.room.update({ where: { id: roomId }, data: { introNeeded: false } });
     invalidateSnapshotCache(roomId);
+  }
+
+  // ===== D&D 5e Movement: Dash action (item #2) =====
+  // If the player's action is a Dash, handle it directly without an LLM call:
+  // set dashActive=true (doubles movement for the turn) + consume the action.
+  const actionLower = playerAction.toLowerCase().trim();
+  const isDashAction = wasCombatActive && (
+    actionLower.includes("рывок") ||
+    actionLower.includes("dash") ||
+    (actionLower.includes("удваиваю скорость") && actionLower.includes("передвижен"))
+  );
+  if (isDashAction) {
+    if (actor.dashActive) {
+      // Already dashed this turn — reject.
+      await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+      await db.chatMessage.create({ data: { roomId, role: "dm", speaker: "", round, content: `${actorName} уже использовал Рывок в этом ходу.` } });
+      const snapDash = await getSnapshot(roomCode);
+      return {
+        actorName,
+        playerRolls: [], monsterRolls: [],
+        outcome: "failure",
+        combatStarted: false, combatEnded: false,
+        damageDealtToMonster: 0, monsterThatDied: null,
+        damageDealtToPlayer: 0, damagedPlayer: null,
+        healingToPlayer: 0, healedPlayer: null,
+        inventoryChanges: [], goldChange: 0,
+        imagePrompt: "", imageNeeded: false,
+        branchNarrative: `${actorName} уже использовал Рывок в этом ходу.`,
+        playerAction, location: snapDash?.location ?? "",
+        nextTurn: wasCombatActive ? null : actorName,
+        nextTurnType: wasCombatActive ? null : "player",
+        round,
+        statusEffectNotes: [], lootNotes: [],
+      } as MechanicsResult;
+    }
+    // Set dashActive + consume the action.
+    await db.player.update({
+      where: { id: actor.id },
+      data: { dashActive: true, actionUsed: true },
+    });
+    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+    await db.chatMessage.create({
+      data: { roomId, role: "dm", speaker: "", round,
+        content: `💨 ${actorName} использует Рывок! Скорость передвижения удвоена до ${actor.speed * 2} футов в этом ходу.` },
+    });
+    // Advance the turn (Dash consumes the action but not the bonus action).
+    let nextTurnName: string | null = null;
+    let nextTurnType: "player" | "monster" | null = null;
+    let combatEnded = false;
+    const adv = await advanceTurn(roomCode, roomId);
+    if (adv.ended) combatEnded = true;
+    nextTurnName = adv.nextTurnName;
+    nextTurnType = adv.nextTurnType;
+    const monsterRolls = adv.monsterTurns.flatMap((mt) => mt.result.rolls);
+    const snapDash = await getSnapshot(roomCode);
+    return {
+      actorName,
+      playerRolls: [], monsterRolls,
+      outcome: "success",
+      combatStarted: false, combatEnded,
+      damageDealtToMonster: 0, monsterThatDied: null,
+      damageDealtToPlayer: 0, damagedPlayer: null,
+      healingToPlayer: 0, healedPlayer: null,
+      inventoryChanges: [], goldChange: 0,
+      imagePrompt: "", imageNeeded: false,
+      branchNarrative: `${actorName} использует Рывок! Скорость передвижения удвоена.`,
+      playerAction, location: snapDash?.location ?? "",
+      nextTurn: nextTurnName, nextTurnType,
+      round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+      statusEffectNotes: [], lootNotes: [],
+    } as MechanicsResult;
   }
 
   // 1. Plan the mechanics first.
