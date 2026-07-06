@@ -12,11 +12,7 @@ import {
   Save,
   User as UserIcon,
   Loader2,
-  Sparkles,
-  Swords,
-  Languages,
   Flame,
-  type LucideIcon,
 } from "lucide-react";
 import { CharacterCreator } from "./CharacterCreator";
 import { AuthScreen, type AuthenticatedAccount } from "./AuthScreen";
@@ -253,14 +249,6 @@ export function Lobby({
           </CardContent>
         </Card>
 
-        {/* ===== Feature badges ===== */}
-        <div className="mt-4 grid w-full max-w-md grid-cols-2 gap-2 sm:grid-cols-4">
-          <FeatureBadge icon={Sparkles} label="AI DM" />
-          <FeatureBadge icon={Swords} label="Tactical Combat" />
-          <FeatureBadge icon={Users} label="Multiplayer" />
-          <FeatureBadge icon={Languages} label="6 Languages" />
-        </div>
-
         {/* ===== Footer hint ===== */}
         <div className="mt-6 flex w-full max-w-md flex-col items-center gap-2.5">
           <div className="flex w-full items-center gap-2">
@@ -308,22 +296,3 @@ export function Lobby({
   );
 }
 
-/** Small decorative highlight badge shown below the gather-party card. */
-function FeatureBadge({
-  icon: Icon,
-  label,
-}: {
-  icon: LucideIcon;
-  label: string;
-}) {
-  return (
-    <div className="group flex flex-col items-center gap-1.5 rounded-lg border border-border/50 bg-stone-900/40 px-2 py-2.5 text-center transition-all hover:-translate-y-0.5 hover:border-amber-700/40 hover:bg-stone-900/70 hover:shadow-[0_6px_18px_-8px_oklch(0.7_0.15_75/0.4)]">
-      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-700/30 bg-amber-950/30 text-amber-400/80 transition-colors group-hover:border-amber-600/50 group-hover:text-amber-300">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/80 transition-colors group-hover:text-amber-200/80">
-        {label}
-      </span>
-    </div>
-  );
-}
