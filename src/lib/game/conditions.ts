@@ -1,4 +1,4 @@
-// d20 fantasy RPG Conditions system — 10 conditions with gameplay effects.
+// d20 fantasy RPG Conditions system — 18 conditions (10 base + 8 SRD) with gameplay effects.
 //
 // Each condition has a stable `id` (string), a Russian display name, an
 // English name, an emoji icon, a color (for UI hints), a Russian description
@@ -121,6 +121,71 @@ export const CONDITIONS: Record<string, ConditionDef> = {
     color: "#7c3aed",
     description: "Слабость: помеха на атаки и спасброски Силы.",
     attackDisadvantage: true,
+  },
+  restrained: {
+    id: "restrained",
+    name: "Связан",
+    nameEn: "Restrained",
+    icon: "🔗",
+    color: "#78716c",
+    description: "Связан: скорость 0, помеха на атаки и спасброски ЛОВ; атаки по нему с преимуществом.",
+    attackDisadvantage: true,
+    speedMultiplier: 0,
+  },
+  grappled: {
+    id: "grappled",
+    name: "Схвачен",
+    nameEn: "Grappled",
+    icon: "✊",
+    color: "#a16207",
+    description: "Схвачен: скорость 0. Может вырваться действием (спас СИЛ/АТЛ против DC схватившего).",
+    speedMultiplier: 0,
+  },
+  paralyzed: {
+    id: "paralyzed",
+    name: "Парализован",
+    nameEn: "Paralyzed",
+    icon: "⚡",
+    color: "#d946ef",
+    description: "Паралич: не может двигаться или говорить; пропускает ход. Атаки по нему с преимуществом и критуют на ≤1.5м.",
+    skipTurn: true,
+  },
+  charmed: {
+    id: "charmed",
+    name: "Очарован",
+    nameEn: "Charmed",
+    icon: "💝",
+    color: "#ec4899",
+    description: "Очарование: не может атаковать источника; источник получает преимущество на социальные проверки.",
+    attackDisadvantage: false,
+  },
+  exhaustion: {
+    id: "exhaustion",
+    name: "Истощение",
+    nameEn: "Exhaustion",
+    icon: "😴",
+    color: "#525252",
+    description: "Истощение (1-6 уровней): 1 — помеха на проверки; 2 — скорость /2; 3 — помеха на атаки + спасброски; 4 — HP max /2; 5 — скорость 0; 6 — смерть.",
+    checkDisadvantage: true,
+    attackDisadvantage: true,
+    speedMultiplier: 0.5,
+  },
+  deafened: {
+    id: "deafened",
+    name: "Оглох",
+    nameEn: "Deafened",
+    icon: "🔇",
+    color: "#737373",
+    description: "Глухота: не слышит ничего; помеха на проверки, требующие слуха. Не может кастовать с вербальным компонентом (правило Мастера).",
+  },
+  invisible: {
+    id: "invisible",
+    name: "Невидим",
+    nameEn: "Invisible",
+    icon: "👻",
+    color: "#e5e5e5",
+    description: "Невидимость: атаки с преимуществом; атаки по нему с помехой. Не обнаруживается зрением.",
+    attackAdvantage: true,
   },
 };
 

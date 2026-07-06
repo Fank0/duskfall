@@ -37,21 +37,21 @@ Lint: bun run lint
 ### What's Lost / Needs Restoration
 After a git merge, these features were lost and need recreation:
 
-1. **EnemyPanel.tsx** — component showing enemies + HP + abilities + loot during combat
+1. **EnemyPanel.tsx** — component showing enemies + HP + abilities + loot during combat — ✅ DONE (restored this round)
 2. **Movement Points (ОХ)** — schema fields (speed, movementUsed, dashActive) + logic in move-token route
 3. **Attunement system** — requiresAttunement/attuned fields + /api/game/attune route + UI
-4. **11 SRD conditions** — restrained, grappled, paralyzed, charmed, exhaustion, etc. (conditions.ts)
+4. **11 SRD conditions** — restrained, grappled, paralyzed, charmed, exhaustion, etc. (conditions.ts) — ✅ DONE (added 8: restrained, grappled, paralyzed, charmed, exhaustion, deafened, invisible; total now 18)
 5. **Subclass wiring** — resolveTalents merging subclass pool, UI in LevelUpModal
 6. **Combat maneuvers** — two-weapon fighting, grapple, shove (dm-agent.ts)
 7. **Concentration fix** — setConcentration called on spell cast (dm-agent.ts)
-8. **XP table fix** — SRD values (300/900/2700 instead of 200/600/1200)
+8. **XP table fix** — SRD values (300/900/2700 instead of 200/600/1200) — ✅ DONE (fixed to full SRD table L1→L17)
 9. **Monster A* movement** — moveMonsterTowardNearestPlayer using pathfinding
 10. **Targeted Attack button** — clicking "Атаковать" enters targeting mode
 11. **Fire glow removal** — removed radial gradient around torches on grid
 12. **Cover fix** — apply cover AC bonus to player attacks too
 13. **Upcasting** — single-target spell damage scaling
 14. **Special abilities** — more monster keyword groups (poison, frighten, stun, blind)
-15. **weakened condition** — added to ATTACKER_DISADV_CONDS
+15. **weakened condition** — added to ATTACKER_DISADV_CONDS — ✅ DONE (weakened + restrained + paralyzed + exhaustion added)
 
 ### Key Files
 - `src/lib/game/dm-agent.ts` — DM engine (~2300 lines)

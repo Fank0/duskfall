@@ -464,8 +464,9 @@ NPC (неигровые персонажи):
 - "advantage" — герой кидает 2d20 и берёт больший (атака из засады, со спины, по оглушённому/ослеплённому врагу, благоприятная позиция).
 - "disadvantage" — кидает 2d20 и берёт меньший (атака в темноте без тёмного зрения, сквозь преграду, в движении, дальнобойная атака в ближнем бою).
 - "none" или отсутствие поля — обычный бросок 1d20.
-Состояния тоже влияют: poisoned/blinded/prone/frightened у атакующего → помеха; blinded/prone/stunned у цели → преимущество атакующему. Если есть и то, и другое — они взаимно сокращаются и бросок обычный.
+Состояния тоже влияют: poisoned/blinded/prone/frightened/restrained/paralyzed/weakened/exhaustion у атакующего → помеха; blinded/prone/stunned/paralyzed/restrained у цели → преимущество атакующему. Если есть и то, и другое — они взаимно сокращаются и бросок обычный.
 Бонус blessed (+1d4 к атакам и спасброскам) применяется автоматически — НЕ задавай advantage для blessed.
+Доступные состояния (для plannedConditions): poisoned, stunned, frightened, burning, slowed, blinded, prone, blessed, shielded, weakened, restrained, grappled, paralyzed, charmed, exhaustion, deafened, invisible.
 
 ПОЗИЦИОНИРОВАНИЕ (Фланги и высокое положение):
 Бэкенд АВТОМАТИЧЕСКИ проверяет позицию атакующего и при возможности даёт преимущество — НЕ нужно задавать "advantage" для этих случаев:
@@ -1029,10 +1030,10 @@ async function resolvePlayerAction(
     .filter((c) => c.targetName === actorName)
     .map((c) => c.condition);
   // Attacker with these conditions rolls attacks at disadvantage.
-  const ATTACKER_DISADV_CONDS = ["poisoned", "blinded", "prone", "frightened"];
+  const ATTACKER_DISADV_CONDS = ["poisoned", "blinded", "prone", "frightened", "weakened", "restrained", "paralyzed", "exhaustion"];
   const attackerHasDisadv = attackerCondIds.some((t) => ATTACKER_DISADV_CONDS.includes(t));
   // Target with these conditions gives the attacker advantage.
-  const TARGET_ADV_CONDS = ["blinded", "prone", "stunned"];
+  const TARGET_ADV_CONDS = ["blinded", "prone", "stunned", "paralyzed", "restrained"];
   // Blessed condition grants +1d4 to attack rolls and saves (not advantage).
   const blessedDice = attackBonusDice(attackerCondIds); // 4 for bless, 0 otherwise
   // Identify the attack target up front (used for target-condition lookup).
