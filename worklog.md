@@ -2988,3 +2988,30 @@ Stage Summary:
 - 3 more restoration items done this round (#2, #13, #14). Total: 11/15 items complete.
 - Remaining: #3 (Attunement), #5 (Subclass wiring), #6 (Combat maneuvers), #10 (Targeted Attack button).
 - Artifacts: `prisma/schema.prisma` (speed/movementUsed/dashActive fields), `src/lib/game/types.ts` (PlayerState fields), `src/lib/game/state.ts` (toPlayer mapper + DM context movement info), `src/app/api/game/move-token/route.ts` (movement budget enforcement), `src/lib/game/dm-agent.ts` (Dash action + upcast single-target + 4 new ability keyword groups), `PROJECT_HANDOFF.md`.
+
+---
+Task ID: 13
+Agent: main (Z.ai Code) — manual continuation (cron not firing)
+Task: Items #3 (Attunement) + #10 (Targeted Attack button).
+
+Work Log:
+- Item #3 (Attunement):
+  - Added `requiresAttunement?: boolean` to ItemEntry interface in item-database.ts.
+  - Marked 8 veryrare items as requiring attunement: staff_archmage, dragon_scale_mail, vorpal_sword, holy_avenger, cloak_invisibility, ring_three_wishes, sun_blade, armor_invulnerability.
+  - Added `attuned Boolean @default(false)` to InventoryItem model in schema.prisma. Ran `bun run db:push`.
+  - Added `attuned: boolean` to InventoryItemState in types.ts + toInventory mapper in state.ts.
+  - Created POST /api/game/attune route: validates room/player/item, checks requiresAttunement via findItemByName, enforces 3-item attunement cap, toggles attuned field, writes system chat message ("🔮 X настраивается на «Y»..."), returns updated snapshot.
+- Item #10 (Targeted Attack button):
+  - Added `onAttackTargeting?` + `isTargetingActive?` props to ChatPanel.
+  - The "Атаковать" quick-action button now enters targeting mode when combat is active + onAttackTargeting is provided. Button label changes to "Выберите цель…" with red pulse animation while targeting is active.
+  - Added `requestAttackTargeting` callback in page.tsx that sets a synthetic `{ kind: "attack" }` pseudo-ability + enters ability-targeting mode.
+  - Updated `handleMonsterTargetClick` to detect the attack pseudo-ability and send "Я атакую <monster name> своим оружием!" instead of the generic attack text.
+  - Passed `onAttackTargeting` + `isTargetingActive` to the ChatPanel instance.
+- Fixed a syntax error in item-database.ts where the Python script had placed `requiresAttunement: true` outside the object literal. Used sed to move it inside.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+- PROJECT_HANDOFF.md updated: items #3, #10 marked DONE. Total now 13/15 complete.
+
+Stage Summary:
+- 2 more restoration items done this round (#3, #10). Total: 13/15 items complete.
+- Remaining: #5 (Subclass wiring), #6 (Combat maneuvers).
+- Artifacts: `prisma/schema.prisma` (attuned field), `src/lib/game/item-database.ts` (requiresAttunement field + 8 items marked), `src/lib/game/types.ts` (attuned on InventoryItemState), `src/lib/game/state.ts` (toInventory mapper), `src/app/api/game/attune/route.ts` (new), `src/components/dnd/ChatPanel.tsx` (attack targeting props + button), `src/app/page.tsx` (requestAttackTargeting + handleMonsterTargetClick attack branch), `PROJECT_HANDOFF.md`.

@@ -39,14 +39,13 @@ After a git merge, these features were lost and need recreation:
 
 1. **EnemyPanel.tsx** — component showing enemies + HP + abilities + loot during combat — ✅ DONE (restored this round)
 2. **Movement Points (ОХ)** — schema fields (speed, movementUsed, dashActive) + logic in move-token route — ✅ DONE (schema fields added, move-token enforces feet budget, Dash action handled directly, movement reset at turn start)
-3. **Attunement system** — requiresAttunement/attuned fields + /api/game/attune route + UI
-4. **11 SRD conditions** — restrained, grappled, paralyzed, charmed, exhaustion, etc. (conditions.ts) — ✅ DONE (added 8: restrained, grappled, paralyzed, charmed, exhaustion, deafened, invisible; total now 18)
+3. **Attunement system** — requiresAttunement/attuned fields + /api/game/attune route + UI — ✅ DONE (requiresAttunement field on ItemEntry, 8 veryrare items marked, attuned field on InventoryItem, POST /api/game/attune route with 3-item cap, toInventory mapper updated)
 5. **Subclass wiring** — resolveTalents merging subclass pool, UI in LevelUpModal
 6. **Combat maneuvers** — two-weapon fighting, grapple, shove (dm-agent.ts)
 7. **Concentration fix** — setConcentration called on spell cast (dm-agent.ts) — ✅ DONE (detects concentration spells via duration field, calls setConcentration + writes system chat)
 8. **XP table fix** — SRD values (300/900/2700 instead of 200/600/1200) — ✅ DONE (fixed to full SRD table L1→L17)
 9. **Monster A* movement** — moveMonsterTowardNearestPlayer using pathfinding — ✅ DONE (A* via findPath, falls back to greedy on failure, avoids other monsters/players as obstacles)
-10. **Targeted Attack button** — clicking "Атаковать" enters targeting mode
+10. **Targeted Attack button** — clicking "Атаковать" enters targeting mode — ✅ DONE (ChatPanel attack button enters ability-targeting mode with synthetic attack pseudo-ability; player clicks a monster on the grid; sends "Я атакую <monster name> своим оружием!" action)
 11. **Fire glow removal** — removed radial gradient around torches on grid — ✅ DONE (no torch glow exists; terrain types don't include fire, no radial gradient on grid)
 12. **Cover fix** — apply cover AC bonus to player attacks too — ✅ DONE (DM context now shows effective AC = base + cover bonus for monsters)
 13. **Upcasting** — single-target spell damage scaling — ✅ DONE (upcastSpellDamage now applied to single-target path, not just AoE)

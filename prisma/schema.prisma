@@ -268,6 +268,8 @@ model InventoryItem {
   statBonus   String   @default("")
   /// Damage notation for weapons/scrolls (e.g. "1d8+3").
   damageNotation String @default("")
+  /// D&D 5e: true if the player has attuned to this magic item (requires short-rest ritual; max 3 per character).
+  attuned        Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
 

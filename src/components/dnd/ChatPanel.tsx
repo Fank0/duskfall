@@ -36,6 +36,12 @@ interface ChatPanelProps {
   currentTurnName: string | null;
   onSend: (text: string) => void;
   onRest?: (restType: "short" | "long") => void;
+  /** D&D 5e: when provided, the "Атаковать" button enters targeting mode
+   * (player clicks a monster on the grid) instead of sending a generic
+   * attack action. Item #10. */
+  onAttackTargeting?: () => void;
+  /** Whether targeting mode is currently active (disables the attack button). */
+  isTargetingActive?: boolean;
   /** Room code — required for the "Показать ещё" paginated loader. */
   roomCode?: string;
   /**
@@ -65,6 +71,8 @@ export const ChatPanel = memo(function ChatPanel({
   currentTurnName,
   onSend,
   onRest,
+  onAttackTargeting,
+  isTargetingActive = false,
   roomCode,
   ttsEnabled = false,
   actionPoints,
@@ -521,25 +529,43 @@ export const ChatPanel = memo(function ChatPanel({
             </div>
           </div>
         )}
-        {QUICK_ACTIONS.map((q) => (
+        {QUICK_ACTIONS.map((q) => {
+          // D&D 5e: the Attack button enters targeting mode (item #10) when
+          // onAttackTargeting is provided + combat is active + there are
+          // revealed monsters. Otherwise it sends a generic attack action.
+          const isAttackButton = q.labelKey === "actions.attack";
+          const useTargeting = isAttackButton && onAttackTargeting && combatActive && !isTargetingActive;
+          return (
           <button
             key={q.labelKey}
             type="button"
-            disabled={!canAct}
+            disabled={!canAct || (isAttackButton && isTargetingActive)}
             onClick={() => {
               try {
                 if (q.sfx === "ability") sfxAbilityUse();
                 else if (q.sfx === "move") sfxMove();
                 else sfxClick();
               } catch {}
-              submit(tt(q.labelKey + "_text") || q.text);
+              if (useTargeting) {
+                onAttackTargeting!();
+              } else {
+                submit(tt(q.labelKey + "_text") || q.text);
+              }
             }}
-            className="flex items-center gap-1 rounded-full border border-border/60 bg-stone-900/50 px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            className={cn(
+              "flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+              isAttackButton && isTargetingActive
+                ? "border-red-500/70 bg-red-950/40 text-red-300 animate-pulse"
+                : isAttackButton && useTargeting
+                  ? "border-primary/60 bg-primary/15 text-primary hover:bg-primary/25"
+                  : "border-border/60 bg-stone-900/50 text-muted-foreground hover:border-primary/60 hover:text-foreground"
+            )}
           >
             <q.icon className="h-3 w-3" />
-            {tt(q.labelKey)}
+            {isAttackButton && isTargetingActive ? "Выберите цель…" : tt(q.labelKey)}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* Input */}

@@ -179,6 +179,7 @@ function toInventory(i: any): InventoryItemState {
     acBonus: i.acBonus ?? 0,
     statBonus,
     damageNotation: i.damageNotation ?? "",
+    attuned: i.attuned ?? false,
   };
 }
 

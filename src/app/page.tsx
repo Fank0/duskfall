@@ -881,6 +881,15 @@ export default function Home() {
     try { sfxTargetCancel(); } catch {}
   }, []);
 
+  // D&D 5e: Attack button targeting mode (item #10). Enters ability-targeting
+  // mode with a synthetic "weapon attack" pseudo-ability so the player can
+  // click a specific monster on the grid.
+  const requestAttackTargeting = useCallback(() => {
+    setTargetingAbility({ kind: "attack" } as any);
+    setTargetingMode("ability");
+    try { sfxTargetSelect(); } catch {}
+  }, []);
+
   // When the player clicks a monster token while in ability-targeting mode,
   // build the action text with that monster as the explicit target and send
   // it through the normal SSE pipeline.
@@ -888,6 +897,13 @@ export default function Home() {
     if (!targetingAbility || (targetingMode !== "ability" && targetingMode !== "item") || !snapshot) return;
     const monster = snapshot.monsters.find((m) => m.id === monsterId);
     if (!monster) return;
+    // D&D 5e: Attack button targeting (item #10) — send a weapon-attack
+    // action targeting the clicked monster by name.
+    if ((targetingAbility as any)?.kind === "attack") {
+      sendAction(`Я атакую ${monster.name} своим оружием!`);
+      cancelTargeting();
+      return;
+    }
     const ctx: QuickActionContext = {
       combatActive: true,
       nearestMonsterName: monster.name,
@@ -1382,6 +1398,8 @@ export default function Home() {
               currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
               onSend={sendAction}
               onRest={handleRest}
+              onAttackTargeting={requestAttackTargeting}
+              isTargetingActive={targetingMode !== "none"}
               roomCode={session.roomCode}
               ttsEnabled={settings.ttsEnabled}
               actionPoints={you?.actionPoints}

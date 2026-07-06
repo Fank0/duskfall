@@ -78,6 +78,8 @@ export interface ItemEntry {
   setId?: string;
   /** Optional curse text — for legendary artifacts. Rendered in red. */
   curse?: string;
+  /** D&D 5e: requires attunement (short-rest ritual to bond; max 3 attuned items per character). */
+  requiresAttunement?: boolean;
 }
 
 // ============================================================
@@ -236,14 +238,14 @@ const RARE_ITEMS: ItemEntry[] = [
 // VERY RARE (8) — powerful magic items, named weapons, dragon-scale armor.
 // ============================================================
 const VERYRARE_ITEMS: ItemEntry[] = [
-  { id: "staff_archmage", name: "Посох архимага", nameEn: "Staff of Archmage", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "1d6+3", charges: 50, description: "Посох совета архимагов. 50 зарядов: Огненный шар (8d6), Молния (8d6),Конус холода (8d8), Стена огня. +1 к атакам заклинаниями. 1d6+3 дробящего урона.", value: 25000, weight: 4 },
-  { id: "dragon_scale_mail", name: "Драконий чешуйчатый доспех", nameEn: "Dragon Scale Mail", type: "armor", rarity: "veryrare", equipSlot: "chest", acBonus: 5, enchantment: "fire", description: "Броня из настоящей драконьей чешуи. +5 к Классу Доспеха. Сопротивление стихии дракона. Преимущество против страха драконов.", value: 5000, weight: 25 },
-  { id: "vorpal_sword", name: "Вороновой меч", nameEn: "Vorpal Sword", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "2d6+3", description: "Идеально заточенный клинок. 2d6+3 рубящего урона. При натуральной 20 на атаке — отрубает голову (мгибель, если нет иммунитета).", value: 10000, weight: 6 },
-  { id: "holy_avenger", name: "Священный мститель", nameEn: "Holy Avenger", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "1d8+3", enchantment: "holy", description: "Длань паладина. 1d8+3 рубящего + 2d6 урона святым против зла. Аура +5 к спасброскам союзникам в 10 футах. Рассеивает тьму.", value: 25000, weight: 3 },
-  { id: "cloak_invisibility", name: "Плащ невидимости", nameEn: "Cloak of Invisibility", type: "cloak", rarity: "veryrare", equipSlot: "accessory", description: "Действие: стать невидимым на 2 часа (можно делить между использованиями). Заканчивается при атаке или заклинании.", value: 8000, weight: 1 },
-  { id: "ring_three_wishes", name: "Кольцо трёх желаний", nameEn: "Ring of Three Wishes", type: "ring", rarity: "veryrare", equipSlot: "accessory", charges: 3, description: "Мифическое кольцо с сапфиром. 3 заряда — каждое тратится на заклинание «Желание» (исполняет почти любое). Не восполняется.", value: 30000, weight: 0 },
-  { id: "sun_blade", name: "Солнечный клинок", nameEn: "Sun Blade", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "2d6+3", enchantment: "holy", description: "Эфес, из которого по желанию появляется лезвие чистого света. 2d6+3 рубящего + 1d8 урона святым. Светит как факел. Преимущество против нежити.", value: 12000, weight: 3 },
-  { id: "armor_invulnerability", name: "Броня неуязвимости", nameEn: "Armor of Invulnerability", type: "armor", rarity: "veryrare", equipSlot: "chest", acBonus: 4, description: "Тяжёлые латы с рунами неуязвимости. +4 к Классу Доспеха. Действие: иммунитет к немагическому урону на 10 минут (1 раз в день).", value: 12000, weight: 65 },
+  { id: "staff_archmage", name: "Посох архимага", nameEn: "Staff of Archmage", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "1d6+3", charges: 50, description: "Посох совета архимагов. 50 зарядов: Огненный шар (8d6), Молния (8d6),Конус холода (8d8), Стена огня. +1 к атакам заклинаниями. 1d6+3 дробящего урона.", value: 25000, weight: 4 , requiresAttunement: true },
+  { id: "dragon_scale_mail", name: "Драконий чешуйчатый доспех", nameEn: "Dragon Scale Mail", type: "armor", rarity: "veryrare", equipSlot: "chest", acBonus: 5, enchantment: "fire", description: "Броня из настоящей драконьей чешуи. +5 к Классу Доспеха. Сопротивление стихии дракона. Преимущество против страха драконов.", value: 5000, weight: 25 , requiresAttunement: true },
+  { id: "vorpal_sword", name: "Вороновой меч", nameEn: "Vorpal Sword", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "2d6+3", description: "Идеально заточенный клинок. 2d6+3 рубящего урона. При натуральной 20 на атаке — отрубает голову (мгибель, если нет иммунитета).", value: 10000, weight: 6 , requiresAttunement: true },
+  { id: "holy_avenger", name: "Священный мститель", nameEn: "Holy Avenger", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "1d8+3", enchantment: "holy", description: "Длань паладина. 1d8+3 рубящего + 2d6 урона святым против зла. Аура +5 к спасброскам союзникам в 10 футах. Рассеивает тьму.", value: 25000, weight: 3 , requiresAttunement: true },
+  { id: "cloak_invisibility", name: "Плащ невидимости", nameEn: "Cloak of Invisibility", type: "cloak", rarity: "veryrare", equipSlot: "accessory", description: "Действие: стать невидимым на 2 часа (можно делить между использованиями). Заканчивается при атаке или заклинании.", value: 8000, weight: 1 , requiresAttunement: true },
+  { id: "ring_three_wishes", name: "Кольцо трёх желаний", nameEn: "Ring of Three Wishes", type: "ring", rarity: "veryrare", equipSlot: "accessory", charges: 3, description: "Мифическое кольцо с сапфиром. 3 заряда — каждое тратится на заклинание «Желание» (исполняет почти любое). Не восполняется.", value: 30000, weight: 0 , requiresAttunement: true },
+  { id: "sun_blade", name: "Солнечный клинок", nameEn: "Sun Blade", type: "weapon", rarity: "veryrare", equipSlot: "weapon", damageNotation: "2d6+3", enchantment: "holy", description: "Эфес, из которого по желанию появляется лезвие чистого света. 2d6+3 рубящего + 1d8 урона святым. Светит как факел. Преимущество против нежити.", value: 12000, weight: 3 , requiresAttunement: true },
+  { id: "armor_invulnerability", name: "Броня неуязвимости", nameEn: "Armor of Invulnerability", type: "armor", rarity: "veryrare", equipSlot: "chest", acBonus: 4, description: "Тяжёлые латы с рунами неуязвимости. +4 к Классу Доспеха. Действие: иммунитет к немагическому урону на 10 минут (1 раз в день).", value: 12000, weight: 65 , requiresAttunement: true },
 ];
 
 // ============================================================

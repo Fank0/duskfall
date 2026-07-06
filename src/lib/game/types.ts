@@ -304,6 +304,8 @@ export interface InventoryItemState {
   statBonus: Partial<Stats>;
   /** Damage notation for weapons (e.g. "1d8+3"). */
   damageNotation: string;
+  /** D&D 5e: true if the player has attuned to this magic item. */
+  attuned: boolean;
 }
 
 /** Equipment slots on a character doll. */
