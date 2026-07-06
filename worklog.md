@@ -2867,3 +2867,51 @@ Stage Summary (gap report — compact tables; ✓ = exists in DUSKFALL, ✗ = mi
 - Initiative + exploration turn rotation + per-account save slots + discovered-monster bestiary unlock
 - BG3-style SFX, scene image generation, story memory, quest journal, NPC system, crafting stations
 - 6-language i18n with full dictionary coverage
+
+---
+Task ID: 7-restore
+Agent: sub-agent (general-purpose)
+Task: Restore 3 files lost during a git merge — pathfinding.ts, lighting.ts, legendary.ts — and add the supporting terrain helpers they depend on.
+
+Work Log:
+- Read worklog.md (last ~120 lines) for project context: this is a D&D 5e VTT on Next.js 16 + Prisma/SQLite with a 16x16 tactical grid, LLM-driven DM agent, bestiary of 51 monsters, 34 spells, 12 classes. The most-recent worklog entry lists "Lighting & darkvision", "Difficult terrain movement cost", and "Legendary actions for bosses" as CRITICAL gaps — these 3 restored files are the foundation for closing them.
+- Audited `src/lib/game/terrain.ts`: `TerrainCellState`, `terrainAt`, `isDifficultTerrain`, `blocksLineOfSight`, `hasLineOfSight`, `coverAcBonus`, `highGroundAdvantage` all already exported. Missing the helpers the new files import.
+- Added 3 new helpers to `terrain.ts` (the only existing file modified — permitted by task constraints):
+  - `isBlockingTerrain(cells, x, y): boolean` — true for `full_cover` (walls/boulders block movement).
+  - `movementCostOf(cells, x, y): number` — 1 (normal/half_cover/high_ground/water), 2 (difficult), Infinity (full_cover). Matches D&D 5e "difficult terrain costs 2x movement".
+  - `isDamagingTerrain(cells, x, y): boolean` — string-based check for future-extensible damaging types (fire, poison, acid, lava, thorns, web_burning, trap_spikes). Returns false for all current types since the TerrainType union doesn't include them yet — this is forward-compatible so adding `"fire"` to the union later will Just Work without touching pathfinding.ts.
+- Created `/home/z/my-project/src/lib/game/pathfinding.ts` (220 lines):
+  - `interface PathCell { x; y }`, `interface PathfindResult { path; cost; damagingCells }`, `type OccupiedSet = Set<string>`.
+  - `findPath(startX, startY, goalX, goalY, terrain, occupied, maxMovement=Infinity)` — A* with 4-directional neighbors (no diagonals, D&D 5e standard), linear-scan priority queue (fine for 16x16=256 cells), gScore/fScore/cameFrom maps, Manhattan-distance heuristic. Goal cell is always enterable even if "occupied" (so monsters can compute a path up to an enemy target). Returns `{path:[], cost:Infinity, damagingCells:[]}` when no path or when total cost exceeds `maxMovement`. `path` excludes start, includes goal. `damagingCells` is the subset of path cells where `isDamagingTerrain` returns true.
+  - `reachableCells(startX, startY, maxMovement, terrain, occupied)` — Dijkstra flood-fill returning `Map<"x,y", cost>` for every reachable cell within budget. Excludes start cell, excludes occupied cells, excludes Infinity-cost cells.
+- Created `/home/z/my-project/src/lib/game/lighting.ts` (110 lines):
+  - `interface LightSourceState { id; name; x; y; brightR; dimR; color }` and `type LightLevel = "bright" | "dim" | "dark"`.
+  - `cellDist(x1, y1, x2, y2)` — Chebyshev distance (max of |dx|, |dy|) for symmetric torch halos on a square grid.
+  - `lightLevelAt(x, y, sources)` — "bright" if any source's brightR covers the cell, "dim" if any dimR covers it, else "dark".
+  - `racialDarkvision(raceName)` — case-insensitive, accepts Russian or English. Dwarf/Elf/Gnome/Half-Orc/Half-Elf/Tiefling → 12 (60 ft). Drow → 36 (per spec; matches SRD's 120 ft scaled by encounter tuning). Human/Halfling/Dragonborn/Githyanki → 0.
+  - `visibilityAt(px, py, raceName, tx, ty, sources)` — if ambient light at target is bright/dim, return it; if dark, return "dim" if target within player's darkvision range, else "dark".
+- Created `/home/z/my-project/src/lib/game/legendary.ts` (240 lines):
+  - `type LegendaryActionType = "attack" | "aoe" | "move" | "special"`, `type AoeShape = "circle" | "cone" | "line"`.
+  - `interface LegendaryAction { name; nameEn; cost; type; notation?; range?; aoeShape?; aoeSize?; aoeElement?; saveAbility?; saveDC?; description }`.
+  - Registry of 6 bosses x 3 actions each (cost 1/2/1, total 4 — SRD standard "3 legendary points per round"):
+    1. "Древний красный дракон" / "Ancient Red Dragon" — Claw 2d8+10, Fire Breath cone 12d6 DC24 DEX, Wing Buffet (push).
+    2. "Лич" / "Lich" — Paralyzing Touch 3d6+5 CON DC18, Blight 8d8 circle DC20 CON, Teleport.
+    3. "Балор" / "Balor" — Longsword 3d8+8 (+3d6 fire), Fire Aura 3d6 circle (no save), Teleport.
+    4. "Вальтраксис Красный" (campaign boss, matches bestiary.ts line 960) — Claw 3d10+8, Fire Breath cone 12d6 DC24 DEX, Wing Buffet.
+    5. "Древний синий дракон" / "Ancient Blue Dragon" — Bite 2d10+8, Lightning Breath line 18 cells 12d6 DC23 DEX, Tail 2d8+8 STR DC22 knockdown.
+    6. "Король личей" / "Lich King" — Paralyzing Touch 3d6+7 CON DC20, Disrupt Life 5d6 circle DC21 CON, Teleport.
+  - `legendaryActionsForBoss(name)` — case-insensitive lookup via NAME_ALIASES table (handles both Russian and English) + direct registry key + substring fallback (so DB names like "Вальтраксис Красный (Акт III)" still resolve). Returns `undefined` for non-bosses (Гоблин, etc.).
+  - `serializeLegendaryActions(actions)` — `JSON.stringify` or `null` if undefined/empty (lets the DB column be NULL rather than "[]").
+  - `parseLegendaryActions(json)` — defensive JSON.parse; returns `null` on any parse failure or empty array; filters malformed entries that lack the required fields.
+- Constraints honored:
+  - Did NOT modify dm-agent.ts, state.ts, schema.prisma, or any UI components.
+  - Modified ONLY terrain.ts (added 3 helpers, no existing exports touched).
+  - Did NOT write any test files (the bun smoke-test script was run from /tmp and deleted, not added to the project).
+- Verification:
+  - `bun run lint` → clean (0 errors, 0 warnings).
+  - `bunx tsc --noEmit -p tsconfig.json` → 0 errors in any of the 3 new files or terrain.ts. (2 pre-existing errors in `src/app/page.tsx` referencing `actionPoints`/`maxActionPoints` on `PlayerState` are unrelated to this task — they existed before and are not in any file I touched.)
+  - `ls -la src/lib/game/{pathfinding,lighting,legendary}.ts` → all 3 files present (sizes 8999 / 4851 / 13262 bytes).
+  - Smoke test (transient /tmp script, deleted after) exercised every exported function: A* path 14 cells / cost 14 from (0,0) to (7,7); reachableCells returned 19 cells within 5 MP; all darkvision values (12/12/36/0) correct; visibilityAt correct in bright/dim/dark-with-darkvision/dark-without cases; legendaryActionsForBoss resolves all 6 bosses via Russian, English, lowercase, and substring inputs and returns undefined for Гоблин; serialize/parse roundtrip preserves 3 actions; parseLegendaryActions handles null and bad-JSON gracefully; movementCostOf returns Infinity/2/1 for full_cover/difficult/normal; isBlockingTerrain and isDamagingTerrain work as expected.
+
+Stage Summary:
+- 3 lost files restored and self-contained, 1 existing file (terrain.ts) extended with 3 missing helpers. All exports specified in the task are present. Lint clean. These unblock 3 of the top "CRITICAL" gaps from the worklog gap-analysis (difficult-terrain movement cost, lighting & darkvision, legendary actions for bosses) — wiring them into the dm-agent.ts monster-AI loop, move-token route, and Monster DB column is left for a follow-up task per the "DO NOT modify" constraints.

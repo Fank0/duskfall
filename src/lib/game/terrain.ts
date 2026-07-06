@@ -162,6 +162,54 @@ export function isDifficultTerrain(cells: TerrainCellState[], x: number, y: numb
 }
 
 /**
+ * Returns true for terrain that fully blocks movement (full_cover).
+ * Half-cover, difficult terrain, high ground, and water are passable.
+ */
+export function isBlockingTerrain(cells: TerrainCellState[], x: number, y: number): boolean {
+  const t = terrainAt(cells, x, y);
+  return t?.type === "full_cover";
+}
+
+/**
+ * D&D 5e movement cost in movement-points per cell entered.
+ *   - normal/high_ground/half_cover/water: 1 (water is shallow, passable)
+ *   - difficult (mud/ice/rubble): 2
+ *   - full_cover (walls/boulders): Infinity (impassable)
+ * Returns 1 for empty cells (no terrain entry).
+ */
+export function movementCostOf(cells: TerrainCellState[], x: number, y: number): number {
+  const t = terrainAt(cells, x, y);
+  if (!t) return 1;
+  switch (t.type) {
+    case "full_cover":
+      return Infinity;
+    case "difficult":
+      return 2;
+    case "half_cover":
+    case "high_ground":
+    case "water":
+    default:
+      return 1;
+  }
+}
+
+/**
+ * Returns true for terrain that damages any creature entering it.
+ * The current TerrainType union does not include damaging types, but the
+ * check is string-based so future extensions (fire, poison, acid, lava,
+ * thorns) work without further changes.
+ */
+export function isDamagingTerrain(cells: TerrainCellState[], x: number, y: number): boolean {
+  const t = terrainAt(cells, x, y);
+  if (!t) return false;
+  const DAMAGING: ReadonlySet<string> = new Set([
+    "fire", "poison", "acid", "lava", "thorns",
+    "poison_cloud", "web_burning", "trap_spikes",
+  ]);
+  return DAMAGING.has(t.type as string);
+}
+
+/**
  * Bresenham's line algorithm — check if line of sight is blocked between
  * two points by any full_cover cell along the path.
  */
