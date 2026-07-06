@@ -51,6 +51,7 @@ export function Lobby({
   const [account, setAccount] = useState<AuthenticatedAccount | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [savesOpen, setSavesOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
@@ -90,6 +91,7 @@ export function Lobby({
 
   const handleAuthenticated = useCallback((acc: AuthenticatedAccount) => {
     setAccount(acc);
+    setAuthOpen(false);
   }, []);
 
   const handleContinueSave = useCallback(
@@ -190,7 +192,16 @@ export function Lobby({
               </div>
             </div>
           ) : (
-            <AuthScreen onAuthenticated={handleAuthenticated} />
+            <div className="flex items-center justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 border-amber-800/40 bg-amber-950/20 text-amber-200 hover:bg-stone-800/50"
+                onClick={() => setAuthOpen(true)}
+              >
+                <LogIn className="h-3.5 w-3.5" /> {tt("lobby.sign_in")}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -262,6 +273,31 @@ export function Lobby({
           </p>
         </div>
       </div>
+
+      {/* ===== Auth modal — only shown when user clicks "Войти" ===== */}
+      {authOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setAuthOpen(false)}
+        >
+          <div
+            className="w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <AuthScreen onAuthenticated={handleAuthenticated} />
+            <div className="mt-2 flex justify-center">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setAuthOpen(false)}
+              >
+                ✕ {tt("ui.cancel")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <MySavesDialog
         open={savesOpen}
