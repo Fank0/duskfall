@@ -13,6 +13,9 @@ import {
   User as UserIcon,
   Loader2,
   Flame,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { CharacterCreator } from "./CharacterCreator";
 import { AuthScreen, type AuthenticatedAccount } from "./AuthScreen";
@@ -48,6 +51,8 @@ export function Lobby({
   const [authChecked, setAuthChecked] = useState(false);
   const [savesOpen, setSavesOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
 
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
@@ -126,6 +131,18 @@ export function Lobby({
         style={{ opacity: 0.13, animationDuration: "42s", animationDirection: "reverse" }}
       />
       <div className="vignette pointer-events-none fixed inset-0 z-0" />
+
+      {/* ===== Tutorial button (top-right) ===== */}
+      <div className="fixed right-4 top-4 z-30 flex gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="gap-1.5 text-muted-foreground hover:text-foreground"
+          onClick={() => { setTutorialOpen(true); setTutorialStep(0); }}
+        >
+          <BookOpen className="h-3.5 w-3.5" /> {tt("lobby.tutorial")}
+        </Button>
+      </div>
 
       {/* ===== Content ===== */}
       <div className="relative z-10 flex w-full flex-col items-center">
@@ -282,6 +299,74 @@ export function Lobby({
               >
                 ✕ {tt("ui.cancel")}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Tutorial overlay ===== */}
+      {tutorialOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setTutorialOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-lg border border-amber-800/40 bg-stone-950/95 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-serif text-lg font-bold gold-text">
+                {tt("tutorial.title")} ({tutorialStep + 1}/6)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setTutorialOpen(false)}
+                className="rounded-md border border-border/60 px-2 py-1 text-xs text-muted-foreground hover:bg-stone-800/60 hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            {/* Step dots */}
+            <div className="mb-4 flex justify-center gap-1.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-2 w-2 rounded-full ${i === tutorialStep ? "bg-amber-500" : i < tutorialStep ? "bg-amber-700/50" : "bg-stone-700"}`}
+                />
+              ))}
+            </div>
+            {/* Step content */}
+            <p className="min-h-[80px] text-sm leading-relaxed text-amber-100/90">
+              {tt(`tutorial.step${tutorialStep + 1}`)}
+            </p>
+            {/* Navigation */}
+            <div className="mt-5 flex items-center justify-between">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={tutorialStep === 0}
+                onClick={() => setTutorialStep((s) => Math.max(0, s - 1))}
+                className="gap-1 text-muted-foreground"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> {tt("tutorial.prev")}
+              </Button>
+              {tutorialStep < 5 ? (
+                <Button
+                  size="sm"
+                  onClick={() => setTutorialStep((s) => Math.min(5, s + 1))}
+                  className="gap-1 border-amber-700/40 bg-amber-950/30 text-amber-200 hover:bg-amber-950/50"
+                >
+                  {tt("tutorial.next")} <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => setTutorialOpen(false)}
+                  className="gap-1 border-emerald-700/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-950/50"
+                >
+                  {tt("tutorial.close")}
+                </Button>
+              )}
             </div>
           </div>
         </div>
