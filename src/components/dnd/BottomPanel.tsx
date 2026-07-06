@@ -13,6 +13,7 @@ import {
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
   Shirt, Hammer, Star, Search, Bed, Moon, Wind, ShieldOff, Clock, Footprints,
+  Hand, ArrowRight,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -37,6 +38,9 @@ const COMBAT_ACTIONS = [
   { key: "dodge", labelKey: "actions.dodge", hintKey: "actions.dodge_hint", icon: Shield, text: "Я использую действие «Уклонение» — все атаки по мне до моего следующего хода с помехой, бонусы к Ловкости тоже." },
   { key: "help", labelKey: "actions.help", hintKey: "actions.help_hint", icon: Heart, text: "Я использую действие «Помощь» — помогаю союзнику, давая ему преимущество на следующую атаку по врагу." },
   { key: "ready", labelKey: "actions.ready", hintKey: "actions.ready_hint", icon: Clock, text: "Я использую действие «Готовность» — готовлю действие, которое сработает при определённом условии." },
+  // D&D 5e combat maneuvers (item #6):
+  { key: "grapple", labelKey: "actions.grapple", hintKey: "actions.grapple_hint", icon: Hand, text: "Я использую действие «Схватка» — хватаю ближайшего врага (спас СИЛ vs моя СИЛ)." },
+  { key: "shove", labelKey: "actions.shove", hintKey: "actions.shove_hint", icon: ArrowRight, text: "Я использую действие «Толчок» — толкаю врага (спас СИЛ vs моя СИЛ, при успехе сбиваю с ног или отталкиваю)." },
 ];
 
 /**

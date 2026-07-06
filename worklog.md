@@ -3015,3 +3015,33 @@ Stage Summary:
 - 2 more restoration items done this round (#3, #10). Total: 13/15 items complete.
 - Remaining: #5 (Subclass wiring), #6 (Combat maneuvers).
 - Artifacts: `prisma/schema.prisma` (attuned field), `src/lib/game/item-database.ts` (requiresAttunement field + 8 items marked), `src/lib/game/types.ts` (attuned on InventoryItemState), `src/lib/game/state.ts` (toInventory mapper), `src/app/api/game/attune/route.ts` (new), `src/components/dnd/ChatPanel.tsx` (attack targeting props + button), `src/app/page.tsx` (requestAttackTargeting + handleMonsterTargetClick attack branch), `PROJECT_HANDOFF.md`.
+
+---
+Task ID: 14
+Agent: main (Z.ai Code) — manual continuation (cron not firing)
+Task: Final 2 restoration items: #5 (Subclass wiring) + #6 (Combat maneuvers). Complete the 15-item roadmap.
+
+Work Log:
+- QA: app loaded cleanly (HTTP 200, no console errors). Created room H7N44F via Быстрый старт — game loaded, EnemyPanel visible.
+- Item #5 (Subclass wiring):
+  - Updated `resolveTalents` in talents.ts to merge the class talent pool + subclass talent pool (`subclassTalents()` from subclasses.ts). Now when a player has "sub_champion" in their selectedTalents, it resolves to the Champion subclass Talent object instead of being silently dropped.
+  - Updated SkillTreeModal.tsx to show a subclass selection panel when the player reaches level 3+ and hasn't chosen a subclass yet. The panel has a purple theme (border-purple-700/40, bg-purple-950/20) with Sparkles icon, showing each subclass as a clickable card (name, English name badge, description). Clicking picks the subclass talent id via the existing pickTalent callback.
+  - Added import of getSubclassesForClass to SkillTreeModal.
+- Item #6 (Combat maneuvers — Grapple + Shove):
+  - Added 2 new entries to COMBAT_ACTIONS in BottomPanel.tsx: Grapple (Hand icon, "Я использую действие «Схватку»...") and Shove (ArrowRight icon, "Я использую действие «Толчок»...").
+  - Added Hand + ArrowRight to the lucide-react imports.
+  - Added i18n keys "actions.grapple", "actions.grapple_hint", "actions.shove", "actions.shove_hint" to all 6 languages (ru/en/es/de/fr/zh) via a Python script.
+  - Added backend handling in dm-agent.ts: when the action text contains "схватк"+"враг" or "толч"+"враг", the DM agent handles it directly (no LLM call):
+    - Finds the nearest active monster.
+    - Rolls STR (Athletics) for attacker vs STR for defender (simplified).
+    - On success: Grapple applies "grappled" condition (3 rounds); Shove applies "prone" condition (2 rounds).
+    - On failure: writes a "манёвр провалился" chat message.
+    - Consumes the action + advances the turn.
+    - Writes system chat messages with the roll results.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+- PROJECT_HANDOFF.md updated: items #5, #6 marked DONE. ALL 15/15 items complete!
+
+Stage Summary:
+- Final 2 restoration items done this round (#5, #6). ALL 15/15 items complete!
+- Remaining: none — the full restoration roadmap is done. Future work should focus on the gap-analysis top-10 (skill/save proficiency, reaction/bonus-action consumption, special-ability mechanical execution, multiattack/extra attack, monster resistances, L4-L9 spell slots, cantrip scaling, class resources, multiclassing+feats).
+- Artifacts: `src/lib/game/talents.ts` (resolveTalents subclass merge), `src/components/dnd/SkillTreeModal.tsx` (subclass selection UI), `src/components/dnd/BottomPanel.tsx` (Grapple + Shove buttons), `src/lib/game/i18n.ts` (grapple/shove keys in 6 languages), `src/lib/game/dm-agent.ts` (Grapple + Shove backend handling), `PROJECT_HANDOFF.md`.

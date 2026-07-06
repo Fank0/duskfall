@@ -3,18 +3,23 @@
 
 import type { PlayerState, Talent, TalentEffect } from "./types";
 import { CLASS_TALENTS, getTalentsForClass, ASI_TALENTS, getASITalents } from "./talent-data";
+import { subclassTalents } from "./subclasses";
 import { getClassIdByCharClass } from "./presets";
 import { rollDice } from "./dice";
 
 /** All Talent records for a class. */
 export { getTalentsForClass, CLASS_TALENTS, ASI_TALENTS, getASITalents };
 
-/** Resolve the list of talent ids a player has into concrete Talent objects. */
+/** Resolve the list of talent ids a player has into concrete Talent objects.
+ *  Includes subclass talents (item #5) — the pool is class talents + subclass
+ *  talents so that "sub_champion" etc. resolve correctly. */
 export function resolveTalents(player: { charClass: string; selectedTalents: string[] }): Talent[] {
   const classId = getClassIdByCharClass(player.charClass);
-  const pool = getTalentsForClass(classId);
+  const classPool = getTalentsForClass(classId);
+  const subPool = subclassTalents();
+  const fullPool = [...classPool, ...subPool];
   return player.selectedTalents
-    .map((id) => pool.find((t) => t.id === id))
+    .map((id) => fullPool.find((t) => t.id === id))
     .filter((t): t is Talent => Boolean(t));
 }
 

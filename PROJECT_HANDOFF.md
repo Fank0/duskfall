@@ -40,8 +40,8 @@ After a git merge, these features were lost and need recreation:
 1. **EnemyPanel.tsx** — component showing enemies + HP + abilities + loot during combat — ✅ DONE (restored this round)
 2. **Movement Points (ОХ)** — schema fields (speed, movementUsed, dashActive) + logic in move-token route — ✅ DONE (schema fields added, move-token enforces feet budget, Dash action handled directly, movement reset at turn start)
 3. **Attunement system** — requiresAttunement/attuned fields + /api/game/attune route + UI — ✅ DONE (requiresAttunement field on ItemEntry, 8 veryrare items marked, attuned field on InventoryItem, POST /api/game/attune route with 3-item cap, toInventory mapper updated)
-5. **Subclass wiring** — resolveTalents merging subclass pool, UI in LevelUpModal
-6. **Combat maneuvers** — two-weapon fighting, grapple, shove (dm-agent.ts)
+5. **Subclass wiring** — resolveTalents merging subclass pool, UI in LevelUpModal — ✅ DONE (resolveTalents now merges class + subclass talent pools; SkillTreeModal shows subclass selection panel at level 3+ with purple theme)
+6. **Combat maneuvers** — two-weapon fighting, grapple, shove (dm-agent.ts) — ✅ DONE (added Grapple + Shove buttons to COMBAT_ACTIONS with i18n in 6 languages; dm-agent handles both directly: STR check vs nearest monster, applies grappled/prone condition, advances turn)
 7. **Concentration fix** — setConcentration called on spell cast (dm-agent.ts) — ✅ DONE (detects concentration spells via duration field, calls setConcentration + writes system chat)
 8. **XP table fix** — SRD values (300/900/2700 instead of 200/600/1200) — ✅ DONE (fixed to full SRD table L1→L17)
 9. **Monster A* movement** — moveMonsterTowardNearestPlayer using pathfinding — ✅ DONE (A* via findPath, falls back to greedy on failure, avoids other monsters/players as obstacles)

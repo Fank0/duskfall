@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Loader2, Check, TrendingUp, Lock, ArrowRight, Star } from "lucide-react";
 import { getTalentsForClass, getASITalents } from "@/lib/game/talents";
+import { getSubclassesForClass } from "@/lib/game/subclasses";
 import { getClassIdByCharClass } from "@/lib/game/presets";
 import type { PlayerState, Talent, StatKey } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,10 @@ export function SkillTreeModal({
   const tier1 = allTalents.filter((t) => t.tier === 1);
   const tier2 = allTalents.filter((t) => t.tier === 2);
   const asiTalents = getASITalents();
+  // D&D 5e: subclass options (item #5). Available at level 3+.
+  const subclasses = getSubclassesForClass(classId);
+  const hasSubclass = player.selectedTalents.some((id) => id.startsWith("sub_"));
+  const showSubclasses = player.level >= 3 && !hasSubclass && subclasses.length > 0;
   const showASI = player.pendingASI;
   const showTree = player.pendingLevelUp;
 
@@ -155,6 +160,43 @@ export function SkillTreeModal({
                 После ASI предстоит выбрать талант — он появится ниже.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Subclass selection (item #5) — shown at level 3+ when no subclass chosen */}
+        {showSubclasses && (
+          <div className="rounded-md border border-purple-700/40 bg-purple-950/20 p-3">
+            <div className="mb-2 flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-purple-300" />
+              <span className="text-sm font-semibold text-purple-200">Выбор подкласса</span>
+              <Badge variant="outline" className="ml-auto text-[9px] border-purple-700/50 text-purple-200">
+                ур. {player.level}
+              </Badge>
+            </div>
+            <p className="mb-2 text-[11px] text-muted-foreground">
+              {player.name} достиг {player.level} уровня. Выберите подкласс — он определит специализацию героя.
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {subclasses.map((sc) => (
+                <button
+                  key={sc.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => pickTalent(sc.talentId)}
+                  className="group rounded-md border border-purple-700/40 bg-stone-900/40 p-3 text-left transition-all hover:border-purple-500/70 hover:bg-stone-900/70 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-purple-100">{sc.name}</span>
+                    <Badge variant="outline" className="text-[8px] border-purple-700/50 text-purple-200">
+                      {sc.nameEn}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                    {sc.description}
+                  </p>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

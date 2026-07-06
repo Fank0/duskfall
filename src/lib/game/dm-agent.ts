@@ -2347,6 +2347,92 @@ export async function resolvePlayerMechanics(
     } as MechanicsResult;
   }
 
+  // ===== D&D 5e Combat Maneuvers (item #6): Grapple + Shove =====
+  // These are handled directly without an LLM call (like Dash) because they
+  // have fixed mechanics: STR (Athletics) vs the target's STR (Athletics) or
+  // DEX (Acrobatics). On success, Grapple applies the "grappled" condition;
+  // Shove applies "prone" or pushes the target 1 cell.
+  const isGrappleAction = wasCombatActive && actionLower.includes("схватк") && actionLower.includes("враг");
+  const isShoveAction = wasCombatActive && actionLower.includes("толч") && actionLower.includes("враг");
+  if (isGrappleAction || isShoveAction) {
+    // Find the nearest active monster as the target.
+    const nearestMonster = await nearestActiveMonster(roomId, actor.posX, actor.posY);
+    if (!nearestMonster) {
+      await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+      await db.chatMessage.create({ data: { roomId, role: "dm", speaker: "", round, content: `Рядом нет врагов для ${isGrappleAction ? "схватки" : "толчка"}.` } });
+      const snapM = await getSnapshot(roomCode);
+      return {
+        actorName, playerRolls: [], monsterRolls: [],
+        outcome: "failure", combatStarted: false, combatEnded: false,
+        damageDealtToMonster: 0, monsterThatDied: null,
+        damageDealtToPlayer: 0, damagedPlayer: null,
+        healingToPlayer: 0, healedPlayer: null,
+        inventoryChanges: [], goldChange: 0,
+        imagePrompt: "", imageNeeded: false,
+        branchNarrative: `Нет врагов рядом.`,
+        playerAction, location: snapM?.location ?? "",
+        nextTurn: wasCombatActive ? null : actorName,
+        nextTurnType: wasCombatActive ? null : "player",
+        round, statusEffectNotes: [], lootNotes: [],
+      } as MechanicsResult;
+    }
+    const monster = nearestMonster.monster;
+    // D&D 5e: STR (Athletics) check by attacker vs target's STR (Athletics) or DEX (Acrobatics).
+    const strMod = abilityModifier(actor.str);
+    const monsterStrMod = abilityModifier(monster.ac); // simplified: use AC as proxy for STR
+    const atkRoll = Math.floor(Math.random() * 20) + 1 + strMod;
+    const defRoll = Math.floor(Math.random() * 20) + 1 + Math.max(monsterStrMod, 0);
+    const success = atkRoll >= defRoll;
+
+    // Consume the action.
+    await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+
+    if (success) {
+      if (isGrappleAction) {
+        await applyCondition(roomId, monster.name, "monster", "grappled", 3, actorName);
+        await db.chatMessage.create({
+          data: { roomId, role: "dm", speaker: "", round,
+            content: `✊ ${actorName} хватает ${monster.name}! (Атака ${atkRoll} vs Защита ${defRoll}). ${monster.name} не может двигаться, пока не вырвется.` },
+        });
+      } else {
+        // Shove: knock prone (simplified — don't push back to avoid position conflicts).
+        await applyCondition(roomId, monster.name, "monster", "prone", 2, actorName);
+        await db.chatMessage.create({
+          data: { roomId, role: "dm", speaker: "", round,
+            content: `push ${actorName} сбивает ${monster.name} с ног! (Атака ${atkRoll} vs Защита ${defRoll}). ${monster.name} на земле.` },
+        });
+      }
+    } else {
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round,
+          content: `${isGrappleAction ? "Схватка" : "Толчок"} провалилась! (${atkRoll} vs ${defRoll}). ${monster.name} вырывается.` },
+      });
+    }
+
+    // Advance the turn.
+    const adv = await advanceTurn(roomCode, roomId);
+    const monsterRolls = adv.monsterTurns.flatMap((mt) => mt.result.rolls);
+    const snapM = await getSnapshot(roomCode);
+    return {
+      actorName, playerRolls: [], monsterRolls,
+      outcome: success ? "success" : "failure",
+      combatStarted: false, combatEnded: adv.ended,
+      damageDealtToMonster: 0, monsterThatDied: null,
+      damageDealtToPlayer: 0, damagedPlayer: null,
+      healingToPlayer: 0, healedPlayer: null,
+      inventoryChanges: [], goldChange: 0,
+      imagePrompt: "", imageNeeded: false,
+      branchNarrative: success
+        ? `${actorName} ${isGrappleAction ? "хватает" : "сбивает с ног"} ${monster.name}!`
+        : `${isGrappleAction ? "Схватка" : "Толчок"} провалилась.`,
+      playerAction, location: snapM?.location ?? "",
+      nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+      round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+      statusEffectNotes: [], lootNotes: [],
+    } as MechanicsResult;
+  }
+
   // 1. Plan the mechanics first.
   const plan = await planResolution(roomCode, actorName, playerAction, lang, signal);
 
