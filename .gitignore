@@ -54,3 +54,4 @@ server.log
 /skills/upload/
 download/
 tool-results/
+db/*.db

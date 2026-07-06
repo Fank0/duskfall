@@ -15,6 +15,7 @@ import { SceneViewer } from "@/components/dnd/SceneViewer";
 import { ChatPanel } from "@/components/dnd/ChatPanel";
 import { DiceLog } from "@/components/dnd/DiceLog";
 import { PartyPanel } from "@/components/dnd/PartyPanel";
+import { EnemyPanel } from "@/components/dnd/EnemyPanel";
 import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
 import { Lobby } from "@/components/dnd/Lobby";
 import { ErrorBoundary } from "@/components/dnd/ErrorBoundary";
@@ -1325,6 +1326,12 @@ export default function Home() {
               players={snapshot.players}
               youName={session.playerName}
               currentTurnName={snapshot.currentTurnName}
+            />
+            <EnemyPanel
+              monsters={snapshot.monsters}
+              conditions={snapshot.conditions}
+              currentTurnName={snapshot.currentTurnName}
+              combatActive={snapshot.combatActive}
             />
             {you && (
               <CharacterSheet

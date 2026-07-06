@@ -212,7 +212,7 @@ export function Lobby({
                 className="gap-1.5 border-amber-800/40 bg-amber-950/20 text-amber-200 hover:bg-stone-800/50"
                 onClick={() => setAuthOpen(true)}
               >
-                <LogIn className="h-3.5 w-3.5" /> {tt("lobby.sign_in")}
+                <LogIn className="h-3.5 w-3.5" /> {tt("lobby.login")}
               </Button>
             </div>
           )}
