@@ -32,6 +32,14 @@ export interface SettingsState {
   ttsVoice: "male" | "female" | "narrator";
   /** UI language (i18n-restore). Russian by default. */
   lang: Lang;
+  /** Show floating damage numbers in combat. */
+  showFloatingText: boolean;
+  /** Show grid coordinates on hover. */
+  showGridCoords: boolean;
+  /** Auto-play TTS for new DM messages. */
+  autoTts: boolean;
+  /** Confirm before resting (prevents accidental clicks). */
+  confirmRest: boolean;
   /**
    * Pinned favorite ability ids (quick-use Item 5). Players star abilities in
    * the BottomPanel to surface them in a dedicated "Избранное" section so
@@ -55,6 +63,10 @@ export interface SettingsState {
   setTtsVolume: (v: number) => void;
   setTtsVoice: (v: "male" | "female" | "narrator") => void;
   setLang: (v: Lang) => void;
+  setShowFloatingText: (v: boolean) => void;
+  setShowGridCoords: (v: boolean) => void;
+  setAutoTts: (v: boolean) => void;
+  setConfirmRest: (v: boolean) => void;
   /** Toggle an ability id in the favorites list (add if absent, remove if present). */
   toggleFavoriteAbility: (id: string) => void;
 }
@@ -80,6 +92,10 @@ export const useSettings = create<SettingsState>()(
       ttsVolume: 0.8,
       ttsVoice: "male",
       lang: "ru",
+      showFloatingText: true,
+      showGridCoords: false,
+      autoTts: false,
+      confirmRest: false,
       favoriteAbilities: [],
       setTokenShape: (v) => set({ tokenShape: v }),
       setShowTokenNames: (v) => set({ showTokenNames: v }),
@@ -96,6 +112,10 @@ export const useSettings = create<SettingsState>()(
       setTtsVolume: (v) => set({ ttsVolume: Math.max(0, Math.min(1, v)) }),
       setTtsVoice: (v) => set({ ttsVoice: v }),
       setLang: (v) => set({ lang: v }),
+      setShowFloatingText: (v) => set({ showFloatingText: v }),
+      setShowGridCoords: (v) => set({ showGridCoords: v }),
+      setAutoTts: (v) => set({ autoTts: v }),
+      setConfirmRest: (v) => set({ confirmRest: v }),
       toggleFavoriteAbility: (id) =>
         set((s) => ({
           favoriteAbilities: s.favoriteAbilities.includes(id)

@@ -21,7 +21,10 @@ export type MonsterCategory =
   | "dragon"
   | "demon"
   | "elemental"
-  | "boss";
+  | "boss"
+  | "fiend"
+  | "giant"
+  | "aberration";
 
 export const MONSTER_CATEGORIES: MonsterCategory[] = [
   "humanoid",
@@ -31,6 +34,9 @@ export const MONSTER_CATEGORIES: MonsterCategory[] = [
   "demon",
   "elemental",
   "boss",
+  "fiend",
+  "giant",
+  "aberration",
 ];
 
 /** Russian label for a monster category (used in the BestiaryPanel UI). */
@@ -50,6 +56,12 @@ export function categoryLabelRu(c: MonsterCategory): string {
       return "Элементали";
     case "boss":
       return "Боссы";
+    case "fiend":
+      return "Исчадия";
+    case "giant":
+      return "Гиганты";
+    case "aberration":
+      return "Аберрации";
   }
 }
 
@@ -109,6 +121,27 @@ export function categoryColor(c: MonsterCategory): {
         ring: "ring-red-800/60",
         dot: "bg-red-700",
         text: "text-red-200",
+      };
+    case "fiend":
+      return {
+        badge: "border-orange-800/50 bg-orange-950/40 text-orange-200",
+        ring: "ring-orange-700/40",
+        dot: "bg-orange-600",
+        text: "text-orange-300",
+      };
+    case "giant":
+      return {
+        badge: "border-stone-600/50 bg-stone-800/40 text-stone-200",
+        ring: "ring-stone-500/40",
+        dot: "bg-stone-500",
+        text: "text-stone-300",
+      };
+    case "aberration":
+      return {
+        badge: "border-purple-800/50 bg-purple-950/40 text-purple-200",
+        ring: "ring-purple-700/40",
+        dot: "bg-purple-600",
+        text: "text-purple-300",
       };
   }
 }
@@ -1001,6 +1034,167 @@ export const BESTIARY: BestiaryEntry[] = [
     description: "Бестелесная тварь из-за грани бытия; её имя стёрто из самой ткани мира. Лишь безумцы помнят её форму.",
     specialAbility: "Столп забвения: раз в 3 раунда — все в радиусе 10 СПАС WIS 18 или теряют память (помеха на всё) 1d4 раунда.",
     loot: { gold: 6666, items: ["Чехол забвения", "Слеза Забытого", "Артефакт Граней"] },
+  },
+  // ===== Additional monsters (D&D 5e SRD) =====
+  {
+    id: "giant-spider",
+    name: "Гигантский паук",
+    nameEn: "Giant Spider",
+    category: "beast",
+    cr: 1,
+    hp: 26,
+    ac: 14,
+    damageNotation: "1d8+2",
+    attackBonus: 5,
+    speed: 6,
+    size: "Large",
+    description: "Крупный паук с восемью глазами, плетущий паутину между деревьями.",
+    specialAbility: "Паутина: раз в 3 раунда — СПАС ТЕЛ 12 или связан паутиной (скорость 0).",
+    loot: { gold: 0, items: ["Яд паука"] },
+  },
+  {
+    id: "dire-wolf",
+    name: "Лютоволк",
+    nameEn: "Dire Wolf",
+    category: "beast",
+    cr: 1,
+    hp: 37,
+    ac: 14,
+    damageNotation: "2d6+3",
+    attackBonus: 5,
+    speed: 8,
+    size: "Large",
+    description: "Огромный серый волк размером с лошадь, с клыками длиной в ладонь.",
+    specialAbility: "Сбивание с ног: при попадании СПАС СИЛ 13 или сбит с ног.",
+    loot: { gold: 0, items: ["Шкура лютоволка"] },
+  },
+  {
+    id: "ogre",
+    name: "Огр",
+    nameEn: "Ogre",
+    category: "humanoid",
+    cr: 2,
+    hp: 60,
+    ac: 11,
+    damageNotation: "2d8+4",
+    attackBonus: 6,
+    speed: 6,
+    size: "Large",
+    description: "Громадный тупоголовый гигант с дубиной размером с бревно.",
+    specialAbility: "Двойная атака: бьёт дважды дубиной за ход.",
+    loot: { gold: 50, items: ["Дубина огра"] },
+  },
+  {
+    id: "ghoul",
+    name: "Гуль",
+    nameEn: "Ghoul",
+    category: "undead",
+    cr: 1,
+    hp: 22,
+    ac: 12,
+    damageNotation: "2d4+2",
+    attackBonus: 2,
+    speed: 6,
+    size: "Medium",
+    description: "Искажённый голодом труп с острыми когтями и зубами.",
+    specialAbility: "Паралич: при попадании когтями СПАС ТЕЛ 10 или парализован 1 раунд.",
+    loot: { gold: 0, items: [] },
+  },
+  {
+    id: "wraith",
+    name: "Призрак",
+    nameEn: "Wraith",
+    category: "undead",
+    cr: 5,
+    hp: 67,
+    ac: 13,
+    damageNotation: "4d8+3",
+    attackBonus: 6,
+    speed: 8,
+    size: "Medium",
+    description: "Полупрозрачная фигура в чёрном плаще, сотканная из тьмы и ненависти.",
+    specialAbility: "Похищение жизни: при попадании лечит себя на половину нанесённого урона.",
+    loot: { gold: 100, items: ["Эссенция тьмы"] },
+  },
+  {
+    id: "troll",
+    name: "Тролль",
+    nameEn: "Troll",
+    category: "giant",
+    cr: 5,
+    hp: 84,
+    ac: 15,
+    damageNotation: "2d6+4",
+    attackBonus: 7,
+    speed: 6,
+    size: "Large",
+    description: "Тощий зелёный гигант с длинными когтями. Регенерирует раны, если не сожжён.",
+    specialAbility: "Регенерация: +10 HP в начале хода. Не работает от огня/кислоты.",
+    loot: { gold: 30, items: [] },
+  },
+  {
+    id: "young-dragon",
+    name: "Молодой дракон",
+    nameEn: "Young Dragon",
+    category: "dragon",
+    cr: 7,
+    hp: 110,
+    ac: 17,
+    damageNotation: "2d10+6",
+    attackBonus: 9,
+    speed: 10,
+    size: "Large",
+    description: "Молодой дракон с блестящей чешуёй и обжигающим дыханием.",
+    specialAbility: "Дыхание: раз в 3 раунда — конус 6 клеток, 7d6 урона (СПАС ЛОВ 15 половина).",
+    loot: { gold: 500, items: ["Чешуя дракона", "Зуб дракона"] },
+  },
+  {
+    id: "hell-hound",
+    name: "Адский гончий",
+    nameEn: "Hell Hound",
+    category: "fiend",
+    cr: 3,
+    hp: 45,
+    ac: 15,
+    damageNotation: "2d6+3",
+    attackBonus: 5,
+    speed: 8,
+    size: "Medium",
+    description: "Чёрный пёс с горящей шерстью и огненными глазами. Дышит огнём.",
+    specialAbility: "Огненное дыхание: раз в 3 раунда — 6d6 урона огнём в линии 5 клеток (СПАС ЛОВ 13 половина).",
+    loot: { gold: 0, items: ["Огненный клык"] },
+  },
+  {
+    id: "minotaur",
+    name: "Минотавр",
+    nameEn: "Minotaur",
+    category: "giant",
+    cr: 3,
+    hp: 76,
+    ac: 14,
+    damageNotation: "2d12+4",
+    attackBonus: 6,
+    speed: 8,
+    size: "Large",
+    description: "Огромный гуманоид с бычьей головой и огромным топором.",
+    specialAbility: "Натиск: при перемещении 10+ футов до атаки — +1d6 урона и СПАС СИЛ 14 или сбит с ног.",
+    loot: { gold: 80, items: ["Топор минотавра"] },
+  },
+  {
+    id: "mimic",
+    name: "Мимик",
+    nameEn: "Mimic",
+    category: "aberration",
+    cr: 2,
+    hp: 45,
+    ac: 12,
+    damageNotation: "1d8+3",
+    attackBonus: 5,
+    speed: 2,
+    size: "Medium",
+    description: "Притворяется сундуком. Когда кто-то касается — кусает клейкой псевдоподией.",
+    specialAbility: "Клейкий захват: при попадании цель прилипает (СПАС СИЛ 11 чтобы освободиться).",
+    loot: { gold: 200, items: ["Сундук мимика"] },
   },
 ];
 

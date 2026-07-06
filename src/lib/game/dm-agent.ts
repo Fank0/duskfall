@@ -68,7 +68,7 @@ import {
   rollCounterattack,
 } from "./talents";
 import { getSpellById } from "./spellbook";
-import { knownSpellsForPlayer } from "./abilities";
+import { knownSpellsForPlayer, computeAbilities } from "./abilities";
 import type {
   DMResolution,
   ResolvedRoll,
@@ -78,6 +78,87 @@ import type {
   PlannedCondition,
 } from "./types";
 import { llmLangName, type Lang, defaultLang } from "./i18n";
+
+
+// ---------- D&D 5e: cantrip scaling by character level ----------
+/** Scale cantrip damage dice based on character level.
+ *  Level 1-4: 1 die, 5-10: 2 dice, 11-16: 3 dice, 17+: 4 dice.
+ *  e.g. Fire Bolt: 1d10 → 2d10 (L5) → 3d10 (L11) → 4d10 (L17). */
+function scaleCantripDamage(notation: string, charLevel: number): string {
+  if (!notation) return notation;
+  const match = notation.match(/^(\d*)d(\d+)(.*)$/);
+  if (!match) return notation;
+  const baseDice = parseInt(match[1] || "1", 10);
+  const dieSize = parseInt(match[2], 10);
+  const suffix = match[3] || "";
+  let multiplier = 1;
+  if (charLevel >= 17) multiplier = 4;
+  else if (charLevel >= 11) multiplier = 3;
+  else if (charLevel >= 5) multiplier = 2;
+  return `${baseDice * multiplier}d${dieSize}${suffix}`;
+}
+
+/** Infer D&D 5e damage type from ability name or spell properties.
+ *  Returns one of: fire, cold, lightning, acid, poison, thunder, radiant,
+ *  necrotic, psychic, force, slashing, piercing, bludgeoning, or undefined. */
+function inferDamageType(notation: string, actor: PlayerState | null): string | undefined {
+  if (!actor) return undefined;
+  // Check the actor's abilities for the current spell/ability being used.
+  // The notation alone doesn't tell us the damage type, but we can infer
+  // from the actor's known abilities by matching the notation.
+  const abilities = computeAbilities(actor, []);
+  for (const a of abilities) {
+    if (a.castNotation === notation) {
+      // Check ability name/description for damage type keywords.
+      const text = `${a.name} ${a.description}`.toLowerCase();
+      if (text.includes("огн") || text.includes("fire")) return "fire";
+      if (text.includes("холод") || text.includes("cold") || text.includes("лёд") || text.includes("лед")) return "cold";
+      if (text.includes("молни") || text.includes("lightning") || text.includes("гром")) return "lightning";
+      if (text.includes("кислот") || text.includes("acid")) return "acid";
+      if (text.includes("яд") || text.includes("poison")) return "poison";
+      if (text.includes("излуч") || text.includes("radiant") || text.includes("свят") || text.includes("священ")) return "radiant";
+      if (text.includes("некро") || text.includes("necrotic") || text.includes("тёмн") || text.includes("темн")) return "necrotic";
+      if (text.includes("псих") || text.includes("psychic")) return "psychic";
+      if (text.includes("сил") && text.includes("force")) return "force";
+      if (text.includes("рубящ")) return "slashing";
+      if (text.includes("колющ")) return "piercing";
+      if (text.includes("дробящ") || text.includes("bludgeon")) return "bludgeoning";
+    }
+  }
+  // Default: slashing for weapons.
+  return undefined;
+}
+
+/** D&D 5e: upcast damage scaling — when a spell is cast using a higher-level
+ *  spell slot, its damage increases. e.g. Fireball at L4 = 9d6 (base 8d6 + 1d6
+ *  per level above 3rd). Magic Missile at L2 = 4 darts (base 3 + 1 per level).
+ *  This function takes the base notation, the spell's base level, and the slot
+ *  level used, and returns the scaled notation. */
+function upcastSpellDamage(notation: string, spellLevel: number, slotLevel: number): string {
+  if (!notation || slotLevel <= spellLevel) return notation;
+  const levelDiff = slotLevel - spellLevel;
+  // Match patterns like "8d6", "1d8", "3d8+1"
+  const match = notation.match(/^(\d+)d(\d+)(.*)$/);
+  if (!match) return notation;
+  const baseDice = parseInt(match[1], 10);
+  const dieSize = parseInt(match[2], 10);
+  const suffix = match[3] || "";
+  // Most spells add 1 die per upcast level (Fireball: +1d6, Cure Wounds: +1d8).
+  return `${baseDice + levelDiff}d${dieSize}${suffix}`;
+}
+
+/** Infer the base spell level from the actor's known spells by matching
+ *  the damage notation. Returns 0 for cantrips or unknown spells. */
+function inferSpellBaseLevel(actor: PlayerState | null, notation: string): number {
+  if (!actor) return 0;
+  const knownSpells = knownSpellsForPlayer(actor);
+  for (const spell of knownSpells) {
+    if (spell.damage === notation) {
+      return spell.level;
+    }
+  }
+  return 0;
+}
 
 
 // ---------- BG3/D&D 5e: concentration checks on damage ----------
@@ -214,13 +295,48 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Игры для d20 fantas
 Если действие невозможно — верни category="invalid" и invalidReason (короткое объяснение на русском, почему невозможно). Ход при этом НЕ тратится.
 
 === НЕПРЕЛОЖНЫЕ ПРАВИЛА АТМОСФЕРЫ И РЕАЛИЗМА ===
-1. ПРЕДМЕТЫ: у героя есть ТОЛЬКО то, что в инвентаре. НЕ добавляй предметы по желанию игрока. Предметы добываются только через исследование/loot/награду.
+1. ПРЕДМЕТЫ: у героя есть ТОЛЬКО то, что в инвентаре. Предметы добываются через исследование/loot/награду от NPC. Ты (Мастер) можешь ВЫДАВАТЬ предметы через inventoryChanges (action="add") и ЗАБИРАТЬ через action="remove". При выдаче предмета придумай его характеристики по образцу существующих: имя, тип (weapon/armor/potion/scroll/misc), описание, AC бонус (для брони), урон (для оружия), slot экипировки.
+
+=== СОЗДАНИЕ НОВЫХ ОБЪЕКТОВ (D&D 5e) ===
+Ты можешь СОЗДАВАТЬ новые предметы, монстров и NPC. При создании ОБЯЗАТЕЛЬНО придумай полный набор характеристик:
+- ПРЕДМЕТ: имя, тип (weapon/armor/potion/scroll/misc/ring/amulet), описание, AC бонус (броня/щит), урон (оружие, например "1d8+2"), slot экипировки (weapon/shield/head/chest/legs/hands/accessory), цена в золоте, вес.
+- МОНСТР: имя, HP, maxHp, AC, bonus атаки, нотация урона (например "1d6+2"), позиция на сетке (X,Y), цвет, описание, specialAbility (для боссов). CR (Challenge Rating) = примерно HP/10 + AC/5. Также придумай СОПРОТИВЛЕНИЯ (resistances — половина урона) и ИММУНИТЕТЫ (immunities — нет урона) по типам урона: fire, cold, lightning, acid, poison, thunder, radiant, necrotic, psychic, force, slashing, piercing, bludgeoning. Например: скелет — иммунитет к poison, сопротивление piercing. Элементаль огня — иммунитет к fire.
+- NPC: имя, роль (merchant/questgiver/ally/enemy), disposition (friendly/neutral/hostile), location, notes.
+Придумывай характеристики СООТВЕТСТВУЮЩИЕ уровню группы: для ур.1-3 — HP 10-20, урон 1d6+2, AC 11-15.
+
+=== СОПРОТИВЛЕНИЯ И ИММУНИТЕТЫ МОНСТРОВ (D&D 5e) ===
+В контексте под каждым монстром указаны его сопротивления и иммунитеты (если есть).
+- СОПРОТИВЛЕНИЕ (resistance): монстр получает ПОЛОВИНУ урона от этого типа.
+- ИММУНИТЕТ (immunity): монстр НЕ получает урона от этого типа.
+- Учитывай это при описании урона: если игрок атакует огнём существо с иммунитетом к огню — урон = 0, опиши как атака не возымела эффекта.
+- Типы урона: fire (огонь), cold (холод), lightning (молния), acid (кислота), poison (яд), thunder (гром), radiant (излучение), necrotic (некротический), psychic (психический), force (сила), slashing (рубящий), piercing (колющий), bludgeoning (дробящий).
 2. ЭПОХА: строго псевдосредневековое тёмное фэнтези. Запрещены огнестрел, порох, электричество, современные механизмы.
 3. УНИКАЛЬНОСТЬ: каждое приключение уникально. Не повторяй описания из предыдущих сессий. Создай уникальную атмосферу.
 4. СВОБОДА С ПОСЛЕДСТВИЯМИ: провальная проверка = реальное последствие. Не подыгрывай. Провал может привести к: ранению (доп. урон), потере предмета, ухудшению отношения NPC, обнаружению группой, активации ловушки. Сохраняй последствия в нарративе.
 5. БАЛАНС: уровни 1-3 — враги 10-15 HP, урон 1d6+2. Артефакты имеют недостаток. ≤50 золота за сессию.
 6. АТМОСФЕРА: тёмное фэнтези, мрачное, опасное, моральная серость.
 7. ВОСПРИЯТИЕ: герой знает только то, что описал Мастер в недавних событиях. Не позволяй действовать на основе скрытой информации. У каждого героя есть Пассивное восприятие = 10 + мод МУД (указано в контексте). Если скрытый враг/ловушка/тайник имеет DC скрытности ниже пассивного восприятия — герой автоматически замечает его. Если выше — нужен активный поиск (действие «Обыскать»).
+
+=== ДОПОЛНИТЕЛЬНАЯ АТАКА И МУЛЬТИАТАКА (D&D 5e) ===
+В контексте под каждым героем указано «Атак за ход: N» (если N > 1). Это означает, что герой делает N атак за одно Действие.
+- Если герой атакует оружием и у него 2+ атаки — планируй 2+ броска атаки (success.monsterDamage можно указать с суммарным уроном или описать обе атаки).
+- Воин (Fighter) на ур.5+ — 2 атаки, ур.11+ — 3 атаки, ур.20 — 4 атаки.
+- Варвар, Паладин, Следопыт, Монах на ур.5+ — 2 атаки.
+- Заговоры (cantrips) масштабируются автоматически: ур.5+ — 2 кубика, ур.11+ — 3 кубика, ур.17+ — 4 кубика. Указывай базовый урон (1d10), бэкенд масштабирует автоматически.
+
+=== КЛАССОВЫЕ РЕСУРСЫ (D&D 5e) ===
+В контексте под каждым героем указаны его классовые ресурсы («Ресурсы: ...»). Учитывай их при планировании действий:
+- ЯРОСТЬ (Rage, Варвар): +2 к урону оружия, сопротивление к физическому урону, преимущество на СИЛ спасброски. Тратится 1 за использование. Восстанавливается после долгого отдыха.
+- ВОЗЛОЖЕНИЕ РУК (Lay on Hands, Паладин): пул HP = 5×уровень. Можно лечить на любое количество (до максимума) или потратить 5 HP чтобы снять болезнь/яд.
+- ЦИ (Ki, Монах): 1 очко = Безоружный удар как бонусное действие, 1 очко = Рывок (Dash) как бонусное действие, 2 очка = Оглушающий удар (СПАС ТЕЛ). Восстанавливается после короткого отдыха.
+- ВДОХНОВЕНИЕ (Bardic Inspiration, Бард): даёт союзнику +1d6 к броску (используется в течение 10 мин). Восстанавливается после долгого отдыха (короткого с ур.5).
+- БОЖЕСТВЕННОСТЬ (Channel Divinity, Жрец/Паладин): особые способности — Изгнание нежити, Повернуть нежить. Восстанавливается после короткого отдыха.
+- ДИКИЙ ОБЛИК (Wild Shape, Друид): превращение в зверя CR ≤ 1/3 (на низких ур.). 2 использования. Восстанавливается после короткого отдыха.
+- ОЧКИ КОВАРСТВА (Sorcery Points, Чародей): 1 очко = создать ячейку заклинания или усилить заклинание. Восстанавливаются после долгого отдыха.
+- ПРИЛИВ ДЕЙСТВИЙ (Action Surge, Воин): +1 Действие в этом ходу. 1/короткий отдых.
+- ВТОРОЕ ДЫХАНИЕ (Second Wind, Воин): бонусное действие — восстановить 1d10+уровень HP. 1/короткий отдых.
+- МАГИЧЕСКОЕ ВОССТАНОВЛЕНИЕ (Arcane Recovery, Волшебник): 1/день восстановить ячейки заклинаний (до уровня/2 округлённого вверх).
+Если игрок использует классовой ресурс — учти это в нарративе. Если ресурс исчерпан — скажи что герой слишком устал для этого.
 
 === D&D КОНВЕНЦИИ ПОВЕСТВОВАНИЯ (КАК ВЕДЁТ НАСТОЯЩИЙ МАСТЕР) ===
 1. SHOW, DON'T TELL: Не говори "монстр выглядит опасным" — опиши его клыки, размер, запах гнили. Не говори "NPC подозрителен" — опиши как он отводит взгляд, нервно теребит рукав.
@@ -900,7 +1016,8 @@ async function resolvePlayerAction(
     equipment: { weapon: null, shield: null, head: null, chest: null, legs: null, hands: null, accessory1: null, accessory2: null },
     tempHp: 0, isDying: false, deathSaveSuccess: 0, deathSaveFailure: 0,
     actionUsed: false, bonusActionUsed: false, reactionUsed: false, concentratingOn: "",
-    actionPoints: 4, maxActionPoints: 4,
+    skillProficiencies: [], saveProficiencies: [], passivePerception: 10, spellSaveDC: 12,
+    classResources: {},
   };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
@@ -1051,15 +1168,22 @@ async function resolvePlayerAction(
     );
 
     const damageNotation = branch.monsterDamage.notation;
+    // D&D 5e: upcast damage scaling — if the spell was cast with a higher slot,
+    // scale the damage dice (+1 die per slot level above base).
+    const slotLevel = plan.slotLevel ?? 0;
+    const spellBaseLevel = inferSpellBaseLevel(actor, damageNotation);
+    const scaledNotation = spellBaseLevel > 0 && slotLevel > spellBaseLevel
+      ? upcastSpellDamage(damageNotation, spellBaseLevel, slotLevel)
+      : damageNotation;
     // Roll the spell damage once (the same base roll applies to all targets;
     // each target's save determines full vs half). Per d20 fantasy RPG, damage is
     // rolled once for the whole spell.
-    const baseDmgRoll = rollDice(damageNotation);
+    const baseDmgRoll = rollDice(scaledNotation);
     const baseDamage = baseDmgRoll.total;
 
     await logDiceRoll(roomId, round, actorName, {
-      label: `Урон заклинания (${element})`,
-      notation: damageNotation,
+      label: `Урон заклинания (${element})` + (scaledNotation !== damageNotation ? ` [${scaledNotation} — усиление]` : ""),
+      notation: scaledNotation,
       modifier: 0,
       result: baseDmgRoll.raw,
       total: baseDamage,
@@ -1194,16 +1318,22 @@ async function resolvePlayerAction(
         },
       });
     } else if (m) {
-      const dmg = rollDice(branch.monsterDamage.notation);
+      // D&D 5e: scale cantrip damage based on actor's level.
+      // Fire Bolt: 1d10 at L1-4, 2d10 at L5-10, 3d10 at L11-16, 4d10 at L17+.
+      const actorLevel = actor?.level ?? 1;
+      const scaledNotation = scaleCantripDamage(branch.monsterDamage.notation, actorLevel);
+      const dmg = rollDice(scaledNotation);
       // Talent: bonus flat damage + vampiric Heal.
       const bonus = damageBonusFromTalents(actor);
       damageDealtToMonster = dmg.total + bonus;
       await logDiceRoll(roomId, round, actorName, {
-        label: `Урон по: ${m.name}` + (bonus ? ` (+${bonus} талант)` : ""),
-        notation: branch.monsterDamage.notation + (bonus ? `+${bonus}` : ""),
+        label: `Урон по: ${m.name}` + (scaledNotation !== branch.monsterDamage.notation ? ` (${scaledNotation} — масштабирование заговора)` : "") + (bonus ? ` (+${bonus} талант)` : ""),
+        notation: scaledNotation + (bonus ? `+${bonus}` : ""),
         modifier: bonus, result: dmg.raw, total: damageDealtToMonster, purpose: "player_damage",
       });
-      const result = await damageMonster(roomId, m.id, damageDealtToMonster);
+      // Determine damage type from notation for resistance/immunity checks.
+      const damageType = inferDamageType(branch.monsterDamage.notation, actor);
+      const result = await damageMonster(roomId, m.id, damageDealtToMonster, damageType);
       // Vampiric heal.
       const vampHeal = rollVampiricHeal(actor, damageDealtToMonster);
       if (vampHeal > 0) {
@@ -1563,6 +1693,11 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     bonusActionUsed: Boolean((target as any).bonusActionUsed),
     reactionUsed: Boolean((target as any).reactionUsed),
     concentratingOn: (target as any).concentratingOn ?? "",
+    skillProficiencies: (target as any).skillProficiencies ?? [],
+    saveProficiencies: (target as any).saveProficiencies ?? [],
+    passivePerception: (target as any).passivePerception ?? 10,
+    spellSaveDC: (target as any).spellSaveDC ?? 12,
+    classResources: (target as any).classResources ?? {},
   };
   // Check for shielded condition (+2 AC) — effectiveAC only checks talents, not conditions
   const targetConds = await db.condition.findMany({ where: { roomId, targetName: target.name } });
@@ -1579,12 +1714,28 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   const targetAC = effectiveAC(targetState) + condAcBonus + coverBonus;
 
   // If target is on high ground, monster attacks with disadvantage.
+  // D&D 5e: Multiattack — bosses and monsters with "двойн"/"две атаки" in
+  // specialAbility attack 2 times per turn.
+  const hasMultiattack = m.isBoss ||
+    (m.specialAbility && (
+      m.specialAbility.toLowerCase().includes("двойн") ||
+      m.specialAbility.toLowerCase().includes("две атаки") ||
+      m.specialAbility.toLowerCase().includes("тройн") ||
+      m.specialAbility.toLowerCase().includes("multiattack")
+    ));
+  const numAttacks = hasMultiattack ? 2 : 1;
+
+  let totalDamageToPlayer = 0;
+  let anyHit = false;
+
+  for (let attackNum = 0; attackNum < numAttacks; attackNum++) {
+    const attackLabel = numAttacks > 1 ? ` (атака ${attackNum + 1}/${numAttacks})` : "";
   const atk = targetOnHighGround
     ? rollD20Advantage("disadvantage", m.attackBonus)
     : rollD20(m.attackBonus);
   const hit = atk.total >= targetAC;
   rolls.push({
-    label: `Атака ${m.name}${targetOnHighGround ? " (помеха — цель на возвышенности)" : ""}${coverBonus > 0 ? ` (цель в укрытии +${coverBonus} AC)` : ""}`,
+    label: `Атака ${m.name}${attackLabel}${targetOnHighGround ? " (помеха — цель на возвышенности)" : ""}${coverBonus > 0 ? ` (цель в укрытии +${coverBonus} AC)` : ""}`,
     notation: "1d20", modifier: m.attackBonus,
     result: atk.rolls[0], total: atk.total, target: targetAC, success: hit,
     purpose: "monster_attack",
@@ -1592,21 +1743,70 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   await logDiceRoll(roomId, round, m.name, rolls[rolls.length - 1]);
 
   if (!hit) {
-    return {
-      taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
-      monsterName: m.name, moved: false,
-      narrativeLine: `${m.name} бьёт по ${targetName}, но промахивается (${atk.total} против AC ${targetAC}).`,
-    };
+    if (attackNum === numAttacks - 1 && !anyHit) {
+      return {
+        taken: true, rolls, damageToPlayer: 0, damagedPlayer: null,
+        monsterName: m.name, moved: false,
+        narrativeLine: `${m.name} бьёт по ${targetName}, но промахивается (${atk.total} против AC ${targetAC}).`,
+      };
+    }
+    continue;
   }
+  anyHit = true;
 
   const rawDmg = rollDice(m.damageNotation);
   // Talent: damage reduction.
   const dmg = applyDamageReduction(targetState, rawDmg.total);
   await logDiceRoll(roomId, round, m.name, {
-    label: `Урон: ${m.name}` + (dmg < rawDmg.total ? ` (−${rawDmg.total - dmg} сопр.)` : ""),
+    label: `Урон: ${m.name}${attackLabel}` + (dmg < rawDmg.total ? ` (−${rawDmg.total - dmg} сопр.)` : ""),
     notation: m.damageNotation, modifier: 0, result: rawDmg.raw, total: dmg, purpose: "monster_damage",
   });
   await damagePlayer(roomId, targetName, dmg);
+  totalDamageToPlayer += dmg;
+
+    // D&D 5e: auto-execute special abilities on hit.
+    if (m.specialAbility && anyHit) {
+      const ability = m.specialAbility.toLowerCase();
+      // Похищение жизни: heal monster for half damage dealt.
+      if (ability.includes("похищение жизни") || ability.includes("life steal") || ability.includes("вампир")) {
+        const heal = Math.floor(dmg / 2);
+        if (heal > 0 && m.hp < m.maxHp) {
+          const newHp = Math.min(m.maxHp, m.hp + heal);
+          await db.monster.update({ where: { id: m.id }, data: { hp: newHp } });
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `🩸 ${m.name} похищает ${heal} HP у ${targetName}.` },
+          });
+        }
+      }
+      // Паралич: CON save DC 10 or paralyzed 1 round.
+      if (ability.includes("паралич") || ability.includes("paraly")) {
+        const saveMod = abilityModifier((target as any).con ?? 10);
+        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        if (saveRoll < 10) {
+          await applyCondition(roomId, targetName, "player", "stunned", 1, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `⚡ ${m.name} парализует ${targetName}! (спасбросок ${saveRoll} vs DC 10)` },
+          });
+        }
+      }
+      // Истощение силы: target gets -1 to attacks (apply poisoned condition as proxy).
+      if (ability.includes("истощение") || ability.includes("ослабл")) {
+        await applyCondition(roomId, targetName, "player", "poisoned", 3, m.name);
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: `💜 ${m.name} истощает силы ${targetName}.` },
+        });
+      }
+      // Ужасающий вопль / Дыхание тлена / Тёмный огонь: AoE damage (cooldown every 2-3 rounds).
+      if ((ability.includes("вопль") || ability.includes("дыхание") || ability.includes("огонь")) && round % 3 === 0) {
+        const aoeDmg = ability.includes("дыхание") ? rollDice("6d6") : ability.includes("вопль") ? rollDice("3d6") : rollDice("3d6");
+        await damagePlayer(roomId, targetName, aoeDmg.total);
+        totalDamageToPlayer += aoeDmg.total;
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: `🔥 ${m.name} использует.specialAbility: ${aoeDmg.total} урона по ${targetName}!` },
+        });
+      }
+    }
+  } // end multiattack loop
 
   // Talent: counterattack — the target may strike back.
   const counterDmg = rollCounterattack(targetState);
@@ -1628,9 +1828,9 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
   }
 
   return {
-    taken: true, rolls, damageToPlayer: dmg, damagedPlayer: targetName,
+    taken: true, rolls, damageToPlayer: totalDamageToPlayer, damagedPlayer: targetName,
     monsterName: m.name, moved: false,
-    narrativeLine: `${m.name} бьёт ${targetName} и попадает! ${dmg} урона (${atk.total} против AC ${targetAC}).${counterLine}`,
+    narrativeLine: `${m.name} бьёт ${targetName} и попадает! ${totalDamageToPlayer} урона${numAttacks > 1 ? ` (${numAttacks} атаки)` : ""}.${counterLine}`,
   };
 }
 
@@ -1764,16 +1964,12 @@ async function advanceTurn(
         continue; // skip to next combatant
       }
       // BG3: reset action economy at the start of the player's turn.
-      const { maxActionPointsForLevel } = await import("./state");
-      const maxAP = maxActionPointsForLevel(p.level);
       await db.player.update({
         where: { id: p.id },
         data: {
           actionUsed: false,
           bonusActionUsed: false,
           reactionUsed: false,
-          actionPoints: maxAP,
-          maxActionPoints: maxAP,
         },
       });
       return { ended: false, monsterTurns, nextTurnName: current.combatantName, nextTurnType: "player" };
@@ -2134,6 +2330,19 @@ export async function resolvePlayerMechanics(
       if (pick) {
         await db.monster.update({ where: { id: pick.id }, data: { isActive: true } });
         revealedAny = true;
+        // Mark monster as discovered for the host's account (bestiary).
+        if (room.hostAccountId) {
+          try {
+            const existing = await db.discoveredMonster.findFirst({
+              where: { accountId: room.hostAccountId, monsterName: pick.name },
+            });
+            if (!existing) {
+              await db.discoveredMonster.create({
+                data: { accountId: room.hostAccountId, monsterName: pick.name },
+              });
+            }
+          } catch {}
+        }
         console.log(
           `[DM] opening combat: revealed only targeted monster "${pick.name}" (id ${pick.id})`
         );
@@ -2142,7 +2351,23 @@ export async function resolvePlayerMechanics(
     // Fallback: if no specific target was identified, reveal ALL hidden
     // monsters so combat can still proceed (preserves prior behavior).
     if (!revealedAny) {
+      const hiddenMonsters = await db.monster.findMany({ where: { roomId, isActive: false } });
       await db.monster.updateMany({ where: { roomId, isActive: false }, data: { isActive: true } });
+      // Mark all revealed monsters as discovered for the host's account.
+      if (room.hostAccountId) {
+        for (const m of hiddenMonsters) {
+          try {
+            const existing = await db.discoveredMonster.findFirst({
+              where: { accountId: room.hostAccountId, monsterName: m.name },
+            });
+            if (!existing) {
+              await db.discoveredMonster.create({
+                data: { accountId: room.hostAccountId, monsterName: m.name },
+              });
+            }
+          } catch {}
+        }
+      }
       console.log(
         `[DM] opening combat: no specific target identified ("${targetName ?? ""}") — revealed all hidden monsters as fallback`
       );
@@ -2231,46 +2456,12 @@ export async function resolvePlayerMechanics(
     nextTurnType = nextTurnName ? "player" : null;
   }
 
-  // BG3 action economy: mark the player's Action as used + deduct Action Points (ОД).
-  // ОД costs: attack=2, cantrip=1, spell L1-2=2, L3-4=3, L5+=4, other=1.
-  // When ОД reaches 0, auto-advance the turn to the enemy.
-  if (wasCombatActive && !combatEnded) {
+  // BG3 action economy: mark the player's Action as used when they perform a
+  // combat action (attack, spell, Dash, etc.). The pips reset at the start of
+  // their next turn (handled in advanceTurn).
+  if (wasCombatActive && !combatEnded && res.category === "combat") {
     try {
-      // Deduct Action Points.
-      const actionLowerAP = playerAction.toLowerCase();
-      let apCost = 1; // default
-      if (actionLowerAP.includes("заклинан") || actionLowerAP.includes("cast") || actionLowerAP.includes("магическ")) apCost = 2;
-      if (actionLowerAP.includes("огненн") && actionLowerAP.includes("шар")) apCost = 3;
-      if (res.category === "combat") apCost = Math.max(apCost, 2);
-      if (res.category === "other" || res.category === "exploration") apCost = 1;
-
-      const pAfter = await db.player.findFirst({ where: { name: actorName, roomId } });
-      if (pAfter) {
-        const currentAP = pAfter.actionPoints ?? 4;
-        const newAP = Math.max(0, currentAP - apCost);
-        await db.player.update({
-          where: { id: pAfter.id },
-          data: { actionPoints: newAP },
-        });
-        invalidateSnapshotCache(roomId);
-        await db.chatMessage.create({
-          data: { roomId, role: "system", speaker: "", round, content: `⚡ ${actorName} тратит ${apCost} ОД (осталось ${newAP}/${pAfter.maxActionPoints}).` },
-        });
-        // Auto-advance turn when ОД reaches 0.
-        if (newAP <= 0) {
-          await db.chatMessage.create({
-            data: { roomId, role: "system", speaker: "", round, content: `⏭️ ${actorName} израсходовал все ОД — ход переходит к противнику.` },
-          });
-          try {
-            const { advanceTurn } = await import("./state");
-            await advanceTurn(roomCode);
-          } catch {}
-        }
-      }
-      // Also mark legacy actionUsed flag.
-      if (res.category === "combat") {
-        await markActionUsed(roomId, actorName, "action");
-      }
+      await markActionUsed(roomId, actorName, "action");
     } catch {}
   }
 

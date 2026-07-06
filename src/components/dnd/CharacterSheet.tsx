@@ -36,14 +36,18 @@ const CraftingPanel = dynamic(
   () => import("./CraftingPanel").then((m) => m.CraftingPanel),
   { ssr: false }
 );
+const FullCharacterSheet = dynamic(
+  () => import("./FullCharacterSheet").then((m) => m.FullCharacterSheet),
+  { ssr: false }
+);
 
-const STAT_LABELS: { key: keyof PlayerState; short: string }[] = [
-  { key: "str", short: "character.str" },
-  { key: "dex", short: "character.dex" },
-  { key: "con", short: "character.con" },
-  { key: "int", short: "character.int" },
-  { key: "wis", short: "character.wis" },
-  { key: "cha", short: "character.cha" },
+const STAT_LABELS: { key: keyof PlayerState; short: string; icon: string }[] = [
+  { key: "str", short: "character.str", icon: "💪" },
+  { key: "dex", short: "character.dex", icon: "🏹" },
+  { key: "con", short: "character.con", icon: "❤️" },
+  { key: "int", short: "character.int", icon: "📖" },
+  { key: "wis", short: "character.wis", icon: "🦉" },
+  { key: "cha", short: "character.cha", icon: "🎭" },
 ];
 
 export const CharacterSheet = memo(function CharacterSheet({
@@ -97,6 +101,7 @@ export const CharacterSheet = memo(function CharacterSheet({
 }) {
   const [equipOpen, setEquipOpen] = useState(false);
   const [craftOpen, setCraftOpen] = useState(false);
+  const [fullSheetOpen, setFullSheetOpen] = useState(false);
   // UI language (i18n-restore)
   const lang = useSettings((s) => s.lang);
   const tt = (key: string, params?: Record<string, string | number>) => t(lang, key, params);
@@ -144,8 +149,11 @@ export const CharacterSheet = memo(function CharacterSheet({
         isYou && "border-primary/50"
       )}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-3 py-2.5">
+      {/* Header — click to open full character sheet */}
+      <div
+        className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-stone-900/40"
+        onClick={() => setFullSheetOpen(true)}
+      >
         <div
           className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md border-2 text-xs font-bold text-white"
           style={{
@@ -354,6 +362,39 @@ export const CharacterSheet = memo(function CharacterSheet({
           </div>
         )}
 
+        {/* Quick action buttons — always visible (even in compact mode) */}
+        {isYou && (onEquip || onCraft) && (
+          <div className="flex items-center gap-1 pb-1">
+            {isYou && onEquip && onUnequip && (
+              <button
+                type="button"
+                onClick={() => setEquipOpen(true)}
+                className="rounded border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-stone-800/60"
+              >
+                <Shirt className="inline h-3 w-3" /> {tt("character.equipment")}
+              </button>
+            )}
+            {isYou && hasAnyStation && onCraft && (
+              <button
+                type="button"
+                onClick={() => setCraftOpen(true)}
+                className="rounded border border-purple-700/40 bg-purple-950/30 px-2 py-0.5 text-[10px] text-purple-200 transition-colors hover:bg-purple-950/50"
+              >
+                <Hammer className="inline h-3 w-3" /> {tt("character.crafting")}
+              </button>
+            )}
+            {isYou && (
+              <button
+                type="button"
+                onClick={() => setFullSheetOpen(true)}
+                className="ml-auto rounded border border-sky-700/40 bg-sky-950/30 px-2 py-0.5 text-[10px] text-sky-200 transition-colors hover:bg-sky-950/50"
+              >
+                {tt("character.full_sheet")}
+              </button>
+            )}
+          </div>
+        )}
+
         {!compact && (
           <>
             {/* Stats */}
@@ -362,8 +403,9 @@ export const CharacterSheet = memo(function CharacterSheet({
                 const val = player[s.key] as number;
                 const mod = abilityModifier(val);
                 return (
-                  <div key={s.key} className="rounded border border-border/40 bg-stone-900/50 px-1 py-0.5 text-center">
-                    <div className="text-[10px] text-muted-foreground">{tt(s.short)}</div>
+                  <div key={s.key} className="rounded border border-border/40 bg-stone-900/50 px-1 py-0.5 text-center" title={tt(s.short)}>
+                    <div className="text-[10px] leading-none">{s.icon}</div>
+                    <div className="text-[8px] uppercase text-muted-foreground">{tt(s.short)}</div>
                     <div className="text-xs font-bold leading-tight">{val}</div>
                     <div className={cn("text-[9px] font-mono", mod >= 0 ? "text-emerald-400" : "text-red-400")}>
                       {mod >= 0 ? "+" : ""}
@@ -601,6 +643,35 @@ export const CharacterSheet = memo(function CharacterSheet({
           onOpenChange={setCraftOpen}
           onCraft={onCraft}
         />
+      )}
+
+      {/* Full character sheet modal — opens when clicking the header. */}
+      {fullSheetOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setFullSheetOpen(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-lg border border-amber-800/40 bg-stone-950/95 p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-serif text-lg font-bold gold-text">{tt("character.full_sheet")}</h2>
+              <button
+                type="button"
+                onClick={() => setFullSheetOpen(false)}
+                className="rounded-md border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:bg-stone-800/60 hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <FullCharacterSheet
+              player={player}
+              inventory={inventory}
+              conditions={conditions}
+            />
+          </div>
+        </div>
       )}
     </Card>
   );

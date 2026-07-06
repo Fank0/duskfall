@@ -109,6 +109,8 @@ export interface DMResolution {
   saveDC?: number;
   /** Elemental flavor of the AoE (drives the overlay color). */
   aoeElement?: string; // "fire" | "cold" | "lightning" | "acid" | "force" | "poison" | "thunder"
+  /** Spell slot level used (for upcast damage scaling). 0 = cantrip/no slot. */
+  slotLevel?: number;
 }
 
 export interface ResolvedRoll {
@@ -245,9 +247,16 @@ export interface PlayerState {
   reactionUsed: boolean;
   /** Spell name currently concentrating on (empty = none). */
   concentratingOn: string;
-  /** Action Points (ОД) — BG3/DOS2 hybrid. Pool spent on actions per turn. */
-  actionPoints: number;
-  maxActionPoints: number;
+  /** D&D 5e skill proficiencies (JSON array of skill names). */
+  skillProficiencies: string[];
+  /** D&D 5e saving throw proficiencies (JSON array of save names). */
+  saveProficiencies: string[];
+  /** Passive perception = 10 + WIS mod + proficiency (if proficient). */
+  passivePerception: number;
+  /** Spell save DC = 8 + proficiency bonus + casting stat mod. */
+  spellSaveDC: number;
+  /** D&D 5e class resources (Rage, Lay on Hands, Ki, etc.). */
+  classResources: Record<string, { current: number; max: number }>;
 }
 
 export interface MonsterState {
@@ -268,6 +277,12 @@ export interface MonsterState {
   isBoss?: boolean;
   /** Special-ability blurb shown in the monster's description (bosses). */
   specialAbility?: string;
+  /** D&D 5e: damage types the monster resists (half damage). */
+  resistances?: string[];
+  /** D&D 5e: damage types the monster is immune to (no damage). */
+  immunities?: string[];
+  /** D&D 5e: conditions the monster is immune to. */
+  conditionImmunities?: string[];
 }
 
 export interface InventoryItemState {
@@ -510,7 +525,8 @@ export type TalentEffect =
   | { type: "reroll_miss_once" } // reroll one missed attack per turn
   | { type: "save_bonus"; value: number } // bonus to ability checks
   | { type: "hp_bonus"; value: number } // +max HP (and current)
-  | { type: "asi"; stat: StatKey; value: number }; // +value to a chosen stat (ASI)
+  | { type: "asi"; stat: StatKey; value: number } // +value to a chosen stat (ASI)
+  | { type: "passive" }; // passive effect (subclass, no mechanical computation needed)
 
 export interface Talent {
   id: string;
@@ -522,6 +538,8 @@ export interface Talent {
   tier?: 1 | 2;
   /** Required talent id (for tier-2 talents). The player must already have this talent. */
   requires?: string;
+  /** Source: talent (level-up pick) or subclass (chosen at level 3). */
+  source?: "talent" | "subclass";
 }
 
 /** A starting location + opening hook for a fresh adventure. */

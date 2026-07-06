@@ -73,6 +73,7 @@ model Account {
   passwordHash String
   createdAt    DateTime  @default(now())
   saves        SaveSlot[]
+  discoveredMonsters DiscoveredMonster[]
 }
 
 /// A persistent save slot bound to an Account. Each account has 3 slots
@@ -184,11 +185,22 @@ model Player {
   // Taking damage forces a CON save (DC 10 or half damage, whichever is
   // higher). On failure, concentration breaks and the spell ends.
   concentratingOn  String   @default("")
-  // ===== Action Points (ОД) — BG3/DOS2 hybrid =====
-  // Pool of points spent on actions per turn. When ОД=0, turn passes to enemy.
-  // Base: 4 at L1-4, 5 at L5-10, 6 at L11-16, 7 at L17-20.
-  actionPoints     Int      @default(4)
-  maxActionPoints  Int      @default(4)
+  // D&D 5e skills & saving throw proficiencies (JSON array of skill/save names).
+  // e.g. ["acrobatics","stealth","perception","dex_save","wis_save"]
+  // Set at character creation based on class + background.
+  skillProficiencies  String   @default("[]")
+  saveProficiencies   String   @default("[]")
+  // Passive perception = 10 + WIS modifier + proficiency (if proficient).
+  // Pre-calculated and stored for DM context.
+  passivePerception   Int      @default(10)
+  // Spell save DC = 8 + proficiency bonus + casting stat modifier.
+  // Pre-calculated and stored for DM context.
+  spellSaveDC         Int      @default(12)
+  // D&D 5e class resources (JSON). Stores current/max for Rage, Lay on Hands,
+  // Ki, Bardic Inspiration, Channel Divinity, Wild Shape, Sorcery Points,
+  // Action Surge, Second Wind, Arcane Recovery.
+  // e.g. {"rage":{"current":2,"max":2},"layOnHands":{"current":5,"max":5}}
+  classResources      String   @default("{}")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -215,6 +227,16 @@ model Monster {
   // ===== Dungeon generator (Пункт 36) =====
   isBoss         Boolean  @default(false)
   specialAbility String   @default("")
+  // ===== D&D 5e resistances & immunities =====
+  // JSON array of damage types the monster resists (half damage).
+  // e.g. ["fire","bludgeoning"]
+  resistances    String   @default("[]")
+  // JSON array of damage types the monster is immune to (no damage).
+  // e.g. ["poison","psychic"]
+  immunities     String   @default("[]")
+  // JSON array of conditions the monster is immune to.
+  // e.g. ["poisoned","charmed","frightened"]
+  conditionImmunities String @default("[]")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -429,4 +451,18 @@ model TerrainCell {
 
   @@unique([roomId, x, y])
   @@index([roomId])
+}
+
+/// Monsters discovered by a player during their adventures. Each account
+/// accumulates a bestiary of monsters they've encountered in combat.
+/// The BestiaryPanel shows only these discovered monsters (not the full list).
+model DiscoveredMonster {
+  id          String   @id @default(cuid())
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  monsterName String   // Russian name (key into BESTIARY)
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, monsterName])
+  @@index([accountId])
 }

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, BookMarked, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon, Sparkles as SpellbookIcon, Package as PackageIcon, Crosshair } from "lucide-react";
+import { Skull, RotateCcw, Swords, ScrollText, Loader2, Users, Copy, Check, BookOpen, BookMarked, Map as MapIcon, MessageCircle, Settings as SettingsIcon, ScrollText as LogIcon, Sparkles as SpellbookIcon, Package as PackageIcon, Crosshair, Save } from "lucide-react";
 import { toast } from "sonner";
 import { CharacterSheet } from "@/components/dnd/CharacterSheet";
 import { CombatGrid } from "@/components/dnd/CombatGrid";
@@ -136,6 +136,7 @@ export default function Home() {
   const [dialogueNpc, setDialogueNpc] = useState<NpcState | null>(null);
   const [isDialogueBusy, setIsDialogueBusy] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [combatLogOpen, setCombatLogOpen] = useState(false);
   const [bestiaryOpen, setBestiaryOpen] = useState(false);
   const [spellbookOpen, setSpellbookOpen] = useState(false);
@@ -689,6 +690,31 @@ export default function Home() {
     [session]
   );
 
+  // Save current game to a slot (tied to account).
+  const handleSave = useCallback(async (slotNumber: number) => {
+    if (!session) return;
+    try {
+      const res = await fetch("/api/game/saves/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slotNumber,
+          roomCode: session.roomCode,
+          playerName: session.playerName,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(tt("ui.save_success"));
+        setSaveDialogOpen(false);
+      } else {
+        toast.error(data.error ?? tt("ui.save_failed"));
+      }
+    } catch {
+      toast.error(tt("ui.save_failed"));
+    }
+  }, [session, tt]);
+
   const handleRest = useCallback(
     async (restType: "short" | "long") => {
       if (!session) return;
@@ -959,7 +985,7 @@ export default function Home() {
   // Track whether any modal is open — hotkeys are suppressed while a modal
   // captures input (the modal's own Escape handler still works).
   const anyModalOpen = questOpen || mapOpen || dialogueOpen || settingsOpen
-    || combatLogOpen || bestiaryOpen || spellbookOpen || itemDbOpen;
+    || combatLogOpen || bestiaryOpen || spellbookOpen || itemDbOpen || saveDialogOpen;
 
   // ===== Item 4: Hotkeys for quick-use =====
   // Trigger the Nth ability in the BottomPanel (1..8) using the same targeting
@@ -1259,6 +1285,16 @@ export default function Home() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setSaveDialogOpen(true)}
+            className="gap-1.5 border-emerald-700/40 bg-emerald-950/20 text-emerald-200 hover:bg-emerald-950/40"
+            title={tt("ui.save_game")}
+          >
+            <Save className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{tt("ui.save")}</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setSettingsOpen(true)}
             className="gap-1.5 border-border/60"
             title={tt("ui.interface_settings")}
@@ -1284,7 +1320,7 @@ export default function Home() {
         {/* ===== TOP: 3 columns ===== */}
         <div className="flex min-h-0 flex-1 flex-col gap-2 lg:flex-row">
           {/* ===== LEFT: Party + Character sheet (compact) + Dice log ===== */}
-          <aside className="flex flex-col gap-2 lg:w-[22%] lg:shrink-0 lg:overflow-hidden">
+          <aside className="flex flex-col gap-2 overflow-y-auto lg:w-[22%] lg:shrink-0 lg:overflow-y-auto lg:pr-1 fantasy-scroll">
             <PartyPanel
               players={snapshot.players}
               youName={session.playerName}
@@ -1478,6 +1514,44 @@ export default function Home() {
         onAction={handleDialogueAction}
         isBusy={isDialogueBusy}
       />
+
+      {/* ===== Save game dialog ===== */}
+      {saveDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => setSaveDialogOpen(false)}>
+          <div
+            className="w-full max-w-md rounded-lg border border-emerald-800/40 bg-stone-950/95 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-serif text-lg font-bold gold-text">{tt("ui.save_game")}</h2>
+              <button
+                type="button"
+                onClick={() => setSaveDialogOpen(false)}
+                className="rounded-md border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:bg-stone-800/60 hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mb-4 text-xs text-muted-foreground">{tt("ui.save_game_hint")}</p>
+            <div className="space-y-2">
+              {[1, 2, 3].map((slot) => (
+                <button
+                  key={slot}
+                  type="button"
+                  onClick={() => handleSave(slot)}
+                  className="flex w-full items-center gap-3 rounded-lg border border-emerald-700/40 bg-emerald-950/20 px-4 py-3 text-left transition-colors hover:border-emerald-500/60 hover:bg-emerald-950/40"
+                >
+                  <Save className="h-5 w-5 text-emerald-400" />
+                  <div>
+                    <div className="text-sm font-medium text-emerald-200">{tt("ui.save_slot")} {slot}</div>
+                    <div className="text-[10px] text-muted-foreground">{tt("ui.save_slot_hint")}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== Settings menu modal (item 18 / 21) ===== */}
       <SettingsMenu open={settingsOpen} onOpenChange={setSettingsOpen} />

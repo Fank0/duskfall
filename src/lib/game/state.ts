@@ -115,8 +115,11 @@ function toPlayer(p: any): PlayerState {
     bonusActionUsed: Boolean(p.bonusActionUsed),
     reactionUsed: Boolean(p.reactionUsed),
     concentratingOn: p.concentratingOn ?? "",
-    actionPoints: p.actionPoints ?? 4,
-    maxActionPoints: p.maxActionPoints ?? 4,
+    skillProficiencies: p.skillProficiencies ? JSON.parse(p.skillProficiencies) : [],
+    saveProficiencies: p.saveProficiencies ? JSON.parse(p.saveProficiencies) : [],
+    passivePerception: p.passivePerception ?? 10,
+    spellSaveDC: p.spellSaveDC ?? 12,
+    classResources: p.classResources ? JSON.parse(p.classResources) : {},
   };
 }
 
@@ -137,6 +140,9 @@ function toMonster(m: any): MonsterState {
     isActive: m.isActive,
     isBoss: Boolean(m.isBoss),
     specialAbility: m.specialAbility ?? "",
+    resistances: m.resistances ? (typeof m.resistances === "string" ? JSON.parse(m.resistances) : m.resistances) : [],
+    immunities: m.immunities ? (typeof m.immunities === "string" ? JSON.parse(m.immunities) : m.immunities) : [],
+    conditionImmunities: m.conditionImmunities ? (typeof m.conditionImmunities === "string" ? JSON.parse(m.conditionImmunities) : m.conditionImmunities) : [],
   };
 }
 
@@ -542,24 +548,68 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     const actionInfo = snap.combatActive
       ? ` | Действия: ${p.actionUsed ? "✗" : "✓"}${p.bonusActionUsed ? "/✗" : "/✓"}${p.reactionUsed ? "/✗" : "/✓"}`
       : "";
+    let skillInfo = "нет";
+    let saveInfo = "нет";
+    // p is PlayerState — skillProficiencies/saveProficiencies are already string[] (parsed in toPlayer)
+    const skills = p.skillProficiencies;
+    if (Array.isArray(skills) && skills.length > 0) skillInfo = skills.join(", ");
+    const saves = p.saveProficiencies;
+    if (Array.isArray(saves) && saves.length > 0) saveInfo = saves.join(", ");
+    // D&D 5e: Extra Attack — Fighters level 5+ get 2 attacks, level 11+ get 3, level 20+ get 4.
+    let extraAttackInfo = "";
+    const numAttacks = getExtraAttacks(p.charClass, p.level);
+    if (numAttacks > 1) extraAttackInfo = ` | Атак за ход: ${numAttacks}`;
+    // D&D 5e: class resources (Rage, Lay on Hands, Ki, etc.)
+    let resourceInfo = "";
+    const resources = p.classResources ?? {};
+    const resKeys = Object.keys(resources);
+    if (resKeys.length > 0) {
+      const parts: string[] = [];
+      for (const key of resKeys) {
+        const r = resources[key];
+        if (r && r.max > 0) {
+          const labelMap: Record<string, string> = {
+            rage: "Ярость", layOnHands: "Возложение рук", ki: "Ци",
+            bardicInspiration: "Вдохновение", channelDivinity: "Божественность",
+            wildShape: "Дикий облик", sorceryPoints: "Очки колдовства",
+            actionSurge: "Прилив действий", secondWind: "Второе дыхание",
+            arcaneRecovery: "Магическое восстановление",
+          };
+          const label = labelMap[key] ?? key;
+          parts.push(`${label}: ${r.current}/${r.max}`);
+        }
+      }
+      if (parts.length > 0) resourceInfo = ` | Ресурсы: ${parts.join(", ")}`;
+    }
     lines.push(
-      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${10 + mod(p.wis)} | Оружие: ${p.weaponName} (${p.weaponNotation})${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${resourceInfo}${slotInfo}${concInfo}${actionInfo} | Позиция (${p.posX},${p.posY})`
     );
     // Backstory (player-authored): let the DM weave the hero's history into
     // the narrative — call back to NPCs, places, oaths, regrets.
     if (p.backstory && p.backstory.trim().length > 0) {
       lines.push(`  Предыстория ${p.name}: ${p.backstory.trim()}`);
     }
-    // ===== Selected talents (so DM knows player's capabilities) =====
+    // ===== Selected talents + subclass (so DM knows player's capabilities) =====
     if (p.selectedTalents && p.selectedTalents.length > 0) {
       const { getTalentsForClass } = await import("./talents");
+      const { getSubclassById, isSubclassTalent } = await import("./subclasses");
       const cid = getClassIdByCharClass(p.charClass);
       const allClassTalents = getTalentsForClass(cid);
-      const picked = p.selectedTalents
-        .map((id: string) => allClassTalents.find((t) => t.id === id))
-        .filter((t: any) => t);
-      if (picked.length > 0) {
-        lines.push(`  Таланты ${p.name}: ${picked.map((t: any) => `${t.name} (${t.description?.slice(0, 60) ?? ""})`).join(", ")}`);
+      const talentParts: string[] = [];
+      let subclassInfo = "";
+      for (const id of p.selectedTalents) {
+        if (isSubclassTalent(id)) {
+          const sub = getSubclassById(id.replace("sub_", ""));
+          if (sub) subclassInfo = ` | Подкласс: ${sub.name} (${sub.description.slice(0, 80)})`;
+          continue;
+        }
+        const t = allClassTalents.find((t: any) => t.id === id);
+        if (t) talentParts.push(`${t.name} (${t.description?.slice(0, 60) ?? ""})`);
+      }
+      if (talentParts.length > 0) {
+        lines.push(`  Таланты ${p.name}: ${talentParts.join(", ")}${subclassInfo}`);
+      } else if (subclassInfo) {
+        lines.push(`  Таланты ${p.name}: (нет)${subclassInfo}`);
       }
     }
     // ===== Computed abilities (race/class/talent/scroll — so DM knows what player CAN do) =====
@@ -698,8 +748,14 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
         : "";
       const display = activeDisplayName(m);
       const atkTag = ` | Атака +${m.attackBonus} | Урон ${m.damageNotation}`;
+      // D&D 5e: show resistances/immunities in DM context.
+      let resTag = "";
+      const res = m.resistances ?? [];
+      const imm = m.immunities ?? [];
+      if (Array.isArray(res) && res.length > 0) resTag += ` | Сопротивление: ${res.join(", ")}`;
+      if (Array.isArray(imm) && imm.length > 0) resTag += ` | Иммунитет: ${imm.join(", ")}`;
       lines.push(
-        `Монстр: ${display} (HP ${m.hp}/${m.maxHp}, AC ${m.ac}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag} — ${m.description}`
+        `Монстр: ${display} (HP ${m.hp}/${m.maxHp}, AC ${m.ac}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag}${resTag} — ${m.description}`
       );
     }
   }
@@ -970,10 +1026,25 @@ export async function addDatabaseItemToInventory(
   invalidateSnapshotCache(roomId);
 }
 
-export async function damageMonster(roomId: string, monsterId: string, amount: number) {
+export async function damageMonster(roomId: string, monsterId: string, amount: number, damageType?: string) {
   const m = await db.monster.findFirst({ where: { id: monsterId, roomId } });
   if (!m) return { hp: 0, died: false };
-  const newHp = Math.max(0, m.hp - amount);
+
+  // D&D 5e: apply resistances (half damage) and immunities (no damage).
+  let finalAmount = amount;
+  let resistances: string[] = [];
+  let immunities: string[] = [];
+  try {
+    resistances = m.resistances ? JSON.parse(m.resistances) : [];
+    immunities = m.immunities ? JSON.parse(m.immunities) : [];
+  } catch {}
+  if (damageType && immunities.includes(damageType)) {
+    finalAmount = 0;
+  } else if (damageType && resistances.includes(damageType)) {
+    finalAmount = Math.floor(finalAmount / 2);
+  }
+
+  const newHp = Math.max(0, m.hp - finalAmount);
   await db.monster.update({
     where: { id: m.id },
     data: { hp: newHp, isActive: newHp > 0 },
@@ -1591,12 +1662,23 @@ export function proficiencyForLevel(level: number): number {
   return 2 + Math.floor((level - 1) / 4);
 }
 
-/** Action Points (ОД) per turn by level — BG3/DOS2 hybrid. */
-export function maxActionPointsForLevel(level: number): number {
-  if (level >= 17) return 7;
-  if (level >= 11) return 6;
-  if (level >= 5) return 5;
-  return 4;
+/** D&D 5e: Extra Attack — number of attacks per Action by class & level.
+ *  Fighter: 2 at L5, 3 at L11, 4 at L20.
+ *  Barbarian, Paladin, Ranger, Monk: 2 at L5.
+ *  Other classes: 1. */
+export function getExtraAttacks(charClass: string, level: number): number {
+  const lc = charClass.toLowerCase();
+  if (lc === "fighter") {
+    if (level >= 20) return 4;
+    if (level >= 11) return 3;
+    if (level >= 5) return 2;
+    return 1;
+  }
+  if (["barbarian", "paladin", "ranger", "monk"].includes(lc)) {
+    if (level >= 5) return 2;
+    return 1;
+  }
+  return 1;
 }
 
 /** Award XP to a player; sets pendingLevelUp if a threshold is crossed.

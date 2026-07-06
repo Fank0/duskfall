@@ -40,6 +40,9 @@ export const CATEGORY_HEX: Record<MonsterCategory, string> = {
   demon: "#9333ea",
   elemental: "#0284c7",
   boss: "#7f1d1d",
+  fiend: "#ea580c",
+  giant: "#78716c",
+  aberration: "#9333ea",
 };
 
 /** Bestiary entry ids per biome — the monster pool the room-population

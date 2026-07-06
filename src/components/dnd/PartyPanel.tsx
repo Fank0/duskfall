@@ -116,7 +116,7 @@ export const PartyPanel = memo(function PartyPanel({
                         />
                       </div>
                       <div className="mt-0.5 flex items-center justify-between text-[9px] font-mono text-muted-foreground">
-                        <span>{t(settings.lang, "character.str")}{p.str}({fmt(abilityModifier(p.str))}) {t(settings.lang, "character.dex")}{p.dex}({fmt(abilityModifier(p.dex))}) {t(settings.lang, "character.con")}{p.con}({fmt(abilityModifier(p.con))})</span>
+                        <span>💪{p.str}({fmt(abilityModifier(p.str))}) 🏹{p.dex}({fmt(abilityModifier(p.dex))}) ❤️{p.con}({fmt(abilityModifier(p.con))})</span>
                         <span className="truncate ml-1 text-stone-400">{p.weaponName}</span>
                       </div>
                     </li>
