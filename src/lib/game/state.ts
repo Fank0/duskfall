@@ -8,6 +8,8 @@ import { findBestiaryEntryByName, formatCR } from "./bestiary";
 import { getClassIdByCharClass, isCasterClass } from "./presets";
 import { getSpellById, resolveKnownSpells } from "./spellbook";
 import { generateLoot, findItemByName, rarityLabelRu, type ItemEntry, type ItemRarity } from "./item-database";
+import { coverAcBonus, getTerrainCells } from "./terrain";
+import { findPath } from "./pathfinding";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -754,8 +756,14 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       const imm = m.immunities ?? [];
       if (Array.isArray(res) && res.length > 0) resTag += ` | Сопротивление: ${res.join(", ")}`;
       if (Array.isArray(imm) && imm.length > 0) resTag += ` | Иммунитет: ${imm.join(", ")}`;
+      // D&D 5e cover: include effective AC (base + cover bonus) so the LLM
+      // can correctly set attack target ACs. (item #12: apply cover AC bonus
+      // to player attacks too — the DM context now shows the cover-adjusted AC.)
+      const coverBonus = coverAcBonus(snap.terrainCells ?? [], m.posX, m.posY);
+      const effectiveAc = m.ac + coverBonus;
+      const acTag = coverBonus > 0 ? `AC ${effectiveAc} (база ${m.ac} +${coverBonus} укрытие)` : `AC ${m.ac}`;
       lines.push(
-        `Монстр: ${display} (HP ${m.hp}/${m.maxHp}, AC ${m.ac}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag}${resTag} — ${m.description}`
+        `Монстр: ${display} (HP ${m.hp}/${m.maxHp}, ${acTag}, позиция ${m.posX},${m.posY})${atkTag}${crTag}${abilityTag}${resTag} — ${m.description}`
       );
     }
   }
@@ -1406,20 +1414,73 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
   if (!nearest) return { newX: m.posX, newY: m.posY, distBefore: 0, distAfter: 0, targetName: null };
   const p = nearest.player;
   const distBefore = nearest.distance;
+
+  // D&D 5e: A* pathfinding around terrain obstacles (item #9).
+  // Fall back to greedy movement if pathfinding fails or terrain is empty.
   let nx = m.posX;
   let ny = m.posY;
-  let steps = 2;
-  // Move toward player but STOP at distance 1 (adjacent), not on player's cell
-  while (steps > 0) {
-    const dist = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
-    if (dist <= 1) break; // already adjacent — don't step onto player
-    const dx = p.posX - nx;
-    const dy = p.posY - ny;
-    if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) nx += Math.sign(dx);
-    else if (dy !== 0) ny += Math.sign(dy);
-    else break;
-    steps--;
+  const maxSteps = 2; // monsters move up to 2 cells per turn
+
+  try {
+    const terrain = await getTerrainCells(roomId);
+    // Build the occupied set (other monsters + players block movement; the
+    // target player's cell is NOT blocked so the path can reach adjacency).
+    const otherMonsters = await db.monster.findMany({
+      where: { roomId, isActive: true, id: { not: monsterId } },
+      select: { posX: true, posY: true },
+    });
+    const otherPlayers = await db.player.findMany({
+      where: { roomId, isAlive: true, name: { not: p.name } },
+      select: { posX: true, posY: true },
+    });
+    const occupied = new Set<string>();
+    for (const om of otherMonsters) occupied.add(`${om.posX},${om.posY}`);
+    for (const op of otherPlayers) occupied.add(`${op.posX},${op.posY}`);
+
+    // A* to the player's position. The goal cell is enterable even if
+    // "occupied" (so the path can reach it), but we'll stop 1 cell short.
+    const result = findPath(m.posX, m.posY, p.posX, p.posY, terrain, occupied, maxSteps + 1);
+    if (result.path.length > 0) {
+      // Walk up to maxSteps cells, but stop at distance 1 (adjacent).
+      let walked = 0;
+      for (const cell of result.path) {
+        const dist = Math.max(Math.abs(cell.x - p.posX), Math.abs(cell.y - p.posY));
+        if (dist <= 1) break; // adjacent — don't step onto player
+        nx = cell.x;
+        ny = cell.y;
+        walked++;
+        if (walked >= maxSteps) break;
+      }
+    } else {
+      // No A* path found (e.g. boxed in) — fall back to greedy movement.
+      let steps = maxSteps;
+      while (steps > 0) {
+        const dist = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+        if (dist <= 1) break;
+        const dx = p.posX - nx;
+        const dy = p.posY - ny;
+        if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) nx += Math.sign(dx);
+        else if (dy !== 0) ny += Math.sign(dy);
+        else break;
+        steps--;
+      }
+    }
+  } catch (e) {
+    console.warn("[state] A* pathfinding failed, using greedy:", e);
+    // Fallback: greedy movement.
+    let steps = maxSteps;
+    while (steps > 0) {
+      const dist = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+      if (dist <= 1) break;
+      const dx = p.posX - nx;
+      const dy = p.posY - ny;
+      if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) nx += Math.sign(dx);
+      else if (dy !== 0) ny += Math.sign(dy);
+      else break;
+      steps--;
+    }
   }
+
   nx = Math.max(0, Math.min(GRID_SIZE - 1, nx));
   ny = Math.max(0, Math.min(GRID_SIZE - 1, ny));
   await db.monster.update({ where: { id: m.id }, data: { posX: nx, posY: ny } });

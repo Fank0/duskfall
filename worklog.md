@@ -2940,3 +2940,21 @@ Stage Summary:
 - 4 restoration items done this round: #1 (EnemyPanel), #4 (SRD conditions), #8 (XP table), #15 (weakened + new conditions in disadv/adv lists).
 - PROJECT_HANDOFF.md updated with DONE markers.
 - Next up: items #2 (Movement Points), #3 (Attunement), #5 (Subclass wiring), #7 (Concentration fix), #9 (Monster A* movement) are still pending. The worklog's gap-analysis top-10 list also highlights skill/save proficiency (#1 gap), reaction/bonus-action consumption (#2 gap), special-ability mechanical execution (#3 gap), multiattack/extra attack (#4 gap), subclasses (#5 gap) as CRITICAL.
+
+---
+Task ID: 11
+Agent: main (Z.ai Code)
+Task: Continue restoring lost mechanics per PROJECT_HANDOFF.md roadmap (items #7, #9, #11, #12).
+
+Work Log:
+- Item #7 (Concentration fix): Added concentration tracking in dm-agent.ts's resolvePlayerAction. After applying planned conditions, if the action was a success and the actor cast a known spellbook spell whose `duration` field contains "Концентрация", calls `setConcentration(roomId, actorName, spellName)` + writes a system chat message "🔮 X концентрируется на заклинании «Y».". This ensures damage taken triggers the existing concentrationCheckOnDamage logic (CON save DC = max(10, damage/2)).
+- Item #9 (Monster A* movement): Rewrote `moveMonsterTowardNearestPlayer` in state.ts to use the restored `findPath()` A* pathfinding. Builds an occupied set from other active monsters + other alive players (target player excluded so path reaches adjacency). Calls `findPath(monsterPos, playerPos, terrain, occupied, maxSteps+1)`. Walks up to 2 cells of the path, stopping at distance 1. Falls back to greedy movement if A* returns no path or throws. The greedy fallback also handles the try/catch edge case. Added imports: `findPath` from pathfinding.ts, `getTerrainCells` from terrain.ts.
+- Item #11 (Fire glow removal): Confirmed this is already done — the terrain type union is "difficult" | "half_cover" | "full_cover" | "high_ground" | "water" (no "fire"), and there's no radial gradient around torches in CombatGrid. The only fire-colored radial gradient is the AoE overlay for fire spells (which is intentional, not a torch glow). Marked DONE.
+- Item #12 (Cover fix): The DM context in state.ts now shows effective AC (base + cover bonus) for active monsters. When a monster stands on half_cover (+2) or full_cover (+5), the context line reads "AC 15 (база 13 +2 укрытие)" instead of just "AC 13". This lets the LLM correctly set the target AC in the player's attack roll plan, so player attacks respect cover. The monster-turn path (line 1741) already applied cover to player targets; now player attacks do too via the DM context. Added import: `coverAcBonus` from terrain.ts.
+- Lint clean (0 errors, 0 warnings). Dev server compiled successfully.
+- PROJECT_HANDOFF.md updated: items #7, #9, #11, #12 marked DONE.
+
+Stage Summary:
+- 4 more restoration items done this round (#7, #9, #11, #12). Total now: 8/15 items complete (#1, #4, #7, #8, #9, #11, #12, #15).
+- Remaining: #2 (Movement Points), #3 (Attunement), #5 (Subclass wiring), #6 (Combat maneuvers), #10 (Targeted Attack button), #13 (Upcasting), #14 (Special abilities).
+- Artifacts: updated `src/lib/game/dm-agent.ts` (concentration), `src/lib/game/state.ts` (A* movement + cover AC in DM context), `PROJECT_HANDOFF.md`.

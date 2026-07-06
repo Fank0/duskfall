@@ -1438,6 +1438,32 @@ async function resolvePlayerAction(
     }
   }
 
+  // ===== Concentration (item #7): if the actor cast a concentration spell,
+  // call setConcentration so damage breaks it properly. We detect the spell by
+  // matching the action text against the player's known spellbook. =====
+  if (outcome === "success" && actorState) {
+    try {
+      const knownSpells = knownSpellsForPlayer(actorState);
+      const actionLower = playerAction.toLowerCase();
+      const matchedSpell = knownSpells.find(
+        (s) =>
+          actionLower.includes(s.name.toLowerCase()) ||
+          actionLower.includes(s.nameEn.toLowerCase())
+      );
+      if (matchedSpell && /концентрация/i.test(matchedSpell.duration)) {
+        await setConcentration(roomId, actorName, matchedSpell.name);
+        await db.chatMessage.create({
+          data: {
+            roomId, role: "system", speaker: "", round,
+            content: `🔮 ${actorName} концентрируется на заклинании «${matchedSpell.name}».`,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("[DM] setConcentration failed:", e);
+    }
+  }
+
   // ===== Quest Journal =====
   // The DM may have planned a quest update (new active quest or status change).
   const plannedQuest = branch.quest ?? null;
