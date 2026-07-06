@@ -160,6 +160,36 @@ function inferSpellBaseLevel(actor: PlayerState | null, notation: string): numbe
   return 0;
 }
 
+/** D&D 5e (gap #1): compute a saving-throw bonus including proficiency.
+ *  The player's saveProficiencies array contains entries like "con_save",
+ *  "str_save", etc. If the player is proficient in the given save ability,
+ *  add their proficiency bonus. Returns the total save modifier.
+ *  Handles both string[] (PlayerState) and JSON string (raw Prisma). */
+function computeSaveBonus(
+  target: { saveProficiencies?: string | string[]; proficiencyBonus?: number },
+  ability: "str" | "dex" | "con" | "int" | "wis" | "cha",
+  statValue: number
+): number {
+  const mod = abilityModifier(statValue);
+  const saveKey = `${ability}_save`;
+  let profs: string[] = [];
+  if (Array.isArray(target.saveProficiencies)) profs = target.saveProficiencies;
+  else if (typeof target.saveProficiencies === "string") {
+    try { profs = JSON.parse(target.saveProficiencies); } catch { /* ignore */ }
+  }
+  const prof = profs.includes(saveKey) ? (target.proficiencyBonus ?? 2) : 0;
+  return mod + prof;
+}
+
+/** D&D 5e (gap #1): roll a saving throw with the proper bonus. */
+function rollSavingThrow(
+  target: { saveProficiencies?: string | string[]; proficiencyBonus?: number },
+  ability: "str" | "dex" | "con" | "int" | "wis" | "cha",
+  statValue: number
+): number {
+  return Math.floor(Math.random() * 20) + 1 + computeSaveBonus(target, ability, statValue);
+}
+
 
 // ---------- BG3/D&D 5e: concentration checks on damage ----------
 /** When a concentrating character takes damage, they must make a CON save
@@ -174,9 +204,12 @@ async function concentrationCheckOnDamage(
   const p = await db.player.findFirst({ where: { name: playerName, roomId } });
   if (!p || !p.concentratingOn) return false;
   const dc = Math.max(10, Math.floor(damageAmount / 2));
+  // D&D 5e (gap #1): include proficiency bonus if the player is proficient in CON saves.
+  const saveProficiencies: string[] = p.saveProficiencies ? JSON.parse(p.saveProficiencies) : [];
+  const profBonus = saveProficiencies.includes("con_save") ? p.proficiencyBonus : 0;
   const conMod = abilityModifier(p.con);
   const roll = Math.floor(Math.random() * 20) + 1;
-  const total = roll + conMod;
+  const total = roll + conMod + profBonus;
   const saved = total >= dc;
   if (!saved) {
     const spellName = p.concentratingOn;
@@ -1194,17 +1227,29 @@ async function resolvePlayerAction(
     // Helper: save bonus for a target based on the save ability.
     const saveBonusFor = (
       ability: string,
-      target: { str: number; dex: number; con: number; int: number; wis: number; cha: number }
+      target: { str: number; dex: number; con: number; int: number; wis: number; cha: number;
+                saveProficiencies?: string | string[]; proficiencyBonus?: number }
     ): number => {
+      let mod = 0;
+      let saveKey = "";
       switch (ability) {
-        case "СИЛ": return abilityModifier(target.str);
-        case "ЛОВ": return abilityModifier(target.dex);
-        case "ТЕЛ": return abilityModifier(target.con);
-        case "ИНТ": return abilityModifier(target.int);
-        case "МУД": return abilityModifier(target.wis);
-        case "ХАР": return abilityModifier(target.cha);
+        case "СИЛ": mod = abilityModifier(target.str); saveKey = "str_save"; break;
+        case "ЛОВ": mod = abilityModifier(target.dex); saveKey = "dex_save"; break;
+        case "ТЕЛ": mod = abilityModifier(target.con); saveKey = "con_save"; break;
+        case "ИНТ": mod = abilityModifier(target.int); saveKey = "int_save"; break;
+        case "МУД": mod = abilityModifier(target.wis); saveKey = "wis_save"; break;
+        case "ХАР": mod = abilityModifier(target.cha); saveKey = "cha_save"; break;
         default: return 0;
       }
+      // D&D 5e (gap #1): add proficiency bonus if the target is proficient in this save.
+      // saveProficiencies may be a JSON string (raw Prisma) or a string[] (PlayerState).
+      let profs: string[] = [];
+      if (Array.isArray(target.saveProficiencies)) profs = target.saveProficiencies;
+      else if (typeof target.saveProficiencies === "string") {
+        try { profs = JSON.parse(target.saveProficiencies); } catch { /* ignore */ }
+      }
+      const prof = profs.includes(saveKey) ? (target.proficiencyBonus ?? 2) : 0;
+      return mod + prof;
     };
 
     const aoeLog: string[] = [];
@@ -1821,8 +1866,7 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
       }
       // Паралич: CON save DC 10 or paralyzed 1 round.
       if (ability.includes("паралич") || ability.includes("paraly")) {
-        const saveMod = abilityModifier((target as any).con ?? 10);
-        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        const saveRoll = rollSavingThrow(targetState, "con", (target as any).con ?? 10);
         if (saveRoll < 10) {
           await applyCondition(roomId, targetName, "player", "stunned", 1, m.name);
           await db.chatMessage.create({
@@ -1849,8 +1893,7 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
       // ===== Item #14: more monster keyword groups =====
       // Poison: apply poisoned condition (CON save DC 12 or poisoned 3 rounds).
       if (ability.includes("яд") || ability.includes("poison") || ability.includes("токсин")) {
-        const saveMod = abilityModifier((target as any).con ?? 10);
-        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        const saveRoll = rollSavingThrow(targetState, "con", (target as any).con ?? 10);
         if (saveRoll < 12) {
           await applyCondition(roomId, targetName, "player", "poisoned", 3, m.name);
           await db.chatMessage.create({
@@ -1860,8 +1903,7 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
       }
       // Frighten: apply frightened condition (WIS save DC 12 or frightened 3 rounds).
       if (ability.includes("ужас") || ability.includes("страх") || ability.includes("frighten") || ability.includes("panic")) {
-        const saveMod = abilityModifier((target as any).wis ?? 10);
-        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        const saveRoll = rollSavingThrow(targetState, "wis", (target as any).wis ?? 10);
         if (saveRoll < 12) {
           await applyCondition(roomId, targetName, "player", "frightened", 3, m.name);
           await db.chatMessage.create({
@@ -1871,8 +1913,7 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
       }
       // Stun: apply stunned condition (CON save DC 14 or stunned 1 round).
       if (ability.includes("оглуш") || ability.includes("stun") || ability.includes("шок")) {
-        const saveMod = abilityModifier((target as any).con ?? 10);
-        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        const saveRoll = rollSavingThrow(targetState, "con", (target as any).con ?? 10);
         if (saveRoll < 14) {
           await applyCondition(roomId, targetName, "player", "stunned", 1, m.name);
           await db.chatMessage.create({
@@ -1882,8 +1923,7 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
       }
       // Blind: apply blinded condition (CON save DC 12 or blinded 3 rounds).
       if (ability.includes("ослеп") || ability.includes("blind") || ability.includes("тьма") && ability.includes("глаз")) {
-        const saveMod = abilityModifier((target as any).con ?? 10);
-        const saveRoll = Math.floor(Math.random() * 20) + 1 + saveMod;
+        const saveRoll = rollSavingThrow(targetState, "con", (target as any).con ?? 10);
         if (saveRoll < 12) {
           await applyCondition(roomId, targetName, "player", "blinded", 3, m.name);
           await db.chatMessage.create({

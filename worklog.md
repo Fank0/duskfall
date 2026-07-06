@@ -3045,3 +3045,23 @@ Stage Summary:
 - Final 2 restoration items done this round (#5, #6). ALL 15/15 items complete!
 - Remaining: none — the full restoration roadmap is done. Future work should focus on the gap-analysis top-10 (skill/save proficiency, reaction/bonus-action consumption, special-ability mechanical execution, multiattack/extra attack, monster resistances, L4-L9 spell slots, cantrip scaling, class resources, multiclassing+feats).
 - Artifacts: `src/lib/game/talents.ts` (resolveTalents subclass merge), `src/components/dnd/SkillTreeModal.tsx` (subclass selection UI), `src/components/dnd/BottomPanel.tsx` (Grapple + Shove buttons), `src/lib/game/i18n.ts` (grapple/shove keys in 6 languages), `src/lib/game/dm-agent.ts` (Grapple + Shove backend handling), `PROJECT_HANDOFF.md`.
+
+---
+Task ID: 15
+Agent: main (Z.ai Code) — manual continuation (cron not firing)
+Task: All 15 restoration items done. Start on gap-analysis CRITICAL items. This round: #1 (Skill & saving throw proficiency system).
+
+Work Log:
+- QA: app loaded cleanly (HTTP 200, no console errors). All 15/15 restoration items confirmed complete.
+- Gap #1 (Skill & saving throw proficiency): the proficiency data was already being SET at character creation (getSaveProficiencies + getSkillProficiencies in seed.ts), but it was NOT being APPLIED to dice rolls. Fixed:
+  - Added `computeSaveBonus(target, ability, statValue)` helper in dm-agent.ts — computes ability modifier + proficiency bonus (if the target is proficient in that save). Handles both string[] (PlayerState) and JSON string (raw Prisma) formats for saveProficiencies.
+  - Added `rollSavingThrow(target, ability, statValue)` helper — rolls d20 + save bonus.
+  - Updated all 5 monster special-ability saves (paralyze, poison, frighten, stun, blind) to use `rollSavingThrow` instead of the old `Math.random() * 20 + 1 + abilityModifier(stat)` which ignored proficiency.
+  - Updated `concentrationCheckOnDamage` to include CON save proficiency bonus.
+  - Updated `saveBonusFor` (AoE spell saves) to include proficiency bonus. Handles both string and array formats.
+  - Now a Fighter with CON save proficiency gets +proficiencyBonus on concentration checks, poison saves, stun saves, etc. A Wizard with WIS save proficiency gets +proficiencyBonus on frighten saves. This makes the proficiency system actually matter mechanically.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- Gap #1 (saving throw proficiency) is now mechanically functional — proficiency bonuses are applied to all saving throws (concentration, monster special abilities, AoE spells). Skill proficiency for ability checks is still LLM-driven (the DM prompt mentions the player's skills), but saving throws are now backend-enforced.
+- Next gap-analysis priorities: #2 (reaction/bonus-action consumption), #3 (special-ability mechanical execution), #4 (multiattack/extra attack — monster multiattack already works; player Extra Attack is LLM-driven), #5 (subclasses — DONE in item #5), #6 (monster resistances/immunities — already in MonsterState + damageMonster).
