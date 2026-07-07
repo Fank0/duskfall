@@ -3227,3 +3227,26 @@ Stage Summary:
 - Фаза 2.1 (боевые стили) + Фаза 2.3 (Sneak Attack) выполнены.
 - Теперь: Воин с луком получает +2 к атаке (Archery), Воин с одноручным мечом +2 к урону (Dueling), Плут автоматически получает Sneak Attack когда союзник рядом или есть преимущество.
 - Следующий шаг: Фаза 2.2 (Stealth/Hide режим), Фаза 2.8 (Death save UI).
+
+---
+Task ID: 22
+Agent: main (Z.ai Code)
+Task: MASTER-PLAN Фаза 2.2 (Stealth/Hide), 2.7 (Concentration UI), 2.8 (Death save UI verified). Created cron job 256535 for continuous development.
+
+Work Log:
+- Created cron job 256535 (every 15 min) for continuous DUSKFALL development per MASTER-PLAN.
+- Фаза 2.2 (Stealth/Hide режим):
+  - Added "Скрыться" (Hide) button to COMBAT_ACTIONS in BottomPanel.tsx (EyeOff icon).
+  - Added i18n keys "actions.hide_hint" in all 6 languages.
+  - Added backend handling in dm-agent.ts: when action text contains "скрыть"/"пряч"/"hide", rolls DEX (Stealth) check vs highest monster passive perception. On success → applies "invisible" condition (3 rounds). On failure → system message. Consumes action + advances turn. Includes stealth proficiency bonus if the player has it.
+  - System chat messages with roll results: "🫥 X скрывается в тенях! (Скрытность 15 vs Восприятие 12)" or "👁️ X пытается скрыться, но враг замечает его!"
+- Фаза 2.7 (Concentration UI):
+  - CharacterSheet already had a concentration indicator (purple box with spell name).
+  - Added conc-indicator CSS class (purple pulse ring) to PlayerToken in CombatGrid — now concentrating players have a pulsing purple aura on the grid.
+- Фаза 2.8 (Death save UI): verified already implemented in CharacterSheet — 3 green pips (successes) + 3 red pips (failures) with glow effects. No changes needed.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- Фаза 2.2 (Stealth/Hide), 2.7 (Concentration UI on tokens), 2.8 (Death save UI verified) — all done.
+- Total MASTER-PLAN progress: Phase 1 (visual), Phase 2.1 (fighting styles), 2.2 (stealth), 2.3 (sneak attack), 2.7 (concentration), 2.8 (death saves) — 6 tasks complete.
+- Next: Phase 2.4 (opportunity attack UI), 2.5 (Ready action), 2.6 (Help action), Phase 3 (containers, NPC dialogues, trading).

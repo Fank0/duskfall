@@ -2612,6 +2612,62 @@ export async function resolvePlayerMechanics(
   // Shove applies "prone" or pushes the target 1 cell.
   const isGrappleAction = wasCombatActive && actionLower.includes("схватк") && actionLower.includes("враг");
   const isShoveAction = wasCombatActive && actionLower.includes("толч") && actionLower.includes("враг");
+
+  // ===== D&D 5e Stealth/Hide (MASTER-PLAN 2.2): Hide action → DEX (Stealth)
+  // check vs highest enemy passive perception. On success → invisible condition. =====
+  const isHideAction = wasCombatActive && (actionLower.includes("скрыть") || actionLower.includes("пряч") || actionLower.includes("hide"));
+  if (isHideAction) {
+    const dexMod = abilityModifier(actor.dex);
+    // Check if the player has Stealth proficiency.
+    const skillProfs: string[] = actor.saveProficiencies ? (Array.isArray(actor.saveProficiencies) ? actor.saveProficiencies : (() => { try { return JSON.parse(actor.saveProficiencies); } catch { return []; } })()) : [];
+    const hasStealthProf = (actor as any).skillProficiencies
+      ? (Array.isArray((actor as any).skillProficiencies) ? (actor as any).skillProficiencies : (() => { try { return JSON.parse((actor as any).skillProficiencies); } catch { return []; } })()).includes("stealth")
+      : false;
+    const stealthBonus = dexMod + (hasStealthProf ? actor.proficiencyBonus : 0);
+    const stealthRoll = Math.floor(Math.random() * 20) + 1 + stealthBonus;
+    // Find the highest passive perception among active monsters.
+    const monsters = await db.monster.findMany({ where: { roomId, isActive: true } });
+    const highestPP = monsters.length > 0 ? Math.max(...monsters.map((m) => 10 + Math.floor(Math.max(0, (m as any).wis ?? 10 - 10) / 2))) : 10;
+    const hidden = stealthRoll >= highestPP;
+
+    // Consume the action.
+    await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+
+    if (hidden) {
+      await applyCondition(roomId, actorName, "player", "invisible", 3, actorName);
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round,
+          content: `🫥 ${actorName} скрывается в тенях! (Скрытность ${stealthRoll} vs Восприятие ${highestPP}). Враги его не видят.` },
+      });
+    } else {
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round,
+          content: `👁️ ${actorName} пытается скрыться, но враг замечает его! (Скрытность ${stealthRoll} vs Восприятие ${highestPP}).` },
+      });
+    }
+
+    // Advance the turn.
+    const adv = await advanceTurn(roomCode, roomId);
+    const monsterRolls = adv.monsterTurns.flatMap((mt) => mt.result.rolls);
+    const snapH = await getSnapshot(roomCode);
+    return {
+      actorName, playerRolls: [], monsterRolls,
+      outcome: hidden ? "success" : "failure",
+      combatStarted: false, combatEnded: adv.ended,
+      damageDealtToMonster: 0, monsterThatDied: null,
+      damageDealtToPlayer: 0, damagedPlayer: null,
+      healingToPlayer: 0, healedPlayer: null,
+      inventoryChanges: [], goldChange: 0,
+      imagePrompt: "", imageNeeded: false,
+      branchNarrative: hidden ? `${actorName} скрывается в тенях!` : `${actorName} не удалось скрыться.`,
+      playerAction, location: snapH?.location ?? "",
+      nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+      round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+      statusEffectNotes: [], lootNotes: [],
+    } as MechanicsResult;
+  }
+
   if (isGrappleAction || isShoveAction) {
     // Find the nearest active monster as the target.
     const nearestMonster = await nearestActiveMonster(roomId, actor.posX, actor.posY);

@@ -956,6 +956,9 @@ function PlayerToken({
         )}
         <BuffAura conditions={conditions} />
         <ConditionIcons conditions={conditions} lang={lang} />
+        {p.concentratingOn && (
+          <div className="conc-indicator pointer-events-none absolute inset-0 rounded-full" title={`Концентрация: ${p.concentratingOn}`} />
+        )}
 
         {/* HP bar — thin (3px), at bottom of token, color gradient green→yellow→red. */}
         <div

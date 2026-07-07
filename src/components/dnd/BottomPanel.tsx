@@ -13,7 +13,7 @@ import {
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
   Shirt, Hammer, Star, Search, Bed, Moon, Wind, ShieldOff, Clock, Footprints,
-  Hand, ArrowRight,
+  Hand, ArrowRight, EyeOff,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -36,6 +36,7 @@ const COMBAT_ACTIONS = [
   { key: "dash", labelKey: "actions.dash", hintKey: "actions.dash_hint", icon: Wind, text: "Я использую действие «Рывок» — удваиваю скорость передвижения в этом ходу." },
   { key: "disengage", labelKey: "actions.disengage", hintKey: "actions.disengage_hint", icon: ShieldOff, text: "Я использую действие «Отход» — отступаю, не провоцируя атак по возможности." },
   { key: "dodge", labelKey: "actions.dodge", hintKey: "actions.dodge_hint", icon: Shield, text: "Я использую действие «Уклонение» — все атаки по мне до моего следующего хода с помехой, бонусы к Ловкости тоже." },
+  { key: "hide", labelKey: "actions.hide", hintKey: "actions.hide_hint", icon: EyeOff, text: "Я использую действие «Скрыться» — прячусь (проверка Ловкости (Скрытность) vs пассивное восприятие врагов)." },
   { key: "help", labelKey: "actions.help", hintKey: "actions.help_hint", icon: Heart, text: "Я использую действие «Помощь» — помогаю союзнику, давая ему преимущество на следующую атаку по врагу." },
   { key: "ready", labelKey: "actions.ready", hintKey: "actions.ready_hint", icon: Clock, text: "Я использую действие «Готовность» — готовлю действие, которое сработает при определённом условии." },
   // D&D 5e combat maneuvers (item #6):
