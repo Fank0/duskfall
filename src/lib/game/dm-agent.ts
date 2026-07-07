@@ -48,6 +48,8 @@ import {
   setConcentration,
   grantTempHp,
   markActionUsed,
+  spendClassResource,
+  restoreClassResources,
 } from "./state";
 import { coverAcBonus, highGroundAdvantage, hasLineOfSight, getTerrainCells, type TerrainCellState } from "./terrain";
 import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
@@ -2499,12 +2501,17 @@ export async function resolvePlayerMechanics(
         where: { id: actor.id },
         data: { bonusActionUsed: true },
       });
+      // D&D 5e (gap #9): spend the corresponding class resource.
+      if (actionLower.includes("второе дыхание") || actionLower.includes("second wind")) {
+        await spendClassResource(roomId, actorName, "secondWind", 1);
+      }
+      if (actionLower.includes("ярость") || actionLower.includes("rage")) {
+        await spendClassResource(roomId, actorName, "rage", 1);
+      }
     }
   }
 
   // ===== D&D 5e (gap #2): Reaction consumption =====
-  // Reactions (Shield, Counterspell, opportunity attacks by the player)
-  // consume the reaction flag. The LLM still resolves mechanics.
   if (wasCombatActive && !actor.reactionUsed) {
     const reactionKeywords = [
       "щит", "shield spell", "counterspell", "контрзаклинание",
@@ -2517,6 +2524,32 @@ export async function resolvePlayerMechanics(
         where: { id: actor.id },
         data: { reactionUsed: true },
       });
+    }
+  }
+
+  // ===== D&D 5e (gap #9): Class resource spending =====
+  // Detect other resource-consuming abilities (Ki, Lay on Hands, Channel Divinity, etc.)
+  if (wasCombatActive) {
+    if (actionLower.includes("ци") && (actionLower.includes("удар") || actionLower.includes("точка"))) {
+      await spendClassResource(roomId, actorName, "ki", 1);
+    }
+    if (actionLower.includes("возложение рук") || actionLower.includes("lay on hands")) {
+      await spendClassResource(roomId, actorName, "layOnHands", 1);
+    }
+    if (actionLower.includes("божественность") || actionLower.includes("channel divinity")) {
+      await spendClassResource(roomId, actorName, "channelDivinity", 1);
+    }
+    if (actionLower.includes("вдохновение") && actionLower.includes("бард")) {
+      await spendClassResource(roomId, actorName, "bardicInspiration", 1);
+    }
+    if (actionLower.includes("дикий облик") || actionLower.includes("wild shape")) {
+      await spendClassResource(roomId, actorName, "wildShape", 1);
+    }
+    if (actionLower.includes("прилив действий") || actionLower.includes("action surge")) {
+      await spendClassResource(roomId, actorName, "actionSurge", 1);
+    }
+    if (actionLower.includes("очки колдовства") || actionLower.includes("sorcery points")) {
+      await spendClassResource(roomId, actorName, "sorceryPoints", 1);
     }
   }
 

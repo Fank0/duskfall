@@ -3084,3 +3084,33 @@ Stage Summary:
 - 3 gap-analysis items addressed this round: #6 (AoE resistances), #8 (cantrip scaling bug fix), #2 (action economy consumption).
 - Total gap-analysis progress: #1 (save proficiency), #6 (resistances), #8 (cantrip scaling), #2 (action economy) — 4 of 10 CRITICAL gaps addressed.
 - Remaining CRITICAL gaps: #3 (special-ability mechanical execution), #4 (multiattack/extra attack — monster multiattack works; player Extra Attack is LLM-driven), #7 (L4-L9 spell slots), #9 (class resources — Ki, Rage, Lay on Hands etc. are flavor-only).
+
+---
+Task ID: 17
+Agent: main (Z.ai Code) — manual continuation (cron not firing)
+Task: Gap-analysis items #7 (L4-L9 spell slots — verified already done) + #9 (class resources — wire spending).
+
+Work Log:
+- Gap #7 (L4-L9 spell slots): verified the spell slot tables (FULL_CASTER_SLOTS + HALF_CASTER_SLOTS) already go L1-L20 with L1-L9 slots. The spellbook has 7 L4 spells + 5 L5 spells. This gap was already addressed in the current codebase — the gap-analysis was written against an older version. No changes needed.
+- Gap #9 (class resources):
+  - Added `spendClassResource(roomId, playerName, resourceKey, amount)` to state.ts — decrements the resource's current value, returns false if not available.
+  - Added `restoreClassResources(roomId, playerName)` — restores all resources to max (for long rest; the rest route already does this inline, but now there's a reusable function).
+  - Wired resource spending into `resolvePlayerMechanics` in dm-agent.ts:
+    - Second Wind → spends `secondWind`
+    - Rage → spends `rage`
+    - Ki (Ци) → spends `ki`
+    - Lay on Hands (Возложение рук) → spends `layOnHands`
+    - Channel Divinity (Божественность) → spends `channelDivinity`
+    - Bardic Inspiration (Вдохновение барда) → spends `bardicInspiration`
+    - Wild Shape (Дикий облик) → spends `wildShape`
+    - Action Surge (Прилив действий) → spends `actionSurge`
+    - Sorcery Points (Очки колдовства) → spends `sorceryPoints`
+  - The rest route already restores class resources on long rest (verified).
+  - The DM context already shows resource current/max values (verified).
+  - Now class resources are mechanically tracked: spent on use, restored on long rest, displayed in DM context.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- 2 gap-analysis items addressed this round: #7 (verified already done), #9 (class resource spending wired).
+- Total gap-analysis progress: #1, #2, #6, #7, #8, #9 — 6 of 10 CRITICAL gaps addressed.
+- Remaining CRITICAL gaps: #3 (special-ability mechanical execution — partially done via keyword groups in item #14), #4 (multiattack/extra attack — monster multiattack works; player Extra Attack is LLM-driven).

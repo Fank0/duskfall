@@ -2436,3 +2436,48 @@ export async function getEquippedItems(roomId: string, playerName: string): Prom
 
 // Allow slotColumnToSlot to be used externally (currently unused but exported for completeness).
 export { slotColumnToSlot };
+
+// ---------- Class Resources (gap #9) ----------
+/**
+ * Spend a class resource (e.g. Rage, Ki, Lay on Hands). Returns true if the
+ * resource was available and spent; false if not available or not found.
+ * For Lay on Hands, `amount` is the HP pool to spend (not a count).
+ */
+export async function spendClassResource(
+  roomId: string,
+  playerName: string,
+  resourceKey: string,
+  amount: number = 1
+): Promise<boolean> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return false;
+  let resources: Record<string, { current: number; max: number }> = {};
+  try { resources = JSON.parse(p.classResources || "{}"); } catch { /* ignore */ }
+  const r = resources[resourceKey];
+  if (!r || r.current < amount) return false;
+  r.current -= amount;
+  await db.player.update({
+    where: { id: p.id },
+    data: { classResources: JSON.stringify(resources) },
+  });
+  invalidateSnapshotCache(roomId);
+  return true;
+}
+
+/**
+ * Restore all class resources to max (called on long rest).
+ */
+export async function restoreClassResources(roomId: string, playerName: string): Promise<void> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return;
+  let resources: Record<string, { current: number; max: number }> = {};
+  try { resources = JSON.parse(p.classResources || "{}"); } catch { /* ignore */ }
+  for (const key of Object.keys(resources)) {
+    if (resources[key]) resources[key].current = resources[key].max;
+  }
+  await db.player.update({
+    where: { id: p.id },
+    data: { classResources: JSON.stringify(resources) },
+  });
+  invalidateSnapshotCache(roomId);
+}
