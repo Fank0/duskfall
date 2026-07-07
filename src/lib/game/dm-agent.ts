@@ -1484,6 +1484,60 @@ async function resolvePlayerAction(
           }
         }
       }
+
+      // ===== D&D 5e Two-Weapon Fighting (new feature): if the player is
+      // wielding a light melee weapon and attacks, they can make a bonus-
+      // action off-hand attack with another light weapon. The off-hand
+      // attack deals weapon damage WITHOUT the ability modifier (unless
+      // the player has the Two-Weapon Fighting style). =====
+      if (!result.died && actor && !isCantrip && spellBaseLevel === 0 && !actor.bonusActionUsed) {
+        const weaponLower = actor.weaponName.toLowerCase();
+        // Check if the weapon is a light melee weapon (dual-wieldable).
+        const isLightMelee = weaponLower.includes("кинжал") || weaponLower.includes("короткий меч")
+          || weaponLower.includes("daggers") || weaponLower.includes("близнецы");
+        if (isLightMelee) {
+          // Off-hand attack: d20 + atkBonus (no ability mod to damage unless fighting style).
+          const isFinesse = weaponLower.includes("кинжал") || weaponLower.includes("близнецы");
+          const atkStat = isFinesse ? Math.max(actor.str, actor.dex) : actor.str;
+          const atkBonus = abilityModifier(atkStat) + actor.proficiencyBonus;
+          const monsterAC = m.ac + coverAcBonus(await getTerrainCells(roomId), m.posX, m.posY);
+          const offHandAtk = rollD20(atkBonus);
+          const offHandHit = offHandAtk.total >= monsterAC;
+          await logDiceRoll(roomId, round, actorName, {
+            label: `Второе оружие (бонус-действие) по ${m.name}`,
+            notation: "1d20", modifier: atkBonus,
+            result: offHandAtk.rolls[0], total: offHandAtk.total, target: monsterAC, success: offHandHit,
+            purpose: "player_attack",
+          });
+          if (offHandHit) {
+            // Off-hand damage: weapon die WITHOUT ability mod (D&D 5e standard).
+            // Players with the Two-Weapon Fighting style would add the mod,
+            // but we don't model fighting styles yet — so no mod.
+            const offHandDmg = rollDice(actor.weaponNotation);
+            const offHandTotal = offHandDmg.total;
+            damageDealtToMonster += offHandTotal;
+            await logDiceRoll(roomId, round, actorName, {
+              label: `Урон второго оружия по: ${m.name} (без мод СИЛ)`,
+              notation: actor.weaponNotation,
+              modifier: 0, result: offHandDmg.raw, total: offHandTotal, purpose: "player_damage",
+            });
+            const offResult = await damageMonster(roomId, m.id, offHandTotal, "slashing");
+            if (offResult.died) {
+              if (!monsterThatDied) monsterThatDied = m.name;
+              const xp = xpForMonster(m.maxHp);
+              await awardXP(roomId, actorName, xp);
+              await db.chatMessage.create({
+                data: { roomId, role: "system", speaker: "", round, content: `${actorName} получает ${xp} опыта за победу над ${m.name}.` },
+              });
+            }
+          }
+          // Mark bonus action as used (two-weapon fighting consumes the bonus action).
+          await db.player.update({
+            where: { id: actor.id },
+            data: { bonusActionUsed: true },
+          });
+        }
+      }
     }
   }
 

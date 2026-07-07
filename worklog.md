@@ -3139,3 +3139,25 @@ Stage Summary:
 - 2 gap-analysis items addressed this round: #4 (Extra Attack enforcement), #3 (4 more special-ability keyword groups).
 - Total gap-analysis progress: #1, #2, #3, #4, #6, #7, #8, #9 — 8 of 10 CRITICAL gaps addressed.
 - Remaining: #5 (subclasses — DONE in restoration #5), #10 (multiclassing + feats — complex, deferred).
+
+---
+Task ID: 19
+Agent: main (Z.ai Code) — manual continuation (cron not firing)
+Task: New feature: Two-Weapon Fighting mechanic. All 8/10 CRITICAL gaps done, adding new functionality.
+
+Work Log:
+- All 15 restoration items + 8/10 gap-analysis CRITICAL items complete. App stable, no bugs found in QA.
+- New feature: D&D 5e Two-Weapon Fighting. When a player wielding a light melee weapon (кинжалы/daggers/короткий меч/близнецы) makes a weapon attack, the backend automatically grants a bonus-action off-hand attack:
+  - Rolls d20 + atkBonus (STR/DEX mod + proficiency, finesse weapons use the higher of STR/DEX) vs monster AC (with cover bonus).
+  - On hit: rolls weapon damage WITHOUT the ability modifier (D&D 5e standard — the Two-Weapon Fighting style would add it, but fighting styles aren't modeled yet).
+  - Checks for monster death + awards XP.
+  - Consumes the bonus action (sets `bonusActionUsed: true`).
+  - Only triggers if: the action was a weapon attack (not a cantrip/spell), the monster didn't die from the main attack, and the player hasn't already used their bonus action.
+  - Logs both the attack roll and damage roll in the dice log with clear labels ("Второе оружие (бонус-действие) по X" / "Урон второго оружия по: X (без мод СИЛ)").
+  - This means dual-wielding Rogues with "Кинжалы-близнецы" now get 2 attacks per turn (main + off-hand) as a bonus action, which is a significant damage boost that matches D&D 5e rules.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- New feature added: Two-Weapon Fighting. Dual-wielding characters (e.g. Rogue with Кинжалы-близнецы) now get an automatic off-hand attack as a bonus action when they attack, dealing weapon damage without the STR/DEX modifier. This is the first fighting style mechanic in the game.
+- Total progress: 15/15 restoration items + 8/10 gap-analysis CRITICAL items + 1 new feature (Two-Weapon Fighting).
+- Next priorities: more fighting styles (Great Weapon, Archery, Defense), UI styling improvements, or multiclassing/feats (gap #10).
