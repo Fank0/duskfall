@@ -3114,3 +3114,28 @@ Stage Summary:
 - 2 gap-analysis items addressed this round: #7 (verified already done), #9 (class resource spending wired).
 - Total gap-analysis progress: #1, #2, #6, #7, #8, #9 — 6 of 10 CRITICAL gaps addressed.
 - Remaining CRITICAL gaps: #3 (special-ability mechanical execution — partially done via keyword groups in item #14), #4 (multiattack/extra attack — monster multiattack works; player Extra Attack is LLM-driven).
+
+---
+Task ID: 18
+Agent: main (Z.ai Code) — manual continuation (cron not firing)
+Task: Gap-analysis items #4 (player Extra Attack backend enforcement) + #3 (more special-ability keyword groups).
+
+Work Log:
+- Gap #4 (Player Extra Attack): `getExtraAttacks()` already existed and was shown in DM context ("Атак за ход: 2" for L5+ fighters). But the backend didn't enforce it — it trusted the LLM to plan multiple attacks. Added backend enforcement:
+  - After the first attack resolves (and the monster didn't die), if the player has Extra Attack (getExtraAttacks > 1) AND the action was a weapon attack (not a cantrip/spell), automatically roll additional attacks against the same monster.
+  - Each extra attack: d20 + atkBonus (STR/DEX mod + proficiency, finesse weapons use DEX) vs monster AC (including cover bonus). On hit: roll weapon damage + talent bonus, apply to monster, check for death.
+  - Stops if the monster dies. Logs each extra attack + damage in the dice log.
+  - This ensures Extra Attack always works mechanically even if the LLM forgets to plan multiple attacks.
+  - Imported `getExtraAttacks` from state.ts.
+- Gap #3 (Special-ability mechanical execution): added 4 more keyword groups to the monster special-ability auto-execution in runMonsterTurn:
+  - **Knockdown** (сбиван/knockdown/сбит с ног): STR save DC 13 or prone 2 rounds.
+  - **Web/Entangle** (паутин/web/опутан): DEX save DC 12 or restrained 3 rounds.
+  - **Cold** (холод/cold/леден): CON save DC 14 or slowed 3 rounds + 1d6 cold damage.
+  - **Summon** (призыв/summon/подним): system chat message (flavor only — no mechanical summoning yet).
+  - Total now: 13 keyword groups (life steal, paralyze, exhaustion, AoE, poison, frighten, stun, blind, knockdown, web, cold, summon + multiattack detection).
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- 2 gap-analysis items addressed this round: #4 (Extra Attack enforcement), #3 (4 more special-ability keyword groups).
+- Total gap-analysis progress: #1, #2, #3, #4, #6, #7, #8, #9 — 8 of 10 CRITICAL gaps addressed.
+- Remaining: #5 (subclasses — DONE in restoration #5), #10 (multiclassing + feats — complex, deferred).

@@ -60,6 +60,7 @@ import {
   isCasterClass,
   SLOT_CONSUMING_ABILITIES,
 } from "./presets";
+import { getExtraAttacks } from "./state";
 import {
   damageBonusFromTalents,
   applyDamageReduction,
@@ -1433,6 +1434,56 @@ async function resolvePlayerAction(
           data: { roomId, role: "system", speaker: "", round, content: `${actorName} получает ${xp} опыта за победу над ${m.name}.` },
         });
       }
+
+      // ===== D&D 5e Extra Attack (gap #4): if the player has Extra Attack
+      // (L5+ martial classes) and the action was a weapon attack (not a
+      // spell/cantrip), automatically roll additional attacks against the
+      // same monster. This ensures Extra Attack works even if the LLM
+      // doesn't plan multiple attacks. =====
+      if (!result.died && !isCantrip && spellBaseLevel === 0) {
+        const numExtraAttacks = getExtraAttacks(actor?.charClass ?? "", actor?.level ?? 1) - 1;
+        if (numExtraAttacks > 0 && actor) {
+          // Compute the player's attack bonus: STR/DEX mod + proficiency.
+          const isFinesse = actor.weaponName.toLowerCase().includes("кинжал") || actor.weaponName.toLowerCase().includes("рапира");
+          const atkStat = isFinesse ? Math.max(actor.str, actor.dex) : actor.str;
+          const atkBonus = abilityModifier(atkStat) + actor.proficiencyBonus;
+          const monsterAC = m.ac + coverAcBonus(await getTerrainCells(roomId), m.posX, m.posY);
+          for (let i = 0; i < numExtraAttacks; i++) {
+            // Check if the monster is still alive.
+            const stillAlive = await db.monster.findFirst({ where: { id: m.id, roomId, isActive: true } });
+            if (!stillAlive || stillAlive.hp <= 0) break;
+            const extraAtk = rollD20(atkBonus);
+            const extraHit = extraAtk.total >= monsterAC;
+            await logDiceRoll(roomId, round, actorName, {
+              label: `Доп. атака ${i + 2}/${numExtraAttacks + 1} по ${m.name}`,
+              notation: "1d20", modifier: atkBonus,
+              result: extraAtk.rolls[0], total: extraAtk.total, target: monsterAC, success: extraHit,
+              purpose: "player_attack",
+            });
+            if (extraHit) {
+              const extraDmg = rollDice(actor.weaponNotation);
+              const extraBonus = damageBonusFromTalents(actor);
+              const extraTotal = extraDmg.total + extraBonus;
+              damageDealtToMonster += extraTotal;
+              await logDiceRoll(roomId, round, actorName, {
+                label: `Урон доп. атаки по: ${m.name}${extraBonus ? ` (+${extraBonus} талант)` : ""}`,
+                notation: actor.weaponNotation + (extraBonus ? `+${extraBonus}` : ""),
+                modifier: extraBonus, result: extraDmg.raw, total: extraTotal, purpose: "player_damage",
+              });
+              const extraResult = await damageMonster(roomId, m.id, extraTotal, "slashing");
+              if (extraResult.died) {
+                if (!monsterThatDied) monsterThatDied = m.name;
+                const xp = xpForMonster(m.maxHp);
+                await awardXP(roomId, actorName, xp);
+                await db.chatMessage.create({
+                  data: { roomId, role: "system", speaker: "", round, content: `${actorName} получает ${xp} опыта за победу над ${m.name}.` },
+                });
+                break; // monster is dead, no more attacks
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1940,6 +1991,45 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
             data: { roomId, role: "system", speaker: "", round, content: `🙈 ${m.name} ослепляет ${targetName}! (спасбросок ${saveRoll} vs DC 12)` },
           });
         }
+      }
+      // Knockdown: STR save DC 13 or prone (gap #3).
+      if (ability.includes("сбиван") || ability.includes("knockdown") || ability.includes("сбит с ног")) {
+        const saveRoll = rollSavingThrow(targetState, "str", (target as any).str ?? 10);
+        if (saveRoll < 13) {
+          await applyCondition(roomId, targetName, "player", "prone", 2, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `⬇️ ${m.name} сбивает ${targetName} с ног! (спасбросок ${saveRoll} vs DC 13)` },
+          });
+        }
+      }
+      // Web/Entangle: DEX save DC 12 or restrained (gap #3).
+      if (ability.includes("паутин") || ability.includes("web") || ability.includes("опутан")) {
+        const saveRoll = rollSavingThrow(targetState, "dex", (target as any).dex ?? 10);
+        if (saveRoll < 12) {
+          await applyCondition(roomId, targetName, "player", "restrained", 3, m.name);
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `🔗 ${m.name} опутывает ${targetName} паутиной! (спасбросок ${saveRoll} vs DC 12)` },
+          });
+        }
+      }
+      // Cold: CON save DC 14 or slowed + 1d6 damage (gap #3).
+      if (ability.includes("холод") || ability.includes("cold") || ability.includes("леден")) {
+        const saveRoll = rollSavingThrow(targetState, "con", (target as any).con ?? 10);
+        if (saveRoll < 14) {
+          await applyCondition(roomId, targetName, "player", "slowed", 3, m.name);
+          const coldDmg = rollDice("1d6");
+          await damagePlayer(roomId, targetName, coldDmg.total);
+          totalDamageToPlayer += coldDmg.total;
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: `❄️ ${m.name} обжигает ${targetName} холодом! ${coldDmg.total} урона + замедление. (спасбросок ${saveRoll} vs DC 14)` },
+          });
+        }
+      }
+      // Summon: system message (gap #3 — flavor only, no mechanical summoning yet).
+      if (ability.includes("призыв") || ability.includes("summon") || ability.includes("подним")) {
+        await db.chatMessage.create({
+          data: { roomId, role: "system", speaker: "", round, content: `💀 ${m.name} призывает союзников!` },
+        });
       }
     }
   } // end multiattack loop
