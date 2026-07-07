@@ -443,7 +443,21 @@ export default function Home() {
                     if (isHeal && damage > 0) {
                       ft = makeHealText(relX, relY, damage);
                     } else if (damage > 0) {
-                      ft = makeDamageText(relX, relY, damage, isCrit);
+                      // D&D 5e (MASTER-PLAN 1.2): color-code damage by type.
+                      // Try to infer the damage type from the roll label.
+                      const dmgRoll = allRolls.find((r: any) =>
+                        r.purpose === "player_damage" || r.purpose === "monster_damage"
+                      );
+                      const labelLower = (dmgRoll?.label || "").toLowerCase();
+                      let dmgType: string | undefined;
+                      if (labelLower.includes("огн") || labelLower.includes("fire")) dmgType = "fire";
+                      else if (labelLower.includes("холод") || labelLower.includes("cold") || labelLower.includes("лёд")) dmgType = "cold";
+                      else if (labelLower.includes("молни") || labelLower.includes("lightning") || labelLower.includes("электр")) dmgType = "lightning";
+                      else if (labelLower.includes("яд") || labelLower.includes("poison")) dmgType = "poison";
+                      else if (labelLower.includes("некро") || labelLower.includes("necrotic")) dmgType = "necrotic";
+                      else if (labelLower.includes("свет") || labelLower.includes("radiant") || labelLower.includes("свят")) dmgType = "radiant";
+                      else dmgType = "physical";
+                      ft = makeDamageText(relX, relY, damage, isCrit, dmgType);
                     } else {
                       // Check for a miss (d20 attack roll that failed).
                       const missRoll = allRolls.find((r: any) =>

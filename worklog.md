@@ -3161,3 +3161,35 @@ Stage Summary:
 - New feature added: Two-Weapon Fighting. Dual-wielding characters (e.g. Rogue with Кинжалы-близнецы) now get an automatic off-hand attack as a bonus action when they attack, dealing weapon damage without the STR/DEX modifier. This is the first fighting style mechanic in the game.
 - Total progress: 15/15 restoration items + 8/10 gap-analysis CRITICAL items + 1 new feature (Two-Weapon Fighting).
 - Next priorities: more fighting styles (Great Weapon, Archery, Defense), UI styling improvements, or multiclassing/feats (gap #10).
+
+---
+Task ID: 20
+Agent: main (Z.ai Code)
+Task: Глобальный анализ BG3 + DOS2 + D&D 5e → создание MASTER-PLAN.md → начало выполнения Фазы 1 (визуальные улучшения).
+
+Work Log:
+- Провёл полный аудит кодовой базы: 28 UI-компонентов, 24 API-маршрута, 39 файлов игровой логики, 19 Prisma-моделей, ~10K строк ключевих файлов.
+- Создал MASTER-PLAN.md с 6 фазами доработок (35+ задач), сопоставив механики BG3, DOS2 и D&D 5e с текущим состоянием:
+  - Фаза 1: Визуальные улучшения (анимация костей, floating text с типами урона, критические частицы, HP-ring, виньетка сцен)
+  - Фаза 2: Боевые механики (боевые стили, stealth, sneak attack, death save UI, концентрация)
+  - Фаза 3: Исследование (контейнеры/лут, диалоги NPC, торговля, environmental interactions)
+  - Фаза 4: Прогрессия (фиты, мультиклассирование, ASI варианты, смена заклинаний)
+  - Фаза 5: UI/UX (tooltip-карточки, hotbar, миникарта, журнал событий, сравнение предметов)
+  - Фаза 6: Продвинутые (поверхностные эффекты, Z-координата, погода, компаньоны)
+- Начал выполнение Фазы 1:
+  - 1.2 Floating combat text с типами урона (BG3/DOS2 style): обновил CombatTextOverlay.tsx — каждый число урона теперь цветокодировано по типу (🔥fire=оранжевый, ❄️cold=голубой, ⚡lightning=жёлтый, 🤢poison=зелёный, 💀necrotic=фиолетовый, ✨radiant=золотой, ⚔️physical=серый). page.tsx теперь передаёт damageType в makeDamageText, выводя тип из метки броска.
+  - 1.3 Critical hit particle burst: добавил CSS-анимацию critBurst с ✦-частицами и золотым ореолом. При критическом ударе поверх текста появляется звёздочка, вращающаяся и затухающая.
+  - 1.4 Scene vignette + ambient overlay: добавил CSS-классы .scene-vignette (виньетка), .scene-ambient-rain (дождь), .scene-ambient-fog (туман), .scene-ambient-night (ночное затемнение).
+  - 1.5 HP ring вокруг токенов: добавил .hp-ring + .hp-ring-fill CSS-классы для кольца HP вокруг токенов.
+  - 1.6 Smooth token movement: добавил .token-moving CSS для плавного перемещения.
+  - 2.7 Concentration indicator: добавил .conc-indicator с пульсирующим фиолетовым ореолом.
+  - 2.8 Death save pips: добавил .death-save-pip + .death-save-success/.death-save-failure CSS.
+  - 2.2 Stealth overlay: добавил .stealth-overlay с мерцающей тёмной аурой.
+  - 5.1 Info tooltip: добавил .info-tooltip CSS для hover-карточек монстров/игроков.
+  - Всего: 160+ строк нового CSS в globals.css.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- MASTER-PLAN.md создан с 6 фазами и 35+ задачами.
+- Фаза 1 частично выполнена: floating damage text с типами урона, критические частицы, виньетка, HP-ring, stealth overlay, concentration indicator, death save pips, tooltip CSS — все добавлены в globals.css. CombatTextOverlay обновлён для поддержки damageType.
+- Следующий шаг: применить CSS-классы к реальным компонентам (CombatGrid tokens, SceneViewer, CharacterSheet death saves) + Фаза 2 (боевые стили, stealth, sneak attack).

@@ -451,3 +451,164 @@ html.ui-scale-150 { font-size: 24px; }
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ===== ФАЗА 1: Визуальные улучшения (MASTER-PLAN) ===== */
+
+/* 1.3 — Critical hit particle burst */
+@keyframes critBurst {
+  0% { transform: scale(0.3) rotate(0deg); opacity: 1; }
+  50% { transform: scale(1.4) rotate(180deg); opacity: 0.9; }
+  100% { transform: scale(2) rotate(360deg); opacity: 0; }
+}
+.crit-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+.crit-burst::before, .crit-burst::after {
+  content: "✦";
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 24px;
+  color: oklch(0.75 0.2 55);
+  text-shadow: 0 0 8px oklch(0.7 0.2 25), 0 0 16px oklch(0.65 0.18 55);
+  animation: critBurst 0.6s ease-out forwards;
+}
+.crit-burst::after {
+  animation-delay: 0.1s;
+  color: oklch(0.85 0.15 85);
+  font-size: 18px;
+}
+
+/* 1.5 — HP ring around tokens (SVG-style conic gradient) */
+.hp-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  pointer-events: none;
+  z-index: 5;
+}
+.hp-ring-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  transition: border-color 0.5s ease, conic-gradient 0.5s ease;
+}
+
+/* 1.6 — Smooth token movement animation */
+@keyframes tokenMove {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(var(--dx, 0px), var(--dy, 0px)); }
+}
+.token-moving {
+  animation: tokenMove 0.4s ease-in-out forwards;
+  transition: transform 0.4s ease-in-out;
+}
+
+/* 1.2 — Floating damage text with type-colored glow */
+@keyframes floatDmgText {
+  0% { opacity: 0; transform: translateY(0) scale(0.7); }
+  20% { opacity: 1; transform: translateY(-8px) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-32px) scale(1); }
+}
+.float-dmg-fire { color: oklch(0.70 0.20 35); text-shadow: 0 0 6px oklch(0.65 0.20 35 / 0.8); }
+.float-dmg-cold { color: oklch(0.70 0.15 220); text-shadow: 0 0 6px oklch(0.65 0.15 220 / 0.8); }
+.float-dmg-lightning { color: oklch(0.75 0.18 90); text-shadow: 0 0 6px oklch(0.70 0.18 90 / 0.8); }
+.float-dmg-poison { color: oklch(0.70 0.18 145); text-shadow: 0 0 6px oklch(0.65 0.18 145 / 0.8); }
+.float-dmg-necrotic { color: oklch(0.60 0.15 300); text-shadow: 0 0 6px oklch(0.55 0.15 300 / 0.8); }
+.float-dmg-radiant { color: oklch(0.85 0.12 85); text-shadow: 0 0 6px oklch(0.80 0.12 85 / 0.8); }
+.float-dmg-physical { color: oklch(0.80 0.02 55); text-shadow: 0 0 4px oklch(0.60 0.02 55 / 0.8); }
+.float-dmg-heal { color: oklch(0.70 0.18 145); text-shadow: 0 0 6px oklch(0.65 0.18 145 / 0.8); }
+.float-dmg-crit {
+  font-size: 1.4em;
+  font-weight: 900;
+  color: oklch(0.75 0.22 25);
+  text-shadow: 0 0 10px oklch(0.70 0.22 25 / 0.9), 0 0 20px oklch(0.65 0.20 55 / 0.6);
+}
+
+/* 1.4 — Scene vignette + ambient overlay */
+.scene-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 50%, oklch(0.06 0.01 55 / 0.75) 100%);
+  z-index: 1;
+}
+.scene-ambient-rain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, oklch(0.5 0.05 220 / 0.08) 100%);
+  z-index: 2;
+}
+.scene-ambient-fog {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, oklch(0.6 0.01 55 / 0.12) 0%, transparent 50%, oklch(0.6 0.01 55 / 0.08) 100%);
+  z-index: 2;
+  animation: flicker 6s ease-in-out infinite;
+}
+.scene-ambient-night {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: oklch(0.15 0.03 260 / 0.25);
+  z-index: 2;
+}
+
+/* 2.8 — Death save pip indicators */
+.death-save-pip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid oklch(0.5 0.01 55);
+  margin: 0 1px;
+}
+.death-save-success { background: oklch(0.65 0.15 145); border-color: oklch(0.65 0.15 145); box-shadow: 0 0 4px oklch(0.65 0.15 145 / 0.6); }
+.death-save-failure { background: oklch(0.55 0.20 25); border-color: oklch(0.55 0.20 25); box-shadow: 0 0 4px oklch(0.55 0.20 25 / 0.6); }
+
+/* 2.7 — Concentration indicator pulse */
+@keyframes concPulse {
+  0%, 100% { box-shadow: 0 0 4px 1px oklch(0.65 0.15 290 / 0.4); }
+  50% { box-shadow: 0 0 12px 3px oklch(0.65 0.15 290 / 0.7); }
+}
+.conc-indicator {
+  animation: concPulse 2s ease-in-out infinite;
+}
+
+/* 2.2 — Stealth/shadow overlay on hidden tokens */
+@keyframes stealthShimmer {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+.stealth-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(circle, oklch(0.1 0.01 260 / 0.6) 0%, oklch(0.1 0.01 260 / 0.3) 70%, transparent 100%);
+  animation: stealthShimmer 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* 5.1 — Tooltip card for monsters/players on hover */
+.info-tooltip {
+  position: absolute;
+  z-index: 100;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 8px 10px;
+  background: oklch(0.18 0.014 55 / 0.97);
+  border: 1px solid oklch(0.4 0.03 55);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px oklch(0 0 0 / 0.5);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}

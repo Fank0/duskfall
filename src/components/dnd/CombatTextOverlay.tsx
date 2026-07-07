@@ -10,9 +10,13 @@ export interface FloatingText {
   x: number; // 0..1 relative position within the grid
   y: number;
   type: "damage" | "heal" | "miss" | "crit" | "buff";
+  /** D&D 5e damage type for color-coding: fire, cold, lightning, poison, necrotic, radiant, physical. */
+  damageType?: string;
 }
 
-/** Floating combat text overlay — shows damage numbers, MISS, CRIT! above tokens. */
+/** Floating combat text overlay — shows damage numbers, MISS, CRIT! above tokens.
+ *  Each damage number is color-coded by damage type (BG3/DOS2 style): fire=orange,
+ *  cold=blue, lightning=yellow, poison=green, necrotic=purple, radiant=gold. */
 export function CombatTextOverlay({ texts }: { texts: FloatingText[] }) {
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
@@ -23,6 +27,20 @@ export function CombatTextOverlay({ texts }: { texts: FloatingText[] }) {
   );
 }
 
+/** Map damage type → CSS class for color-coded floating text. */
+function damageTypeClass(damageType?: string): string {
+  switch (damageType) {
+    case "fire": return "float-dmg-fire";
+    case "cold": return "float-dmg-cold";
+    case "lightning": return "float-dmg-lightning";
+    case "poison": return "float-dmg-poison";
+    case "necrotic": return "float-dmg-necrotic";
+    case "radiant": return "float-dmg-radiant";
+    case "heal": return "float-dmg-heal";
+    default: return "float-dmg-physical";
+  }
+}
+
 function FloatingTextItem({ text }: { text: FloatingText }) {
   const [visible, setVisible] = useState(true);
   const [offset, setOffset] = useState(0);
@@ -31,20 +49,14 @@ function FloatingTextItem({ text }: { text: FloatingText }) {
   useEffect(() => {
     const timer = setTimeout(() => setVisible(false), 1200);
     const anim = setInterval(() => setOffset((o) => o - 1.5), 16);
-    // Crit burst fades after 0.7s (matches the CSS animation duration).
     const burstTimer = setTimeout(() => setBurstGone(true), 700);
     return () => { clearTimeout(timer); clearInterval(anim); clearTimeout(burstTimer); };
   }, []);
 
   if (!visible) return null;
 
-  const colors: Record<string, string> = {
-    damage: "text-red-400",
-    heal: "text-emerald-400",
-    miss: "text-stone-400",
-    crit: "text-amber-300 text-glow",
-    buff: "text-sky-300",
-  };
+  const isCrit = text.type === "crit";
+  const dmgClass = damageTypeClass(text.damageType);
 
   return (
     <div
@@ -55,25 +67,29 @@ function FloatingTextItem({ text }: { text: FloatingText }) {
         transform: "translate(-50%, 0)",
       }}
     >
-      {/* CRIT burst: a yellow radial gradient that blooms behind the text
-          (Пункт 17). Removed from the DOM after the animation finishes. */}
-      {text.type === "crit" && !burstGone && (
-        <div
-          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-crit-burst"
-          style={{
-            width: "60px",
-            height: "60px",
-            background:
-              "radial-gradient(circle at center, rgba(251,191,36,0.95) 0%, rgba(251,191,36,0.55) 35%, rgba(251,191,36,0) 70%)",
-            borderRadius: "9999px",
-          }}
-        />
+      {/* CRIT burst: golden radial + particle sparkles */}
+      {isCrit && !burstGone && (
+        <>
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 animate-crit-burst"
+            style={{
+              width: "60px",
+              height: "60px",
+              background:
+                "radial-gradient(circle at center, rgba(251,191,36,0.95) 0%, rgba(251,191,36,0.55) 35%, rgba(251,191,36,0) 70%)",
+              borderRadius: "9999px",
+            }}
+          />
+          <div className="crit-burst" />
+        </>
       )}
       <div
         className={cn(
           "relative font-bold text-sm drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] transition-opacity",
-          colors[text.type] ?? "text-white",
-          text.type === "crit" && "text-lg"
+          isCrit ? cn("float-dmg-crit", "text-lg") : dmgClass,
+          text.type === "miss" && "text-stone-400",
+          text.type === "buff" && "text-sky-300",
+          text.type === "heal" && "float-dmg-heal",
         )}
         style={{
           transform: `translateY(${offset}px)`,
@@ -86,8 +102,15 @@ function FloatingTextItem({ text }: { text: FloatingText }) {
   );
 }
 
-/** Helper: generate a floating text entry from combat event data. */
-export function makeDamageText(targetX: number, targetY: number, amount: number, isCrit: boolean): FloatingText {
+/** Helper: generate a floating text entry from combat event data.
+ *  Now supports damage-type color coding (BG3/DOS2 style). */
+export function makeDamageText(
+  targetX: number,
+  targetY: number,
+  amount: number,
+  isCrit: boolean,
+  damageType?: string
+): FloatingText {
   return {
     id: `ft_${Date.now()}_${Math.random()}`,
     text: isCrit ? `КРИТ! ${amount}` : `-${amount}`,
@@ -95,6 +118,7 @@ export function makeDamageText(targetX: number, targetY: number, amount: number,
     x: targetX,
     y: targetY,
     type: isCrit ? "crit" : "damage",
+    damageType,
   };
 }
 
@@ -117,5 +141,6 @@ export function makeHealText(targetX: number, targetY: number, amount: number): 
     x: targetX,
     y: targetY,
     type: "heal",
+    damageType: "heal",
   };
 }
