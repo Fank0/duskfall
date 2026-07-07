@@ -125,6 +125,7 @@ function toPlayer(p: any): PlayerState {
     speed: p.speed ?? 30,
     movementUsed: p.movementUsed ?? 0,
     dashActive: p.dashActive ?? false,
+    fightingStyle: p.fightingStyle ?? "",
   };
 }
 
@@ -551,6 +552,13 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
             .join(", ")}`
         : "";
     const concInfo = p.concentratingOn ? ` | Концентрация: ${p.concentratingOn}` : "";
+    // D&D 5e Fighting Style (MASTER-PLAN 2.1): show in DM context.
+    const styleMap: Record<string, string> = {
+      archery: "Стрельба (+2 к атаке)", defense: "Защита (+1 AC)", dueling: "Дуэль (+2 к урону)",
+      great_weapon: "Двуручн (переброс 1-2)", two_weapon: "Парное (+мод к 2-й руке)", protection: "Защита",
+    };
+    const styleInfo = (p as any).fightingStyle && styleMap[(p as any).fightingStyle]
+      ? ` | Боевой стиль: ${styleMap[(p as any).fightingStyle]}` : "";
     const actionInfo = snap.combatActive
       ? ` | Действия: ${p.actionUsed ? "✗" : "✓"}${p.bonusActionUsed ? "/✗" : "/✓"}${p.reactionUsed ? "/✗" : "/✓"}`
       : "";
@@ -588,7 +596,7 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       if (parts.length > 0) resourceInfo = ` | Ресурсы: ${parts.join(", ")}`;
     }
     lines.push(
-      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${resourceInfo}${slotInfo}${concInfo}${actionInfo} | Скорость ${p.speed ?? 30} футов${(p.movementUsed ?? 0) > 0 ? ` (использовано ${p.movementUsed}, осталось ${Math.max(0, (p.dashActive ? (p.speed ?? 30) * 2 : (p.speed ?? 30)) - (p.movementUsed ?? 0))})` : ""}${p.dashActive ? " [Рывок активен]" : ""} | Позиция (${p.posX},${p.posY})`
+      `${p.name} (${p.raceName} ${p.charClass}, происхождение ${p.backgroundName}, ур.${p.level})${p.isHost ? " [хост]" : ""}: ${status} | AC ${p.ac} | Золото ${p.gold} | СИЛ ${p.str}(${mod(p.str)}) ЛОВ ${p.dex}(${mod(p.dex)}) ТЕЛ ${p.con}(${mod(p.con)}) ИНТ ${p.int}(${mod(p.int)}) МУД ${p.wis}(${mod(p.wis)}) ХАР ${p.cha}(${mod(p.cha)}) | Бонус мастерства +${p.proficiencyBonus} | Пассивное восприятие ${p.passivePerception ?? 10 + mod(p.wis)} | DC заклинаний ${p.spellSaveDC ?? 12} | Навыки: ${skillInfo} | Спасброски: ${saveInfo} | Оружие: ${p.weaponName} (${p.weaponNotation})${extraAttackInfo}${resourceInfo}${slotInfo}${concInfo}${styleInfo}${actionInfo} | Скорость ${p.speed ?? 30} футов${(p.movementUsed ?? 0) > 0 ? ` (использовано ${p.movementUsed}, осталось ${Math.max(0, (p.dashActive ? (p.speed ?? 30) * 2 : (p.speed ?? 30)) - (p.movementUsed ?? 0))})` : ""}${p.dashActive ? " [Рывок активен]" : ""} | Позиция (${p.posX},${p.posY})`
     );
     // Backstory (player-authored): let the DM weave the hero's history into
     // the narrative — call back to NPCs, places, oaths, regrets.

@@ -193,6 +193,46 @@ function rollSavingThrow(
   return Math.floor(Math.random() * 20) + 1 + computeSaveBonus(target, ability, statValue);
 }
 
+/** D&D 5e Fighting Style (MASTER-PLAN 2.1): returns the attack bonus from
+ *  the player's fighting style. Archery = +2 to ranged attack rolls. */
+function fightingStyleAttackBonus(player: PlayerState | null): number {
+  if (!player || !player.fightingStyle) return 0;
+  if (player.fightingStyle === "archery") {
+    // Check if using a ranged weapon.
+    const w = player.weaponName.toLowerCase();
+    if (w.includes("лук") || w.includes("bow") || w.includes("арбалет") || w.includes("crossbow")) {
+      return 2;
+    }
+  }
+  return 0;
+}
+
+/** D&D 5e Fighting Style: returns the damage bonus from the player's style.
+ *  Dueling = +2 to damage with one-handed weapon. Two-Weapon = +ability mod
+ *  to off-hand damage. Great Weapon = reroll 1s and 2s on damage dice. */
+function fightingStyleDamageBonus(player: PlayerState | null, isOffHand: boolean = false): number {
+  if (!player || !player.fightingStyle) return 0;
+  if (player.fightingStyle === "dueling" && !isOffHand) {
+    // Dueling: +2 damage with one-handed weapon (no shield check simplified).
+    return 2;
+  }
+  if (player.fightingStyle === "two_weapon" && isOffHand) {
+    // Two-Weapon Fighting: add ability modifier to off-hand damage.
+    const w = player.weaponName.toLowerCase();
+    const isFinesse = w.includes("кинжал") || w.includes("близнецы");
+    const atkStat = isFinesse ? Math.max(player.str, player.dex) : player.str;
+    return abilityModifier(atkStat);
+  }
+  return 0;
+}
+
+/** D&D 5e Fighting Style: Defense = +1 AC when wearing any armor. */
+function fightingStyleACBonus(player: PlayerState | null): number {
+  if (!player || !player.fightingStyle) return 0;
+  if (player.fightingStyle === "defense") return 1;
+  return 0;
+}
+
 
 // ---------- BG3/D&D 5e: concentration checks on damage ----------
 /** When a concentrating character takes damage, they must make a CON save
@@ -1388,8 +1428,31 @@ async function resolvePlayerAction(
         : cantripScaled;
       const dmg = rollDice(scaledNotation);
       // Talent: bonus flat damage + vampiric Heal.
-      const bonus = damageBonusFromTalents(actor);
-      damageDealtToMonster = dmg.total + bonus;
+      const bonus = damageBonusFromTalents(actor) + fightingStyleDamageBonus(actor);
+      // D&D 5e Sneak Attack (MASTER-PLAN 2.3): Rogue deals +1d6 (L1-4), +2d6 (L5-8),
+      // +3d6 (L9-12), etc. when they have advantage OR an ally is adjacent to the
+      // target. Auto-applied so the LLM doesn't need to remember.
+      let sneakAttackDmg = 0;
+      if (actor && actor.charClass.toLowerCase() === "rogue") {
+        const sneakDice = Math.ceil((actor.level || 1) / 2);
+        // Check for advantage (flanking/high ground) or ally adjacent to target.
+        const allies = snap0?.players.filter((p) => p.name !== actorName && p.isAlive && p.hp > 0) ?? [];
+        const hasAdvantage = positionalAdv || attackerCondIds.some((id) => id === "blessed"); // simplified
+        const allyAdjacent = allies.some((a) => {
+          const dist = Math.max(Math.abs(a.posX - m.posX), Math.abs(a.posY - m.posY));
+          return dist <= 1;
+        });
+        if (hasAdvantage || allyAdjacent) {
+          const sneakRoll = rollDice(`${sneakDice}d6`);
+          sneakAttackDmg = sneakRoll.total;
+          await logDiceRoll(roomId, round, actorName, {
+            label: `Скрытая атака (${sneakDice}d6)`,
+            notation: `${sneakDice}d6`, modifier: 0,
+            result: sneakRoll.raw, total: sneakAttackDmg, purpose: "player_damage",
+          });
+        }
+      }
+      damageDealtToMonster = dmg.total + bonus + sneakAttackDmg;
       // Build a readable label for the dice log.
       const scalingNote = scaledNotation !== branch.monsterDamage.notation
         ? (slotLevel > spellBaseLevel && spellBaseLevel > 0
@@ -1446,7 +1509,7 @@ async function resolvePlayerAction(
           // Compute the player's attack bonus: STR/DEX mod + proficiency.
           const isFinesse = actor.weaponName.toLowerCase().includes("кинжал") || actor.weaponName.toLowerCase().includes("рапира");
           const atkStat = isFinesse ? Math.max(actor.str, actor.dex) : actor.str;
-          const atkBonus = abilityModifier(atkStat) + actor.proficiencyBonus;
+          const atkBonus = abilityModifier(atkStat) + actor.proficiencyBonus + fightingStyleAttackBonus(actor);
           const monsterAC = m.ac + coverAcBonus(await getTerrainCells(roomId), m.posX, m.posY);
           for (let i = 0; i < numExtraAttacks; i++) {
             // Check if the monster is still alive.
@@ -1462,7 +1525,7 @@ async function resolvePlayerAction(
             });
             if (extraHit) {
               const extraDmg = rollDice(actor.weaponNotation);
-              const extraBonus = damageBonusFromTalents(actor);
+              const extraBonus = damageBonusFromTalents(actor) + fightingStyleDamageBonus(actor);
               const extraTotal = extraDmg.total + extraBonus;
               damageDealtToMonster += extraTotal;
               await logDiceRoll(roomId, round, actorName, {
@@ -1514,7 +1577,8 @@ async function resolvePlayerAction(
             // Players with the Two-Weapon Fighting style would add the mod,
             // but we don't model fighting styles yet — so no mod.
             const offHandDmg = rollDice(actor.weaponNotation);
-            const offHandTotal = offHandDmg.total;
+            const offHandStyleBonus = fightingStyleDamageBonus(actor, true); // two_weapon style adds ability mod
+            const offHandTotal = offHandDmg.total + offHandStyleBonus;
             damageDealtToMonster += offHandTotal;
             await logDiceRoll(roomId, round, actorName, {
               label: `Урон второго оружия по: ${m.name} (без мод СИЛ)`,

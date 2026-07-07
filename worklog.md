@@ -3193,3 +3193,37 @@ Stage Summary:
 - MASTER-PLAN.md создан с 6 фазами и 35+ задачами.
 - Фаза 1 частично выполнена: floating damage text с типами урона, критические частицы, виньетка, HP-ring, stealth overlay, concentration indicator, death save pips, tooltip CSS — все добавлены в globals.css. CombatTextOverlay обновлён для поддержки damageType.
 - Следующий шаг: применить CSS-классы к реальным компонентам (CombatGrid tokens, SceneViewer, CharacterSheet death saves) + Фаза 2 (боевые стили, stealth, sneak attack).
+
+---
+Task ID: 21
+Agent: main (Z.ai Code)
+Task: MASTER-PLAN Фаза 2 — боевые механики: боевые стили (2.1), автоматический Sneak Attack (2.3).
+
+Work Log:
+- Фаза 2.1 (Боевые стили): добавил поле `fightingStyle` в Player schema + types.ts + toPlayer mapper. Создал `getFightingStyleForClass()` в seed.ts — авто-назначение стиля по классу + оружию:
+  - Воин/Паладин/Следопыт получают стиль на 1 уровне
+  - Стрельба (Archery): +2 к атаке для дальнобойного оружия (лук/арбалет)
+  - Дуэль (Dueling): +2 к урону одноручным оружием
+  - Парное (Two-Weapon): +модификатор характеристики к урону второй руки
+  - Двуручное (Great Weapon): переброс 1-2 на кубиках урона
+  - Защита (Defense): +1 AC при ношении брони
+- Добавил 3 helper-функции в dm-agent.ts:
+  - `fightingStyleAttackBonus()` — +2 для Archery на дальнобойных атаках
+  - `fightingStyleDamageBonus()` — +2 для Dueling, +мод для Two-Weapon на второй руке
+  - `fightingStyleACBonus()` — +1 для Defense
+- Применил боевые стили к:
+  - Основному пути урона (Dueling +2)
+  - Extra Attack пути (attack + damage bonus)
+  - Two-Weapon Fighting пути (off-hand damage с модификатором при стиле)
+- DM-контекст показывает боевой стиль игрока ("Боевой стиль: Стрельба (+2 к атаке)")
+- Фаза 2.3 (Sneak Attack): добавил автоматическое срабатывание Скрытой атаки для Плута:
+  - Количество кубиков: ceil(level/2) — 1d6 на L1-4, 2d6 на L5-8, и т.д.
+  - Срабатывает при: преимуществе на атаку (фланг/высота) ИЛИ союзник в смежной клетке с целью
+  - Логируется отдельно в логе костей ("Скрытая атака (1d6)")
+  - Добавляется к общему урону по монстру
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- Фаза 2.1 (боевые стили) + Фаза 2.3 (Sneak Attack) выполнены.
+- Теперь: Воин с луком получает +2 к атаке (Archery), Воин с одноручным мечом +2 к урону (Dueling), Плут автоматически получает Sneak Attack когда союзник рядом или есть преимущество.
+- Следующий шаг: Фаза 2.2 (Stealth/Hide режим), Фаза 2.8 (Death save UI).

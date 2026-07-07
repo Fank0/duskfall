@@ -261,6 +261,8 @@ export interface PlayerState {
   speed: number;
   movementUsed: number;
   dashActive: boolean;
+  /** D&D 5e Fighting Style: archery, defense, dueling, great_weapon, two_weapon, protection, none. */
+  fightingStyle: string;
 }
 
 export interface MonsterState {

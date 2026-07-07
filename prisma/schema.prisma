@@ -208,6 +208,9 @@ model Player {
   speed               Int      @default(30)  // feet per turn (30 ft = 6 cells)
   movementUsed        Int      @default(0)   // feet spent this turn
   dashActive          Boolean  @default(false) // Dash action used this turn
+  /// D&D 5e Fighting Style (chosen at level 1 for Fighter, Paladin, Ranger).
+  /// Values: archery | defense | dueling | great_weapon | two_weapon | protection | none
+  fightingStyle       String   @default("")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

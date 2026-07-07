@@ -195,6 +195,9 @@ async function createPlayer(roomId: string, input: CreatePlayerInput) {
       spellSaveDC: 8 + 2 + abilityModifier(getCastingStat(p.charClass, finalInt, finalWis, finalCha)),
       // D&D 5e class resources.
       classResources: JSON.stringify(getClassResources(p.charClass, 1, finalCha)),
+      // D&D 5e Fighting Style (MASTER-PLAN 2.1): Fighters, Paladins, Rangers
+      // choose a fighting style at level 1. We auto-assign based on weapon type.
+      fightingStyle: getFightingStyleForClass(p.charClass, p.weaponName),
     },
   });
   // Starting inventory: class items + background item.
@@ -318,6 +321,33 @@ function getSkillProficiencies(backgroundId: string): string[] {
     "hermit": ["medicine", "religion"],
   };
   return map[backgroundId] ?? ["perception", "survival"];
+}
+
+/** D&D 5e Fighting Style (MASTER-PLAN 2.1): auto-assign based on class + weapon.
+ *  Fighters, Paladins, Rangers get a fighting style at level 1. */
+function getFightingStyleForClass(charClass: string, weaponName: string): string {
+  const lc = charClass.toLowerCase();
+  const weaponLower = weaponName.toLowerCase();
+  // Only Fighter, Paladin, Ranger get fighting styles.
+  if (lc !== "fighter" && lc !== "paladin" && lc !== "ranger") return "";
+  // Archery: ranged weapons (bow, crossbow, лук, арбалет).
+  if (weaponLower.includes("лук") || weaponLower.includes("bow") || weaponLower.includes("арбалет") || weaponLower.includes("crossbow")) {
+    return "archery";
+  }
+  // Two-Weapon Fighting: dual-wielded light weapons (кинжалы, близнецы).
+  if (weaponLower.includes("кинжал") || weaponLower.includes("близнецы") || weaponLower.includes("daggers")) {
+    return "two_weapon";
+  }
+  // Great Weapon Fighting: two-handed weapons (двуручный, молот, топор great).
+  if (weaponLower.includes("двуручн") || weaponLower.includes("great") || weaponLower.includes("алебарда") || weaponLower.includes("молот")) {
+    return "great_weapon";
+  }
+  // Dueling: one-handed weapon + no shield.
+  if (!weaponLower.includes("щит") && !weaponLower.includes("shield")) {
+    return "dueling";
+  }
+  // Defense: if using a shield, default to Defense (+1 AC).
+  return "defense";
 }
 
 /** D&D 5e: casting stat by class. Returns the stat value for spell save DC. */
