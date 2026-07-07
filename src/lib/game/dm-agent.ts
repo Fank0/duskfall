@@ -1273,7 +1273,8 @@ async function resolvePlayerAction(
       playerRolls.push(rr);
       await logDiceRoll(roomId, round, m.name, rr);
       if (dmg > 0) {
-        const r = await damageMonster(roomId, m.id, dmg);
+        // D&D 5e (gap #6): pass the AoE element as damage type for resistance/immunity checks.
+        const r = await damageMonster(roomId, m.id, dmg, element);
         await logDiceRoll(roomId, round, actorName, {
           label: `Урон по ${m.name}${saved ? " (половина, спас)" : ""}`,
           notation: damageNotation,
@@ -1364,14 +1365,21 @@ async function resolvePlayerAction(
         },
       });
     } else if (m) {
-      // D&D 5e: scale cantrip damage based on actor's level.
+      // D&D 5e: scale cantrip damage based on actor's level (gap #8).
       // Fire Bolt: 1d10 at L1-4, 2d10 at L5-10, 3d10 at L11-16, 4d10 at L17+.
+      // Only scale cantrips (level 0 spells) — weapon damage is NOT scaled.
       const actorLevel = actor?.level ?? 1;
-      const cantripScaled = scaleCantripDamage(branch.monsterDamage.notation, actorLevel);
+      const rawNotation = branch.monsterDamage.notation;
+      // Check if this is a cantrip by matching against the actor's known cantrips.
+      const knownSpells = actorState ? knownSpellsForPlayer(actorState) : [];
+      const isCantrip = knownSpells.some(
+        (s) => s.level === 0 && s.damage === rawNotation
+      );
+      const cantripScaled = isCantrip ? scaleCantripDamage(rawNotation, actorLevel) : rawNotation;
       // D&D 5e: upcast damage scaling (item #13) — if the spell was cast with a
       // higher slot, scale the damage dice (+1 die per slot level above base).
       const slotLevel = plan.slotLevel ?? 0;
-      const spellBaseLevel = inferSpellBaseLevel(actor, branch.monsterDamage.notation);
+      const spellBaseLevel = inferSpellBaseLevel(actor, rawNotation);
       const scaledNotation = (spellBaseLevel > 0 && slotLevel > spellBaseLevel)
         ? upcastSpellDamage(cantripScaled, spellBaseLevel, slotLevel)
         : cantripScaled;
@@ -2471,6 +2479,45 @@ export async function resolvePlayerMechanics(
       round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
       statusEffectNotes: [], lootNotes: [],
     } as MechanicsResult;
+  }
+
+  // ===== D&D 5e (gap #2): Bonus-action consumption =====
+  // Detect known bonus-action abilities in the action text and mark
+  // bonusActionUsed = true so the UI action-economy pips reflect it.
+  // This is a simplified check — the LLM still resolves the mechanical
+  // effects, but the backend tracks the action economy.
+  if (wasCombatActive && !actor.bonusActionUsed) {
+    const bonusActionKeywords = [
+      "второе дыхание", "second wind",
+      "ярость", "rage",
+      "хитрость", "cunning action",
+      "уклонение", "dash as bonus",
+    ];
+    const isBonusAction = bonusActionKeywords.some((kw) => actionLower.includes(kw));
+    if (isBonusAction) {
+      await db.player.update({
+        where: { id: actor.id },
+        data: { bonusActionUsed: true },
+      });
+    }
+  }
+
+  // ===== D&D 5e (gap #2): Reaction consumption =====
+  // Reactions (Shield, Counterspell, opportunity attacks by the player)
+  // consume the reaction flag. The LLM still resolves mechanics.
+  if (wasCombatActive && !actor.reactionUsed) {
+    const reactionKeywords = [
+      "щит", "shield spell", "counterspell", "контрзаклинание",
+      "невероятное уклонение", "uncanny dodge",
+      "атака по возможности", "opportunity attack",
+    ];
+    const isReaction = reactionKeywords.some((kw) => actionLower.includes(kw));
+    if (isReaction) {
+      await db.player.update({
+        where: { id: actor.id },
+        data: { reactionUsed: true },
+      });
+    }
   }
 
   // 1. Plan the mechanics first.

@@ -3065,3 +3065,22 @@ Work Log:
 Stage Summary:
 - Gap #1 (saving throw proficiency) is now mechanically functional — proficiency bonuses are applied to all saving throws (concentration, monster special abilities, AoE spells). Skill proficiency for ability checks is still LLM-driven (the DM prompt mentions the player's skills), but saving throws are now backend-enforced.
 - Next gap-analysis priorities: #2 (reaction/bonus-action consumption), #3 (special-ability mechanical execution), #4 (multiattack/extra attack — monster multiattack already works; player Extra Attack is LLM-driven), #5 (subclasses — DONE in item #5), #6 (monster resistances/immunities — already in MonsterState + damageMonster).
+
+---
+Task ID: 16
+Agent: main (Z.ai Code) — manual continuation (cron not firing)
+Task: Gap-analysis items #6 (monster resistances AoE fix), #8 (cantrip scaling fix), #2 (reaction/bonus-action consumption).
+
+Work Log:
+- Gap #6 (monster resistances/immunities): the single-target path already passed damageType to damageMonster. Found that the AoE path did NOT pass the element as damageType. Fixed: `damageMonster(roomId, m.id, dmg, element)` — now AoE spells respect monster resistances/immunities (e.g. a fire-immune skeleton takes 0 damage from Fireball).
+- Gap #8 (cantrip scaling): found a BUG — `scaleCantripDamage` was applied to ALL damage notations, not just cantrips. A weapon attack "1d8+3" at level 5 would incorrectly become "2d8+3". Fixed: now checks if the notation matches a known cantrip (level 0 spell) by comparing against `knownSpellsForPlayer(actorState)`. Only cantrips are scaled; weapon damage is left untouched.
+- Gap #2 (reaction & bonus-action consumption): `bonusActionUsed` and `reactionUsed` were NEVER set to true. Added keyword-based detection in `resolvePlayerMechanics`:
+  - Bonus actions: "второе дыхание"/"second wind", "ярость"/"rage", "хитрость"/"cunning action" → sets `bonusActionUsed: true`.
+  - Reactions: "щит"/"shield spell", "counterspell"/"контрзаклинание", "невероятное уклонение"/"uncanny dodge", "атака по возможности"/"opportunity attack" → sets `reactionUsed: true`.
+  - The LLM still resolves the mechanical effects; the backend now tracks the action economy so the UI pips reflect consumption.
+- Lint clean (0 errors, 0 warnings). App loads (HTTP 200).
+
+Stage Summary:
+- 3 gap-analysis items addressed this round: #6 (AoE resistances), #8 (cantrip scaling bug fix), #2 (action economy consumption).
+- Total gap-analysis progress: #1 (save proficiency), #6 (resistances), #8 (cantrip scaling), #2 (action economy) — 4 of 10 CRITICAL gaps addressed.
+- Remaining CRITICAL gaps: #3 (special-ability mechanical execution), #4 (multiattack/extra attack — monster multiattack works; player Extra Attack is LLM-driven), #7 (L4-L9 spell slots), #9 (class resources — Ki, Rage, Lay on Hands etc. are flavor-only).
