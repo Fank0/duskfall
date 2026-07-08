@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, Check, TrendingUp, Lock, ArrowRight, Star } from "lucide-react";
+import { Sparkles, Loader2, Check, TrendingUp, Lock, ArrowRight, Star, Award } from "lucide-react";
 import { getTalentsForClass, getASITalents } from "@/lib/game/talents";
 import { getSubclassesForClass } from "@/lib/game/subclasses";
+import { FEATS } from "@/lib/game/feats";
 import { getClassIdByCharClass } from "@/lib/game/presets";
 import type { PlayerState, Talent, StatKey } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
@@ -160,6 +161,50 @@ export function SkillTreeModal({
                 После ASI предстоит выбрать талант — он появится ниже.
               </p>
             )}
+          </div>
+        )}
+
+        {/* D&D 5e Feats (MASTER-PLAN 4.1) — shown alongside ASI at levels 5/9/13/17.
+            Player can choose between +2 stat (ASI) or a feat. */}
+        {showASI && (
+          <div className="rounded-md border border-amber-700/40 bg-amber-950/10 p-3">
+            <div className="mb-2 flex items-center gap-1.5">
+              <Award className="h-4 w-4 text-amber-300" />
+              <span className="text-sm font-semibold gold-text">Или выберите фит</span>
+            </div>
+            <p className="mb-2 text-[10px] text-muted-foreground">
+              Вместо +2 к характеристике можно взять фит — особую способность.
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {FEATS.map((feat) => {
+                const alreadyTaken = player.selectedTalents.includes(`feat_${feat.id}`);
+                return (
+                  <button
+                    key={feat.id}
+                    type="button"
+                    disabled={busy || alreadyTaken}
+                    onClick={() => pickTalent(`feat_${feat.id}`)}
+                    className={cn(
+                      "group rounded-md border p-3 text-left transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                      alreadyTaken
+                        ? "border-emerald-700/40 bg-emerald-950/15"
+                        : "border-amber-700/30 bg-stone-900/40 hover:border-amber-500/60 hover:bg-stone-900/70"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-amber-100">{feat.name}</span>
+                      {alreadyTaken && <Check className="h-3 w-3 text-emerald-400" />}
+                    </div>
+                    <Badge variant="outline" className="mt-0.5 text-[7px] border-amber-700/40 text-amber-300/70">
+                      {feat.nameEn}
+                    </Badge>
+                    <p className="mt-1 text-[9px] leading-snug text-muted-foreground">
+                      {feat.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 

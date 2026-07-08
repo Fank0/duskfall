@@ -13,7 +13,7 @@ import { ScrollText, Download, Swords, Heart, Shield, Sparkles } from "lucide-re
 import type { DiceRollState, ChatMessageState } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
 
-type EntryType = "attack" | "damage" | "heal" | "crit" | "miss" | "condition" | "spell" | "other";
+type EntryType = "attack" | "damage" | "heal" | "crit" | "miss" | "condition" | "spell" | "other" | "dialogue" | "exploration";
 
 interface CombatLogEntry {
   id: string;
@@ -23,7 +23,7 @@ interface CombatLogEntry {
   timestamp: string;
 }
 
-type FilterKey = "all" | "attack" | "damage" | "heal" | "condition";
+type FilterKey = "all" | "attack" | "damage" | "heal" | "condition" | "dialogue" | "exploration";
 
 const TYPE_FILTERS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "Все" },
@@ -31,6 +31,8 @@ const TYPE_FILTERS: { key: FilterKey; label: string }[] = [
   { key: "damage", label: "Урон" },
   { key: "heal", label: "Лечение" },
   { key: "condition", label: "Состояния" },
+  { key: "dialogue", label: "Диалоги" },
+  { key: "exploration", label: "Исследование" },
 ];
 
 const TYPE_COLORS: Record<EntryType, string> = {
@@ -42,6 +44,8 @@ const TYPE_COLORS: Record<EntryType, string> = {
   condition: "text-purple-300",
   spell: "text-sky-300",
   other: "text-stone-300",
+  dialogue: "text-cyan-300",
+  exploration: "text-amber-200",
 };
 
 /** Keywords that mark a system chat message as condition-related. */
@@ -122,6 +126,20 @@ function parseSystemChat(c: ChatMessageState): CombatLogEntry | null {
   if (CONDITION_KEYWORDS.some((kw) => content.includes(kw))) {
     return { id: c.id, round: c.round, type: "condition", text: content, timestamp: c.createdAt };
   }
+  // D&D 5e (MASTER-PLAN 5.4): Dialogue entries — NPC interactions.
+  const dialogueKeywords = ["говорит", "отвечает", "торгует", "магазин", "покупа", "продаёт", "диалог", "NPC"];
+  if (dialogueKeywords.some((kw) => content.includes(kw))) {
+    return { id: c.id, round: c.round, type: "dialogue", text: content, timestamp: c.createdAt };
+  }
+  // D&D 5e (MASTER-PLAN 5.4): Exploration entries — discovery, movement, environment.
+  const explorationKeywords = ["обнаруж", "находит", "тайник", "сундук", "дверь", "рычаг", "переходит", "комната", "лут", "контейнер", " обыскивает"];
+  if (explorationKeywords.some((kw) => content.includes(kw))) {
+    return { id: c.id, round: c.round, type: "exploration", text: content, timestamp: c.createdAt };
+  }
+  // Other system messages (XP, loot drops, etc.)
+  if (content.includes("опыта") || content.includes("обыскивает") || content.includes("добыч")) {
+    return { id: c.id, round: c.round, type: "other", text: content, timestamp: c.createdAt };
+  }
   return null;
 }
 
@@ -162,6 +180,8 @@ export const CombatLog = memo(function CombatLog({
     if (filter === "damage") return entries.filter((e) => e.type === "damage");
     if (filter === "heal") return entries.filter((e) => e.type === "heal");
     if (filter === "condition") return entries.filter((e) => e.type === "condition" || e.type === "spell");
+    if (filter === "dialogue") return entries.filter((e) => e.type === "dialogue");
+    if (filter === "exploration") return entries.filter((e) => e.type === "exploration");
     return entries;
   }, [entries, filter]);
 

@@ -1154,6 +1154,55 @@ export const ASI_TALENTS: Talent[] = [
     effect: { type: "asi", stat: "cha", value: 2 },
     tier: 1,
   },
+  // ===== D&D 5e ASI variants (MASTER-PLAN 4.3): +1 to two different stats =====
+  {
+    id: "asi_str_con",
+    classId: "asi",
+    name: "Сила +1, Тел +1",
+    description: "Увеличивает Силу и Телосложение на 1 каждое (макс. 20).",
+    effect: { type: "asi", stat: "str", value: 1 },
+    tier: 1,
+  },
+  {
+    id: "asi_str_dex",
+    classId: "asi",
+    name: "Сила +1, Лов +1",
+    description: "Увеличивает Силу и Ловкость на 1 каждое (макс. 20).",
+    effect: { type: "asi", stat: "str", value: 1 },
+    tier: 1,
+  },
+  {
+    id: "asi_dex_con",
+    classId: "asi",
+    name: "Лов +1, Тел +1",
+    description: "Увеличивает Ловкость и Телосложение на 1 каждое (макс. 20).",
+    effect: { type: "asi", stat: "dex", value: 1 },
+    tier: 1,
+  },
+  {
+    id: "asi_int_wis",
+    classId: "asi",
+    name: "Инт +1, Муд +1",
+    description: "Увеличивает Интеллект и Мудрость на 1 каждое (макс. 20).",
+    effect: { type: "asi", stat: "int", value: 1 },
+    tier: 1,
+  },
+  {
+    id: "asi_wis_cha",
+    classId: "asi",
+    name: "Муд +1, Хар +1",
+    description: "Увеличивает Мудрость и Харизму на 1 каждое (макс. 20).",
+    effect: { type: "asi", stat: "wis", value: 1 },
+    tier: 1,
+  },
+  {
+    id: "asi_con_cha",
+    classId: "asi",
+    name: "Тел +1, Хар +1",
+    description: "Увеличивает Телосложение и Харизму на 1 каждое (макс. 20).",
+    effect: { type: "asi", stat: "con", value: 1 },
+    tier: 1,
+  },
 ];
 
 /** Returns the six ASI pick options (+2 to each stat). */

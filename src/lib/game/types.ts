@@ -263,6 +263,12 @@ export interface PlayerState {
   dashActive: boolean;
   /** D&D 5e Fighting Style: archery, defense, dueling, great_weapon, two_weapon, protection, none. */
   fightingStyle: string;
+  /** D&D 5e (MASTER-PLAN 4.2): Multiclass levels JSON, e.g. {"Fighter":3,"Wizard":2}. */
+  classLevelsJson: string;
+  /** D&D 5e (MASTER-PLAN 6.5): true for NPC companions (AI-DM controlled). */
+  isCompanion: boolean;
+  /** D&D 5e (MASTER-PLAN 6.2): Z-height level (0=ground, 1=ledge, 2=cliff). */
+  posZ: number;
 }
 
 export interface MonsterState {
@@ -276,6 +282,8 @@ export interface MonsterState {
   attackBonus: number;
   posX: number;
   posY: number;
+  /** D&D 5e (MASTER-PLAN 6.2): Z-height level (0=ground, 1=ledge, 2=cliff). */
+  posZ: number;
   color: string;
   description: string;
   isActive: boolean;
@@ -315,7 +323,7 @@ export type EquipmentSlot = "weapon" | "shield" | "head" | "chest" | "legs" | "h
 
 export interface ChatMessageState {
   id: string;
-  role: "dm" | "player" | "system";
+  role: "dm" | "player" | "system" | "party";
   speaker: string;
   content: string;
   imageUrl: string | null;
@@ -411,6 +419,8 @@ export interface NpcState {
   isAlive: boolean;
   location: string;
   notes: string;
+  /** D&D 5e (MASTER-PLAN 6.4): NPC loyalty score 0-100. */
+  loyalty: number;
 }
 
 export interface GameStateSnapshot {

@@ -14,6 +14,7 @@ import { CombatTextOverlay, makeDamageText, makeMissText, makeHealText, type Flo
 import { SceneViewer } from "@/components/dnd/SceneViewer";
 import { ChatPanel } from "@/components/dnd/ChatPanel";
 import { DiceLog } from "@/components/dnd/DiceLog";
+import { DiceBar } from "@/components/dnd/DiceBar";
 import { PartyPanel } from "@/components/dnd/PartyPanel";
 import { EnemyPanel } from "@/components/dnd/EnemyPanel";
 import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
@@ -61,6 +62,10 @@ const DialoguePanel = dynamic(
 );
 const WorldMap = dynamic(
   () => import("@/components/dnd/WorldMap").then((m) => m.WorldMap),
+  { ssr: false }
+);
+const Minimap = dynamic(
+  () => import("@/components/dnd/Minimap").then((m) => m.Minimap),
   { ssr: false }
 );
 const QuestJournal = dynamic(
@@ -1395,41 +1400,44 @@ export default function Home() {
                 />
               </div>
             )}
-            <div className="min-h-0 flex-1">
-              <DiceLog rolls={snapshot.diceLog} />
-            </div>
           </aside>
 
-          {/* ===== CENTER: Chat (full height) ===== */}
-          <section className="h-[50vh] min-h-0 shrink-0 lg:h-full lg:flex-1">
-            <ChatPanel
-              messages={snapshot.chat}
-              isThinking={isThinking}
-              isYourTurn={isYourTurn}
-              isDead={isDead}
-              combatActive={snapshot.combatActive}
-              yourName={session.playerName}
-              currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
-              onSend={sendAction}
-              onRest={handleRest}
-              onAttackTargeting={requestAttackTargeting}
-              isTargetingActive={targetingMode !== "none"}
-              roomCode={session.roomCode}
-              ttsEnabled={settings.ttsEnabled}
-              actionPoints={you?.actionPoints}
-              maxActionPoints={you?.maxActionPoints}
-            />
+          {/* ===== CENTER: Dice bar + Chat (full height) ===== */}
+          <section className="flex h-[50vh] min-h-0 shrink-0 flex-col lg:h-full lg:flex-1">
+            {/* D&D 5e Dice bar — миниатюрная полоса над чатом (1 строка) */}
+            <DiceBar rolls={snapshot.diceLog} />
+            <div className="min-h-0 flex-1">
+              <ChatPanel
+                messages={snapshot.chat}
+                isThinking={isThinking}
+                isYourTurn={isYourTurn}
+                isDead={isDead}
+                combatActive={snapshot.combatActive}
+                yourName={session.playerName}
+                currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
+                onSend={sendAction}
+                onRest={handleRest}
+                onAttackTargeting={requestAttackTargeting}
+                isTargetingActive={targetingMode !== "none"}
+                roomCode={session.roomCode}
+                ttsEnabled={settings.ttsEnabled}
+                actionPoints={you?.actionPoints}
+                maxActionPoints={you?.maxActionPoints}
+              />
+            </div>
           </section>
 
           {/* ===== RIGHT: Scene + Grid ===== */}
-          <aside className="flex flex-col gap-2 lg:w-[28%] lg:shrink-0 lg:overflow-hidden">
-            <SceneViewer
-              scene={snapshot.scene}
-              isGenerating={isGeneratingImage}
-              location={snapshot.location}
-              timeOfDay={snapshot.timeOfDay}
-              weather={snapshot.weather}
-            />
+          <aside className="flex flex-col gap-2 lg:w-[28%] lg:shrink-0 lg:overflow-hidden lg:min-h-0">
+            <div className="shrink-0">
+              <SceneViewer
+                scene={snapshot.scene}
+                isGenerating={isGeneratingImage}
+                location={snapshot.location}
+                timeOfDay={snapshot.timeOfDay}
+                weather={snapshot.weather}
+              />
+            </div>
             {/* Item 3 — targeting banner. Shown above the grid while the
                 player is picking a monster / cell for an ability or AoE. */}
             {targetingMode !== "none" && targetingAbility && (
@@ -1540,6 +1548,13 @@ export default function Home() {
         dungeonCleared={snapshot.dungeonCleared}
         onNewDungeon={startNewDungeon}
         isNewDungeonBusy={isNewDungeonBusy}
+      />
+
+      {/* D&D 5e (MASTER-PLAN 5.3): Compact minimap in the corner */}
+      <Minimap
+        rooms={snapshot.mapRooms}
+        currentPos={snapshot.currentMapPos}
+        onClick={() => setMapOpen(true)}
       />
 
       {/* ===== Dialogue modal ===== */}

@@ -37,7 +37,7 @@ export function SceneViewer({
     timeOfDay === "dawn" ? tt("time.dawn") : timeOfDay === "day" ? tt("time.day") : timeOfDay === "dusk" ? tt("time.dusk") : tt("time.night");
 
   return (
-    <div className="relative w-full aspect-video overflow-hidden rounded-lg bg-stone-950">
+    <div className="relative w-full aspect-video max-h-[28vh] overflow-hidden rounded-lg bg-stone-950">
       {scene?.imageUrl ? (
         <img
           key={scene.imageUrl}

@@ -354,6 +354,28 @@ export const CombatGrid = memo(function CombatGrid({
     return set;
   }, [activeMonsters]);
 
+  // D&D 5e (MASTER-PLAN 2.4): Opportunity Attack threat zones — cells adjacent
+  // to melee monsters. Moving out of these cells provokes opportunity attacks.
+  // Shown as a red dashed border during move mode in combat.
+  const oppAttackCells = useMemo(() => {
+    if (!combatActive) return null;
+    const melee = activeMonsters.filter((m) => !isRangedMonster(m));
+    if (melee.length === 0) return null;
+    const set = new Set<string>();
+    for (const m of melee) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          if (dx === 0 && dy === 0) continue;
+          const x = m.posX + dx;
+          const y = m.posY + dy;
+          if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
+          set.add(`${x},${y}`);
+        }
+      }
+    }
+    return set;
+  }, [activeMonsters, combatActive]);
+
   // ===== Range highlighting: show reachable cells during targeting =====
   const rangeCells = useMemo(() => {
     if (!yourPosition || !targetingRange || targetingMode === "none") return null;
@@ -424,8 +446,8 @@ export const CombatGrid = memo(function CombatGrid({
   const cellPct = 100 / GRID_SIZE;
 
   return (
-    <Card className="parchment rune-border border-border/80 gap-0">
-      <CardHeader className="pb-2">
+    <Card className="parchment rune-border border-border/80 gap-0 py-0 flex-1 min-h-0 overflow-hidden flex flex-col">
+      <CardHeader className="pb-1 pt-1.5 px-3">
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2 gold-text">
             <Crosshair className="h-4 w-4" /> {t(settings.lang, "ui.tactical_grid")}
@@ -448,14 +470,14 @@ export const CombatGrid = memo(function CombatGrid({
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 min-h-0 overflow-y-auto fantasy-scroll px-2 pb-1 pt-0">
         {/* Tactical grid: square shape, sized to fit the right column without
             forcing scroll. Capped at 320px on lg, expands to 400px on xl
             (1920px+ screens) so the 10×10 grid is more usable for tactical
             positioning. Kept at 400px (not larger) so the SceneViewer + grid
             + optional targeting banner all fit vertically at 1080px.
             (audit-v2: grid was 280px — too small at 1920px.) */}
-        <div className="mx-auto aspect-square w-full max-w-[240px] sm:max-w-[280px] lg:max-w-[320px] xl:max-w-[400px]">
+        <div className="mx-auto aspect-square w-full max-w-[200px] sm:max-w-[240px] lg:max-w-[280px] xl:max-w-[340px]">
           <div
             ref={gridRef}
             className={cn(
@@ -518,6 +540,8 @@ export const CombatGrid = memo(function CombatGrid({
               // Click-to-move: ONLY in combat. When not in combat, the grid
               // is display-only (no click handlers on empty cells).
               const canMoveHere = combatActive && targetingMode === "none" && onMoveClick && !monsterInCell && !playerInCell && terrainType !== "full_cover";
+              // D&D 5e (MASTER-PLAN 2.4): Opportunity Attack zone — must be after canMoveHere.
+              const isOppAttack = oppAttackCells?.has(`${x},${y}`) && canMoveHere;
               const cellClick =
                 monsterInCell && onMonsterTargetClick
                   ? () => onMonsterTargetClick(monsterInCell.id)
@@ -564,6 +588,14 @@ export const CombatGrid = memo(function CombatGrid({
                     <div
                       className="pointer-events-none absolute inset-0 z-10 rounded-[2px] bg-red-700/15"
                       title={t(settings.lang, "ui.threat_zone")}
+                    />
+                  )}
+                  {/* D&D 5e (MASTER-PLAN 2.4): Opportunity Attack zone — orange
+                      dashed border on cells adjacent to melee monsters in move mode. */}
+                  {isOppAttack && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[8] rounded-[2px] border border-dashed border-orange-500/50 bg-orange-500/10"
+                      title="⚠️ Зона атаки по возможности — отход провоцирует атаку!"
                     />
                   )}
                   {/* Range highlight: shows reachable cells during targeting (blue glow) */}
@@ -702,7 +734,7 @@ export const CombatGrid = memo(function CombatGrid({
         </div>
 
         {/* Legend */}
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-[9px] text-muted-foreground">
           {alivePlayers.map((p) => (
             <span key={p.id} className="flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-full" style={{ background: p.color }} />
@@ -1030,8 +1062,24 @@ function MonsterToken({
           background: `radial-gradient(circle at 30% 25%, ${monster.color}, ${shade(monster.color, -25)})`,
           borderColor: shade(monster.color, 30),
         }}
-        title={`${monster.name} (${monster.hp}/${monster.maxHp} HP)`}
+        title={`${monster.name} (${monster.hp}/${monster.maxHp} HP, AC ${monster.ac})`}
       >
+        {/* D&D 5e Tooltip card (MASTER-PLAN 5.1): full monster info on hover. */}
+        <div className="info-tooltip" style={{ display: "none" }} id={`tt-${monster.id}`}>
+          <div className="mb-1 font-bold text-amber-200">{monster.name}</div>
+          <div className="flex justify-between"><span className="text-muted-foreground">HP:</span><span className="text-red-300">{monster.hp}/{monster.maxHp}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">AC:</span><span className="text-sky-300">{monster.ac}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Атака:</span><span>+{monster.attackBonus}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">Урон:</span><span>{monster.damageNotation}</span></div>
+          {monster.resistances && monster.resistances.length > 0 && (
+            <div className="flex justify-between"><span className="text-muted-foreground">Сопр:</span><span className="text-blue-300">{monster.resistances.join(", ")}</span></div>
+          )}
+          {monster.immunities && monster.immunities.length > 0 && (
+            <div className="flex justify-between"><span className="text-muted-foreground">Иммун:</span><span className="text-indigo-300">{monster.immunities.join(", ")}</span></div>
+          )}
+          {monster.isBoss && <div className="mt-1 text-amber-300 font-bold">⚡ БОСС</div>}
+          {monster.specialAbility && <div className="mt-1 text-[9px] text-amber-200/80">⚡ {monster.specialAbility}</div>}
+        </div>
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{monster.label}</span>
         <BuffAura conditions={conditions} />
         <ConditionIcons conditions={conditions} lang={lang} />

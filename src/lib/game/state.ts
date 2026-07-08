@@ -126,6 +126,9 @@ function toPlayer(p: any): PlayerState {
     movementUsed: p.movementUsed ?? 0,
     dashActive: p.dashActive ?? false,
     fightingStyle: p.fightingStyle ?? "",
+    classLevelsJson: p.classLevelsJson ?? "",
+    isCompanion: p.isCompanion ?? false,
+    posZ: p.posZ ?? 0,
   };
 }
 
@@ -141,6 +144,7 @@ function toMonster(m: any): MonsterState {
     attackBonus: m.attackBonus,
     posX: m.posX,
     posY: m.posY,
+    posZ: (m as any).posZ ?? 0,
     color: m.color,
     description: m.description,
     isActive: m.isActive,
@@ -305,6 +309,7 @@ function toNpc(n: any): NpcState {
     isAlive: Boolean(n.isAlive),
     location: n.location ?? "",
     notes: n.notes ?? "",
+    loyalty: n.loyalty ?? 50,
   };
 }
 
@@ -1951,6 +1956,36 @@ export async function learnSpell(
     .filter(Boolean);
   if (current.includes(spellId)) return false;
   current.push(spellId);
+  await db.player.update({
+    where: { id: p.id },
+    data: { spellbookSpells: current.join(",") },
+  });
+  invalidateSnapshotCache(roomId);
+  return true;
+}
+
+/**
+ * D&D 5e Spell Swapping (MASTER-PLAN 4.4): casters can replace one known
+ * spell with another of the same or lower level when leveling up.
+ * Returns true if the swap was successful.
+ */
+export async function swapSpell(
+  roomId: string,
+  playerName: string,
+  oldSpellId: string,
+  newSpellId: string
+): Promise<boolean> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return false;
+  const current = (p.spellbookSpells ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!current.includes(oldSpellId)) return false;
+  if (current.includes(newSpellId)) return false;
+  // Replace the old spell with the new one.
+  const idx = current.indexOf(oldSpellId);
+  current[idx] = newSpellId;
   await db.player.update({
     where: { id: p.id },
     data: { spellbookSpells: current.join(",") },

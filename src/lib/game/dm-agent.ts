@@ -61,6 +61,7 @@ import {
   SLOT_CONSUMING_ABILITIES,
 } from "./presets";
 import { getExtraAttacks } from "./state";
+import { FEATS, hasFeat, gwmSharpshooterAttackPenalty, gwmSharpshooterDamageBonus, toughHPBonus, mobileSpeedBonus, hasLucky, hasWarCaster } from "./feats";
 import {
   damageBonusFromTalents,
   applyDamageReduction,
@@ -1150,6 +1151,33 @@ async function resolvePlayerAction(
           // Flanking / high ground — cancels disadvantage, sets advantage.
           adv = adv === "disadvantage" ? "none" : "advantage";
         }
+        // D&D 5e (MASTER-PLAN 6.3): Weather mechanical effects.
+        // Rain/storm → disadvantage on ranged attacks. Fog → disadvantage on all
+        // attacks (visibility reduced). Night → advantage on stealth checks
+        // (handled in Hide action). Snow → difficult terrain (handled by DM prompt).
+        const room = await db.room.findUnique({ where: { id: roomId } });
+        if (room) {
+          const weather = room.weather || "clear";
+          const timeOfDay = room.timeOfDay || "day";
+          const weaponLower = actor.weaponName?.toLowerCase() ?? "";
+          const isRanged = weaponLower.includes("лук") || weaponLower.includes("bow") || weaponLower.includes("арбалет") || weaponLower.includes("crossbow");
+          // Rain/storm: disadvantage on ranged attacks.
+          if ((weather === "rain" || weather === "storm") && isRanged) {
+            adv = adv === "advantage" ? "none" : "disadvantage";
+          }
+          // Fog: disadvantage on ALL attacks (visibility < 30 ft).
+          if (weather === "fog") {
+            adv = adv === "advantage" ? "none" : "disadvantage";
+          }
+          // Night + no darkvision: disadvantage on attacks (simplified — check race).
+          if (timeOfDay === "night") {
+            const raceLower = (actor.raceName || "").toLowerCase();
+            const hasDarkvision = ["дварф", "эльф", "гном", "полуорк", "полуэльф", "тифлинг", "dwarf", "elf", "gnome", "half-orc", "half-elf", "tiefling"].some((r) => raceLower.includes(r));
+            if (!hasDarkvision) {
+              adv = adv === "advantage" ? "none" : "disadvantage";
+            }
+          }
+        }
       }
 
       // Bonus dice (blessed = +1d4) apply to attack rolls and ability checks (saves).
@@ -1429,7 +1457,10 @@ async function resolvePlayerAction(
       const dmg = rollDice(scaledNotation);
       // Talent: bonus flat damage + vampiric Heal.
       const bonus = damageBonusFromTalents(actor) + fightingStyleDamageBonus(actor);
-      // D&D 5e Sneak Attack (MASTER-PLAN 2.3): Rogue deals +1d6 (L1-4), +2d6 (L5-8),
+      // D&D 5e Feats (MASTER-PLAN 4.1): Great Weapon Master / Sharpshooter
+      // grant +10 damage at the cost of -5 to hit. Always on (simplified).
+      const featDmgBonus = gwmSharpshooterDamageBonus(actor.selectedTalents || [], actor.weaponName);
+      damageDealtToMonster = dmg.total + bonus + featDmgBonus;
       // +3d6 (L9-12), etc. when they have advantage OR an ally is adjacent to the
       // target. Auto-applied so the LLM doesn't need to remember.
       let sneakAttackDmg = 0;
@@ -2616,6 +2647,84 @@ export async function resolvePlayerMechanics(
   // ===== D&D 5e Stealth/Hide (MASTER-PLAN 2.2): Hide action → DEX (Stealth)
   // check vs highest enemy passive perception. On success → invisible condition. =====
   const isHideAction = wasCombatActive && (actionLower.includes("скрыть") || actionLower.includes("пряч") || actionLower.includes("hide"));
+
+  // ===== D&D 5e Help action (MASTER-PLAN 2.6): grant advantage to the next
+  // attack roll by an ally against a specific monster. Applied as a temporary
+  // "blessed" condition on the ally (simplified — represents the Help bonus). =====
+  const isHelpAction = wasCombatActive && (actionLower.includes("помощ") || actionLower.includes("help"));
+  if (isHelpAction) {
+    // Find the nearest ally (another player) to grant advantage to.
+    const allies = (snap0?.players ?? []).filter((p) => p.name !== actorName && p.isAlive && p.hp > 0);
+    if (allies.length > 0) {
+      // Grant "blessed" condition to the nearest ally (represents Help advantage).
+      const nearestAlly = allies.reduce((best, a) => {
+        const distA = Math.max(Math.abs(a.posX - actor.posX), Math.abs(a.posY - actor.posY));
+        const distBest = Math.max(Math.abs(best.posX - actor.posX), Math.abs(best.posY - actor.posY));
+        return distA < distBest ? a : best;
+      });
+      await applyCondition(roomId, nearestAlly.name, "player", "blessed", 1, actorName);
+      await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+      await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round,
+          content: `🤝 ${actorName} помогает ${nearestAlly.name} — следующая атака с преимуществом!` },
+      });
+    } else {
+      await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+      await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round, content: `Рядом нет союзников, чтобы помочь.` },
+      });
+    }
+    const adv = await advanceTurn(roomCode, roomId);
+    const snapH = await getSnapshot(roomCode);
+    return {
+      actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
+      outcome: "success", combatStarted: false, combatEnded: adv.ended,
+      damageDealtToMonster: 0, monsterThatDied: null,
+      damageDealtToPlayer: 0, damagedPlayer: null,
+      healingToPlayer: 0, healedPlayer: null,
+      inventoryChanges: [], goldChange: 0,
+      imagePrompt: "", imageNeeded: false,
+      branchNarrative: `${actorName} помогает союзнику.`,
+      playerAction, location: snapH?.location ?? "",
+      nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+      round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+      statusEffectNotes: [], lootNotes: [],
+    } as MechanicsResult;
+  }
+
+  // ===== D&D 5e Ready action (MASTER-PLAN 2.5): prepared action with trigger.
+  // Simplified: consumes the action, stores the trigger text, and the LLM
+  // resolves it narratively. The DM is instructed to remember the trigger. =====
+  const isReadyAction = wasCombatActive && (actionLower.includes("готовност") || actionLower.includes("ready"));
+  if (isReadyAction) {
+    await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+    await db.chatMessage.create({
+      data: { roomId, role: "dm", speaker: "", round,
+        content: `⏳ ${actorName} готовит действие: «${playerAction}». Оно сработает при триггере, который описал игрок.` },
+    });
+    // Store the ready action as a story memory so the DM remembers it.
+    await addStoryMemory(roomId, `${actorName} подготовил действие: ${playerAction.slice(0, 200)}`);
+    const adv = await advanceTurn(roomCode, roomId);
+    const snapR = await getSnapshot(roomCode);
+    return {
+      actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
+      outcome: "success", combatStarted: false, combatEnded: adv.ended,
+      damageDealtToMonster: 0, monsterThatDied: null,
+      damageDealtToPlayer: 0, damagedPlayer: null,
+      healingToPlayer: 0, healedPlayer: null,
+      inventoryChanges: [], goldChange: 0,
+      imagePrompt: "", imageNeeded: false,
+      branchNarrative: `${actorName} готовит действие.`,
+      playerAction, location: snapR?.location ?? "",
+      nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+      round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+      statusEffectNotes: [], lootNotes: [],
+    } as MechanicsResult;
+  }
+
   if (isHideAction) {
     const dexMod = abilityModifier(actor.dex);
     // Check if the player has Stealth proficiency.

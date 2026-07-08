@@ -336,8 +336,8 @@ export const BottomPanel = memo(function BottomPanel({
   };
 
   return (
-    <Card className="parchment rune-border border-border/80 p-3">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-3">
+    <Card className="parchment rune-border border-border/80 p-2 shrink-0">
+      <div className="flex flex-col gap-1.5 lg:flex-row lg:items-stretch lg:gap-2">
         {/* ===== Equipment (снаряжение) ===== */}
         <div className="flex flex-col gap-1 lg:w-[18%]">
           <div className="flex items-center gap-1.5">
@@ -394,7 +394,7 @@ export const BottomPanel = memo(function BottomPanel({
             )}
             <Badge variant="secondary" className="ml-auto text-[8px]">{inventory.length}</Badge>
           </div>
-          <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
+          <ScrollArea className="fantasy-scroll max-h-14 lg:max-h-[48px]">
             <div className="flex flex-wrap gap-1">
               {inventory.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">{tt("ui.inventory_empty")}</span>
@@ -459,7 +459,7 @@ export const BottomPanel = memo(function BottomPanel({
               <span className="text-[11px] font-semibold gold-text">{tt("ui.favorites")}</span>
               <Badge variant="secondary" className="ml-auto text-[8px]">{favoritedAbilities.length}</Badge>
             </div>
-            <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
+            <ScrollArea className="fantasy-scroll max-h-14 lg:max-h-[48px]">
               <div className="flex flex-wrap gap-1.5">
                 {favoritedAbilities.map((a) => {
                   const chipId = `abil:${a.id}`;
@@ -514,7 +514,7 @@ export const BottomPanel = memo(function BottomPanel({
               />
             </div>
           )}
-          <ScrollArea className="fantasy-scroll max-h-20 lg:max-h-[72px]">
+          <ScrollArea className="fantasy-scroll max-h-14 lg:max-h-[48px]">
             <div className="flex flex-wrap gap-1.5">
               {abilities.length === 0 ? (
                 <span className="text-[10px] italic text-muted-foreground">
@@ -555,12 +555,12 @@ export const BottomPanel = memo(function BottomPanel({
             Always visible but greyed out outside combat. Shows the player what
             options they'll have in battle. */}
         {onQuickAction && (
-          <div className={cn("flex flex-col gap-1 lg:w-auto transition-opacity", !combatActive && "opacity-40")}>
+          <div className={cn("flex flex-col gap-1 lg:w-auto lg:max-w-[16%] transition-opacity", !combatActive && "opacity-40")}>
             <div className="flex items-center gap-1.5">
               <Swords className="h-3.5 w-3.5 text-amber-400" />
               <span className="text-[11px] font-semibold gold-text">{tt("ui.combat_actions")}</span>
             </div>
-            <div className="flex flex-wrap gap-1 lg:flex-col">
+            <div className="grid grid-cols-2 gap-0.5 lg:grid-cols-2">
               {COMBAT_ACTIONS.map((q) => (
                 <button
                   key={q.key}
@@ -577,7 +577,7 @@ export const BottomPanel = memo(function BottomPanel({
                   }}
                   title={tt(q.hintKey)}
                   className={cn(
-                    "flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium transition-all",
+                    "flex items-center justify-center gap-0.5 rounded border px-1 py-0.5 text-[9px] font-medium transition-all text-center",
                     (q as any).moveMode
                       ? "border-sky-700/40 bg-sky-950/20 text-sky-200"
                       : "border-amber-700/40 bg-amber-950/20 text-amber-200",
@@ -647,7 +647,7 @@ export const BottomPanel = memo(function BottomPanel({
 
         {/* ===== Rest (short / long) — always visible, disabled in combat ===== */}
         {onRest && (
-          <div className="flex flex-col gap-1 lg:w-auto">
+          <div className="flex flex-col gap-1 lg:w-auto lg:max-w-[10%]">
             <div className="flex items-center gap-1.5">
               <Bed className="h-3.5 w-3.5 text-sky-300" />
               <span className="text-[11px] font-semibold gold-text">{tt("ui.rest")}</span>

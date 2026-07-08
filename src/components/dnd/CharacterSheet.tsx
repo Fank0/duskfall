@@ -473,13 +473,18 @@ export const CharacterSheet = memo(function CharacterSheet({
               ) : (
                 <ul className="space-y-1">
                   {inventory.map((item) => {
-                    // Quick-use: clicking an inventory item sends a contextual
-                    // action to the chat. Only enabled for the local player
-                    // ("isYou") when the parent supplies onQuickAction.
                     const canQuickUse = isYou && onQuickAction;
                     const handleQuickUse = canQuickUse
                       ? () => onQuickAction(buildItemQuickText(item, quickCtx))
                       : undefined;
+                    // D&D 5e (MASTER-PLAN 5.5): item comparison — show diff with
+                    // currently equipped item in the same slot.
+                    const equippedInSlot = item.equipSlot
+                      ? (player as any)[`eq${item.equipSlot.charAt(0).toUpperCase()}${item.equipSlot.slice(1)}`]
+                      : null;
+                    const comparisonText = equippedInSlot && item.equipSlot
+                      ? `↳ Заменит: ${equippedInSlot || "пусто"}${item.acBonus ? ` (+${item.acBonus} AC)` : ""}${item.damageNotation ? ` (${item.damageNotation})` : ""}`
+                      : null;
                     return (
                       <li
                         key={item.id}
@@ -488,15 +493,32 @@ export const CharacterSheet = memo(function CharacterSheet({
                         className={cn(
                           "rounded border border-border/40 bg-stone-900/40 p-1.5",
                           canQuickUse &&
-                            "cursor-pointer transition-colors hover:border-amber-600/40 hover:bg-stone-800/50"
+                            "cursor-pointer transition-colors hover:border-amber-600/40 hover:bg-stone-800/50",
+                          item.equipSlot && "border-amber-700/30"
                         )}
                       >
                         <div className="flex items-center justify-between">
                           <span className="truncate text-[11px] font-medium">{item.itemName}</span>
                           {item.quantity > 1 && <Badge variant="outline" className="text-[10px]">x{item.quantity}</Badge>}
+                          {item.equipSlot && (
+                            <Badge variant="outline" className="text-[8px] border-amber-700/40 text-amber-300/70">
+                              {item.equipSlot}
+                            </Badge>
+                          )}
                         </div>
                         {item.description && (
                           <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground">{item.description}</p>
+                        )}
+                        {/* D&D 5e (5.5): comparison diff */}
+                        {comparisonText && (
+                          <p className="mt-0.5 text-[8px] italic text-amber-400/60">{comparisonText}</p>
+                        )}
+                        {/* Stat bonuses */}
+                        {item.acBonus > 0 && (
+                          <span className="mt-0.5 inline-block rounded bg-sky-950/40 px-1 text-[8px] text-sky-300">AC +{item.acBonus}</span>
+                        )}
+                        {item.damageNotation && item.equipSlot === "weapon" && (
+                          <span className="mt-0.5 ml-1 inline-block rounded bg-red-950/40 px-1 text-[8px] text-red-300">{item.damageNotation}</span>
                         )}
                       </li>
                     );

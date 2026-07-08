@@ -112,6 +112,11 @@ export async function POST(req: NextRequest) {
         await healPlayer(room.id, playerName, missing);
       }
       lines.push(`Долгий отдых: HP восстановлены до ${player.maxHp}.`);
+      // D&D 5e (MASTER-PLAN 3.6): atmospheric campfire narrative.
+      await db.chatMessage.create({
+        data: { roomId: room.id, role: "dm", speaker: "", round: room.round,
+          content: `🔥 ${playerName} разбивает лагерь. Костёр потрескивает в ночной тишине, и усталость отступает. Раны затягиваются, силы возвращаются. Но утро может принести новые опасности…` },
+      });
       await restoreAllSpellSlots(room.id, playerName);
       lines.push("Все ячейки заклинаний восстановлены.");
       // D&D 5e: restore class resources on long rest.

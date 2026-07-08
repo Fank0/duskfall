@@ -248,17 +248,27 @@ function playNoise(
   source.stop(now + duration);
 }
 
-/** Dice roll — wooden clatter (BG3-style). */
+/** Dice roll — BG3-style wooden clatter with resonance.
+ *  Multiple dice bouncing on a wooden surface: low thud + bright click
+ *  + a resonant body that decays naturally. */
 export function sfxDiceRoll() {
   if (!ensureCtx()) return;
-  // 3-4 quick wooden clicks with slight pitch variation
-  const count = 3 + Math.floor(Math.random() * 2);
+  const count = 4 + Math.floor(Math.random() * 3); // 4-6 bounces
   for (let i = 0; i < count; i++) {
     setTimeout(() => {
-      playTone("triangle", 180 + Math.random() * 80, 0.05, 0.2, 1000);
-      playNoise(0.04, 0.1, "bandpass", 2000);
-    }, i * 60);
+      // Low wooden thud (body resonance) — lower freq, longer decay.
+      playTone("triangle", 120 + Math.random() * 40, 0.08, 0.3, 600);
+      // Bright click (bone-on-wood) — high freq, very short.
+      playTone("square", 800 + Math.random() * 400, 0.02, 0.08, 3000);
+      // Noise burst (rattle) — bandpass filtered for wooden character.
+      playNoise(0.05, 0.12, "bandpass", 1500 + Math.random() * 500);
+    }, i * 45 + Math.random() * 20);
   }
+  // Final settling thud (the die comes to rest).
+  setTimeout(() => {
+    playTone("triangle", 90, 0.12, 0.35, 500);
+    playNoise(0.06, 0.1, "lowpass", 800);
+  }, count * 45 + 60);
 }
 
 /** Attack hit — meaty impact with low thud + high crunch (BG3-style). */

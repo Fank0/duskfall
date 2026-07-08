@@ -74,7 +74,7 @@ export function DialoguePanel({
   const [selectedSell, setSelectedSell] = useState<string | null>(null);
 
   async function handleAction(
-    action: "intro" | "about" | "business" | "leave" | "buy" | "sell",
+    action: "intro" | "about" | "quest" | "business" | "leave" | "buy" | "sell",
     item?: string
   ) {
     if (!npc) return;
@@ -293,6 +293,7 @@ export function DialoguePanel({
           <div className="border-t border-border/50 px-5 py-3">
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-3">
               <ActionButton label="Расскажи о себе" onClick={() => handleAction("about")} disabled={isBusy} />
+              <ActionButton label="Спросить о задании" onClick={() => handleAction("quest")} disabled={isBusy} hint="Узнать о доступных заданиях" />
               <ActionButton label="Торговать" onClick={() => handleAction("business")} disabled={isBusy || npc.role !== "merchant"} hint={npc.role !== "merchant" ? "Не торговец" : undefined} />
               <ActionButton label="Попрощаться" onClick={() => handleAction("leave")} disabled={isBusy} />
             </div>
