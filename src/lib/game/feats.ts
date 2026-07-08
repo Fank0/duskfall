@@ -224,3 +224,36 @@ export const ADDITIONAL_FEATS: Feat[] = [
 
 /** All feats including additional ones. */
 export const ALL_FEATS: Feat[] = [...FEATS, ...ADDITIONAL_FEATS];
+
+// ===== D&D 5e Source Skills / Ultimates (V2 C2) =====
+// Powerful abilities usable 1/long rest. Inspired by DOS2 Source skills.
+
+export interface SourceSkill {
+  id: string;
+  classId: string;
+  name: string;
+  nameEn: string;
+  description: string;
+  effect: string; // "damage:8d6" | "heal:4d8+10" | "buff:shielded:5" | "teleport" | "summon"
+  range?: number; // cells
+  aoeSize?: number;
+}
+
+export const SOURCE_SKILLS: SourceSkill[] = [
+  { id: "src_fighter", classId: "fighter", name: "Прилив действий: Полный залп", nameEn: "Action Surge: Full Volley", description: "3 дополнительные аки за ход. 1/долгий отдых.", effect: "extra_attacks:3" },
+  { id: "src_wizard", classId: "wizard", name: "Метеоритный дождь", nameEn: "Meteor Swarm", description: "8d6 огня + 8d6 дробящего по площади 8 клеток. 1/долгий отдых.", effect: "damage:8d6+8d6", aoeSize: 4 },
+  { id: "src_cleric", classId: "cleric", name: "Божественное вмешательство", nameEn: "Divine Intervention", description: "Полное лечение группы + снятие всех состояний. 1/долгий отдых.", effect: "heal:full" },
+  { id: "src_rogue", classId: "rogue", name: "Танец теней", nameEn: "Shadow Dance", description: "5 мгновенных атак по разным целям с преимуществом. 1/долгий отдых.", effect: "extra_attacks:5" },
+  { id: "src_barbarian", classId: "barbarian", name: "Первобытая ярость", nameEn: "Primal Fury", description: "Удвоенный урон на 3 хода, иммунитет к контролю. 1/долгий отдых.", effect: "buff:enraged:3" },
+  { id: "src_paladin", classId: "paladin", name: "Гнев богов", nameEn: "Wrath of the Gods", description: "10d6 святого урона по одной цели + ослепление. 1/долгий отдых.", effect: "damage:10d6" },
+  { id: "src_ranger", classId: "ranger", name: "Рой стрел", nameEn: "Arrow Storm", description: "6 атак по ближайшим врагам. 1/долгий отдых.", effect: "extra_attacks:6" },
+  { id: "src_monk", classId: "monk", name: "Кулак пустоты", nameEn: "Fist of Emptiness", description: "Оглушение всех врагов в радиусе 5 (спас ТЕЛ DC 18). 1/долгий отдых.", effect: "stun_aoe:5" },
+  { id: "src_sorcerer", classId: "sorcerer", name: "Волна хаоса", nameEn: "Chaos Wave", description: "6d6 случайного урона по всем врагам. 1/долгий отдых.", effect: "damage:6d6", aoeSize: 10 },
+  { id: "src_warlock", classId: "warlock", name: "Договор смерти", nameEn: "Pact of Death", description: "Мгновенно убивает врага с HP < 30. 1/долгий отдых.", effect: "instakill:30" },
+  { id: "src_druid", classId: "druid", name: "Силы природы", nameEn: "Force of Nature", description: "Призывает 3 древних элементаля. 1/долгий отдых.", effect: "summon:3" },
+  { id: "src_bard", classId: "bard", name: "Песнь героев", nameEn: "Song of Heroes", description: "Вся группа: +2d10 временного HP + преимущество на 3 хода. 1/долгий отдых.", effect: "buff_party:3" },
+];
+
+export function getSourceSkillForClass(classId: string): SourceSkill | undefined {
+  return SOURCE_SKILLS.find((s) => s.classId === classId.toLowerCase());
+}

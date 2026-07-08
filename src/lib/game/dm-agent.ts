@@ -390,6 +390,7 @@ const SYSTEM_PROMPT_PLANNING = `Ты — Мастер Игры для d20 fantas
 2. ЭПОХА: строго псевдосредневековое тёмное фэнтези. Запрещены огнестрел, порох, электричество, современные механизмы.
 3. УНИКАЛЬНОСТЬ: каждое приключение уникально. Не повторяй описания из предыдущих сессий. Создай уникальную атмосферу.
 4. СВОБОДА С ПОСЛЕДСТВИЯМИ: провальная проверка = реальное последствие. Не подыгрывай. Провал может привести к: ранению (доп. урон), потере предмета, ухудшению отношения NPC, обнаружению группой, активации ловушки. Сохраняй последствия в нарративе.
+8. БЕСПЛАТНОЕ ВЗАИМОДЕЙСТВИЕ: 1 раз за ход герой может бесплатно взаимодействовать с объектом (открыть дверь, поднять факел, вытащить меч из ножен). Это НЕ тратит действие. Не требуй броска для простых взаимодействий.
 5. БАЛАНС: уровни 1-3 — враги 10-15 HP, урон 1d6+2. Артефакты имеют недостаток. ≤50 золота за сессию.
 6. АТМОСФЕРА: тёмное фэнтези, мрачное, опасное, моральная серость.
 7. ВОСПРИЯТИЕ: герой знает только то, что описал Мастер в недавних событиях. Не позволяй действовать на основе скрытой информации. У каждого героя есть Пассивное восприятие = 10 + мод МУД (указано в контексте). Если скрытый враг/ловушка/тайник имеет DC скрытности ниже пассивного восприятия — герой автоматически замечает его. Если выше — нужен активный поиск (действие «Обыскать»).
@@ -2764,6 +2765,182 @@ export async function resolvePlayerMechanics(
       imagePrompt: "", imageNeeded: false,
       branchNarrative: `${actorName} готовит действие.`,
       playerAction, location: snapR?.location ?? "",
+      nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+      round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+      statusEffectNotes: [], lootNotes: [],
+    } as MechanicsResult;
+  }
+
+  // ===== D&D 5e (V2 A3): Throw weapon/potion — Action to throw a potion at
+  // an ally (heals them) or a weapon at an enemy (damage). =====
+  const isThrowAction = wasCombatActive && (actionLower.includes("бросаю") || actionLower.includes("кидаю") || actionLower.includes("бросить") || actionLower.includes("throw"));
+  if (isThrowAction && actor) {
+    // Check if throwing a potion (healing) at an ally.
+    const isPotionThrow = actionLower.includes("зель") || actionLower.includes("potion");
+    const isWeaponThrow = !isPotionThrow && (actionLower.includes("оруж") || actionLower.includes("weapon") || actionLower.includes("кинжал") || actionLower.includes("dart"));
+    if (isPotionThrow) {
+      // Find nearest ally to heal.
+      const allies = (snap0?.players ?? []).filter((p) => p.name !== actorName && p.isAlive && p.hp > 0 && p.hp < p.maxHp);
+      if (allies.length > 0) {
+        const target = allies.reduce((best, a) => {
+          const distA = Math.max(Math.abs(a.posX - actor.posX), Math.abs(a.posY - actor.posY));
+          const distBest = Math.max(Math.abs(best.posX - actor.posX), Math.abs(best.posY - actor.posY));
+          return distA < distBest ? a : best;
+        });
+        // Check if player has a potion.
+        const potion = await db.inventoryItem.findFirst({ where: { roomId, playerName: actorName, itemName: { contains: "зель" } } });
+        if (potion) {
+          const healRoll = rollDice("2d4+2");
+          await healPlayer(roomId, target.name, healRoll.total);
+          // Remove the potion.
+          if (potion.quantity > 1) {
+            await db.inventoryItem.update({ where: { id: potion.id }, data: { quantity: potion.quantity - 1 } });
+          } else {
+            await db.inventoryItem.delete({ where: { id: potion.id } });
+          }
+          await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+          await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+          await db.chatMessage.create({
+            data: { roomId, role: "dm", speaker: "", round,
+              content: `🧪 ${actorName} бросает зелье лечения в ${target.name}! +${healRoll.total} HP (2d4+2).` },
+          });
+          const adv = await advanceTurn(roomCode, roomId);
+          const snapT = await getSnapshot(roomCode);
+          return {
+            actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
+            outcome: "success", combatStarted: false, combatEnded: adv.ended,
+            damageDealtToMonster: 0, monsterThatDied: null,
+            damageDealtToPlayer: 0, damagedPlayer: null,
+            healingToPlayer: healRoll.total, healedPlayer: target.name,
+            inventoryChanges: [{ action: "remove", item: potion.itemName, type: "potion" }], goldChange: 0,
+            imagePrompt: "", imageNeeded: false,
+            branchNarrative: `${actorName} бросает зелье в ${target.name}!`,
+            playerAction, location: snapT?.location ?? "",
+            nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+            round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+            statusEffectNotes: [], lootNotes: [],
+          } as MechanicsResult;
+        }
+      }
+    }
+    // Weapon throw: d20 + DEX vs nearest monster AC, 1d4 damage (improvised).
+    if (isWeaponThrow) {
+      const nearest = await nearestActiveMonster(roomId, actor.posX, actor.posY);
+      if (nearest) {
+        const atkBonus = abilityModifier(actor.dex) + actor.proficiencyBonus;
+        const atkRoll = rollD20(atkBonus);
+        const hit = atkRoll.total >= nearest.monster.ac;
+        await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+        await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+        if (hit) {
+          const dmgRoll = rollDice("1d4");
+          await damageMonster(roomId, nearest.monster.id, dmgRoll.total, "bludgeoning");
+          await db.chatMessage.create({
+            data: { roomId, role: "dm", speaker: "", round,
+              content: `🎯 ${actorName} бросает оружие в ${nearest.monster.name}! Попадание (${atkRoll.total} vs AC ${nearest.monster.ac}), ${dmgRoll.total} урона.` },
+          });
+        } else {
+          await db.chatMessage.create({
+            data: { roomId, role: "dm", speaker: "", round,
+              content: `🎯 ${actorName} бросает оружие в ${nearest.monster.name}, но промахивается (${atkRoll.total} vs AC ${nearest.monster.ac}).` },
+          });
+        }
+        const adv = await advanceTurn(roomCode, roomId);
+        const snapT = await getSnapshot(roomCode);
+        return {
+          actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
+          outcome: hit ? "success" : "failure", combatStarted: false, combatEnded: adv.ended,
+          damageDealtToMonster: hit ? 1 : 0, monsterThatDied: null,
+          damageDealtToPlayer: 0, damagedPlayer: null,
+          healingToPlayer: 0, healedPlayer: null,
+          inventoryChanges: [], goldChange: 0,
+          imagePrompt: "", imageNeeded: false,
+          branchNarrative: `${actorName} бросает оружие!`,
+          playerAction, location: snapT?.location ?? "",
+          nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+          round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+          statusEffectNotes: [], lootNotes: [],
+        } as MechanicsResult;
+      }
+    }
+  }
+
+  // ===== D&D 5e (V2 A4): Dip weapon — coat weapon in fire/poison/acid for
+  // temporary +1d4 damage of that type. Uses free object interaction. =====
+  const isDipAction = actionLower.includes("обмак") || actionLower.includes("покры") || actionLower.includes("dip");
+  if (isDipAction && actor) {
+    let dipType: string | null = null;
+    if (actionLower.includes("огон") || actionLower.includes("fire") || actionLower.includes("факел")) dipType = "fire";
+    else if (actionLower.includes("яд") || actionLower.includes("poison")) dipType = "poison";
+    else if (actionLower.includes("кислот") || actionLower.includes("acid")) dipType = "acid";
+    else if (actionLower.includes("лёд") || actionLower.includes("ice") || actionLower.includes("холод")) dipType = "cold";
+    if (dipType) {
+      // Apply a temporary condition to the actor that adds +1d4 damage.
+      // We use a custom condition name to track the coating.
+      await applyCondition(roomId, actorName, "player", "blessed" as any, 3, `dip:${dipType}`);
+      await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round,
+          content: `🗡️ ${actorName} обмакивает оружие в ${dipType === "fire" ? "огонь" : dipType === "poison" ? "яд" : dipType === "acid" ? "кислоту" : "лёд"}! +1d4 ${dipType} урона на 3 хода.` },
+      });
+      // Don't consume action — it's a free object interaction.
+      const snapT = await getSnapshot(roomCode);
+      return {
+        actorName, playerRolls: [], monsterRolls: [],
+        outcome: "success", combatStarted: false, combatEnded: false,
+        damageDealtToMonster: 0, monsterThatDied: null,
+        damageDealtToPlayer: 0, damagedPlayer: null,
+        healingToPlayer: 0, healedPlayer: null,
+        inventoryChanges: [], goldChange: 0,
+        imagePrompt: "", imageNeeded: false,
+        branchNarrative: `${actorName} обмакивает оружие!`,
+        playerAction, location: snapT?.location ?? "",
+        nextTurn: actorName, nextTurnType: "player",
+        round,
+        statusEffectNotes: [`${actorName} покрывает оружие ${dipType} (+1d4 на 3 хода).`], lootNotes: [],
+      } as MechanicsResult;
+    }
+  }
+
+  // ===== D&D 5e (V2 A8): Teleportation — Blink/Misty Step/Dimension Door.
+  // Instant movement without provoking AoO. Uses Action + spell slot. =====
+  const isTeleportAction = actionLower.includes("телепорт") || actionLower.includes("misty step") || actionLower.includes("blink") || actionLower.includes("прыжок в пространство") || actionLower.includes("dimension door");
+  if (isTeleportAction && actor) {
+    // Move player to a safe position near nearest monster (for attack) or away (for escape).
+    // Simplified: teleport 5 cells toward nearest monster or away from danger.
+    const nearest = await nearestActiveMonster(roomId, actor.posX, actor.posY);
+    let newX = actor.posX;
+    let newY = actor.posY;
+    if (nearest && nearest.distance > 2) {
+      // Teleport closer.
+      const dx = Math.sign(nearest.monster.posX - actor.posX);
+      const dy = Math.sign(nearest.monster.posY - actor.posY);
+      newX = Math.max(0, Math.min(15, nearest.monster.posX - dx));
+      newY = Math.max(0, Math.min(15, nearest.monster.posY - dy));
+    } else {
+      // Teleport away (5 cells in opposite direction).
+      newX = Math.max(0, Math.min(15, actor.posX + 3));
+      newY = Math.max(0, Math.min(15, actor.posY + 3));
+    }
+    await db.player.update({ where: { id: actor.id }, data: { posX: newX, posY: newY, actionUsed: true } });
+    invalidateSnapshotCache(roomId);
+    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+    await db.chatMessage.create({
+      data: { roomId, role: "dm", speaker: "", round,
+        content: `✨ ${actorName} телепортируется на (${newX},${newY})! Мгновенное перемещение без атаки по возможности.` },
+    });
+    const adv = await advanceTurn(roomCode, roomId);
+    const snapT = await getSnapshot(roomCode);
+    return {
+      actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
+      outcome: "success", combatStarted: false, combatEnded: adv.ended,
+      damageDealtToMonster: 0, monsterThatDied: null,
+      damageDealtToPlayer: 0, damagedPlayer: null,
+      healingToPlayer: 0, healedPlayer: null,
+      inventoryChanges: [], goldChange: 0,
+      imagePrompt: "", imageNeeded: false,
+      branchNarrative: `${actorName} телепортируется!`,
+      playerAction, location: snapT?.location ?? "",
       nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
       round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
       statusEffectNotes: [], lootNotes: [],
