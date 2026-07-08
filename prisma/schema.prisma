@@ -214,6 +214,8 @@ model Player {
   /// D&D 5e Fighting Style (chosen at level 1 for Fighter, Paladin, Ranger).
   /// Values: archery | defense | dueling | great_weapon | two_weapon | protection | none
   fightingStyle       String   @default("")
+  /// D&D 5e (MASTER-PLAN-V2 C5): GWM/Sharpshooter -5/+10 toggle (player can turn on/off).
+  gwmActive           Boolean  @default(true)
   /// D&D 5e Multiclassing (MASTER-PLAN 4.2): JSON map of class→level, e.g. {"Fighter":3,"Wizard":2}.
   /// Empty = single-class (use charClass + level).
   classLevelsJson     String   @default("")

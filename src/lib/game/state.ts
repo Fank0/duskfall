@@ -126,6 +126,7 @@ function toPlayer(p: any): PlayerState {
     movementUsed: p.movementUsed ?? 0,
     dashActive: p.dashActive ?? false,
     fightingStyle: p.fightingStyle ?? "",
+    gwmActive: p.gwmActive ?? true,
     classLevelsJson: p.classLevelsJson ?? "",
     isCompanion: p.isCompanion ?? false,
     posZ: p.posZ ?? 0,

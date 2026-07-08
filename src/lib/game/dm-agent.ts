@@ -1459,7 +1459,9 @@ async function resolvePlayerAction(
       const bonus = damageBonusFromTalents(actor) + fightingStyleDamageBonus(actor);
       // D&D 5e Feats (MASTER-PLAN 4.1): Great Weapon Master / Sharpshooter
       // grant +10 damage at the cost of -5 to hit. Always on (simplified).
-      const featDmgBonus = gwmSharpshooterDamageBonus(actor.selectedTalents || [], actor.weaponName);
+      const featDmgBonus = (actor as any).gwmActive !== false
+        ? gwmSharpshooterDamageBonus(actor.selectedTalents || [], actor.weaponName)
+        : 0;
       damageDealtToMonster = dmg.total + bonus + featDmgBonus;
       // +3d6 (L9-12), etc. when they have advantage OR an ally is adjacent to the
       // target. Auto-applied so the LLM doesn't need to remember.

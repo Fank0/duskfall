@@ -263,6 +263,8 @@ export interface PlayerState {
   dashActive: boolean;
   /** D&D 5e Fighting Style: archery, defense, dueling, great_weapon, two_weapon, protection, none. */
   fightingStyle: string;
+  /** D&D 5e (V2 C5): GWM/Sharpshooter -5/+10 toggle. */
+  gwmActive: boolean;
   /** D&D 5e (MASTER-PLAN 4.2): Multiclass levels JSON, e.g. {"Fighter":3,"Wizard":2}. */
   classLevelsJson: string;
   /** D&D 5e (MASTER-PLAN 6.5): true for NPC companions (AI-DM controlled). */

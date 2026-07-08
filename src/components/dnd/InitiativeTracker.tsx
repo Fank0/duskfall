@@ -57,6 +57,7 @@ export function InitiativeTracker({
         <div className="flex gap-1.5 overflow-x-auto fantasy-scroll pb-1">
           {initiatives.map((e, i) => {
             const isCurrent = i === turnIndex;
+            const isNext = i === (turnIndex + 1) % initiatives.length;
             const dead = isDead(e.combatantName, e.combatantType);
             const label =
               e.combatantType === "player"
@@ -69,7 +70,9 @@ export function InitiativeTracker({
                     "flex min-w-[64px] flex-col items-center rounded-md border px-2 py-1 transition-all",
                     isCurrent
                       ? "border-primary bg-primary/15 scale-105 animate-pulse-glow"
-                      : "border-border/50 bg-stone-900/40",
+                      : isNext
+                        ? "border-amber-600/50 bg-amber-950/20"
+                        : "border-border/50 bg-stone-900/40",
                     dead && "opacity-40"
                   )}
                 >
@@ -81,6 +84,8 @@ export function InitiativeTracker({
                     <span className="truncate text-[10px] font-semibold">{label}</span>
                   </div>
                   <span className="font-mono text-xs font-bold text-amber-300">{e.initiative}</span>
+                  {isCurrent && <span className="text-[8px] text-primary">▶ {tt("game.now")}</span>}
+                  {isNext && !isCurrent && !dead && <span className="text-[8px] text-amber-400">→ {tt("game.next")}</span>}
                   {dead && <span className="text-[8px] text-red-400">{tt("char.dead_short")}</span>}
                 </div>
                 {i < initiatives.length - 1 && (
