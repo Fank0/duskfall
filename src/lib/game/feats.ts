@@ -156,3 +156,71 @@ export function hasLucky(selectedTalents: string[]): boolean {
 export function hasWarCaster(selectedTalents: string[]): boolean {
   return hasFeat(selectedTalents, "war_caster");
 }
+
+// ===== Additional feats (V2 C6) =====
+
+export const ADDITIONAL_FEATS: Feat[] = [
+  {
+    id: "mage_slayer_feat",
+    name: "Убийца магов",
+    nameEn: "Mage Slayer",
+    description: "Атака по возможности когда враг кастует рядом. Спасброски врага с помехой против ваших заклинаний.",
+  },
+  {
+    id: "savage_attacker",
+    name: "Свирепый атакующий",
+    nameEn: "Savage Attacker",
+    description: "Переброс урона оружия 1 раз за ход (берётся лучший результат).",
+  },
+  {
+    id: "tavern_brawler",
+    name: "Завсегдатай таверн",
+    nameEn: "Tavern Brawler",
+    description: "Владеет импровизированным оружием + безоружным боем. 1d4 урона кулаком.",
+  },
+  {
+    id: "athlete",
+    name: "Атлет",
+    nameEn: "Athlete",
+    description: "+1 к СИЛ или ЛОВ. Вставание стоит 5 футов (вместо половины). Прыжок длиннее на 5 футов.",
+  },
+  {
+    id: "alert",
+    name: "Бдительный",
+    nameEn: "Alert",
+    description: "+5 к инициативе. Не может быть застигнут врасплох. Преимущество против скрытых врагов.",
+  },
+  {
+    id: "durable",
+    name: "Стойкий",
+    nameEn: "Durable",
+    description: "+1 к ТЕЛ. При восстановлении HP за короткий отдых лечит минимум 2×мод ТЕЛ.",
+  },
+  {
+    id: "magic_initiate",
+    name: "Начинающий маг",
+    nameEn: "Magic Initiate",
+    description: "2 заговора + 1 заклинание 1 круга из любого класса (1/долгий отдых).",
+  },
+  {
+    id: "ritual_caster",
+    name: "Ритуалист",
+    nameEn: "Ritual Caster",
+    description: "Может кастовать ритуальные заклинания из книги ритуалов (10 мин).",
+  },
+  {
+    id: "weapon_master",
+    name: "Мастер оружия",
+    nameEn: "Weapon Master",
+    description: "+1 к СИЛ или ЛОВ. Владение 4 видами оружия.",
+  },
+  {
+    id: "lightly_armored",
+    name: "Легкобронный",
+    nameEn: "Lightly Armored",
+    description: "+1 к СИЛ или ЛОВ. Владение лёгкой бронёй.",
+  },
+];
+
+/** All feats including additional ones. */
+export const ALL_FEATS: Feat[] = [...FEATS, ...ADDITIONAL_FEATS];

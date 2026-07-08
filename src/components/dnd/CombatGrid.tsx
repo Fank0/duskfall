@@ -881,12 +881,14 @@ function ConditionIcons({ conditions, lang }: { conditions: ConditionState[]; la
         const def = CONDITIONS[c.condition];
         const icon = def?.icon ?? "❓";
         const name = def?.name ?? c.condition;
+        const desc = def?.description ?? "";
         const color = def?.color ?? "#888";
+        const sourceTag = c.source ? ` · Источник: ${c.source}` : "";
         return (
           <span
             key={c.id}
-            title={`${name} (${c.duration} ${t(lang, "ui.rounds")})`}
-            className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-black/50 text-[9px] leading-none shadow-sm"
+            title={`${name} (${c.duration} ${t(lang, "ui.rounds")})\n${desc}${sourceTag}`}
+            className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-black/50 text-[9px] leading-none shadow-sm cursor-help"
             style={{ background: `${color}cc` }}
           >
             {icon}

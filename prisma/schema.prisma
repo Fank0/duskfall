@@ -34,6 +34,8 @@ model Room {
   hasAlchemy   Boolean  @default(false)
   hasForge     Boolean  @default(false)
   hasEnchant   Boolean  @default(false)
+  /// D&D 5e (V2 A9): Camp supplies count — needed for long rest. 0 = no supplies.
+  campSupplies Int      @default(5)
   // ===== Dungeon generator (Пункт 36) =====
   // Which biome this dungeon uses (catacombs | caves | tower | forest | dungeon).
   dungeonBiome     String   @default("dungeon")

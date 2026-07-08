@@ -40,12 +40,43 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: "Контейнер уже открыт." }, { status: 400 });
       }
       if (container.isLocked) {
-        // Simplified: locked containers require a d20 + DEX check vs lockDC.
-        // In a full implementation, the player would need Thieves' Tools.
-        return NextResponse.json({
-          ok: false,
-          error: `Контейнер заперт (DC ${container.lockDC}). Нужен thieves' tools или ключ.`,
-        }, { status: 400 });
+        // D&D 5e (V2 B3): Lockpicking — d20 + DEX (Thieves' Tools) vs lockDC.
+        // Auto-attempt: roll d20 + DEX mod + proficiency (if Rogue or has Thieves' Tools).
+        const player = await db.player.findFirst({ where: { name: playerName, roomId: room.id } });
+        if (!player) return NextResponse.json({ ok: false, error: "Игрок не найден." }, { status: 404 });
+        const dexMod = Math.floor((player.dex - 10) / 2);
+        // Rogues get proficiency on Thieves' Tools. Other classes need the item.
+        const hasThievesTools = await db.inventoryItem.findFirst({
+          where: { roomId: room.id, playerName, itemName: { contains: "отмыч" } },
+        });
+        const isRogue = player.charClass?.toLowerCase() === "rogue";
+        const profBonus = (isRogue || hasThievesTools) ? player.proficiencyBonus : 0;
+        const lockpickRoll = Math.floor(Math.random() * 20) + 1 + dexMod + profBonus;
+        if (lockpickRoll >= container.lockDC) {
+          // Success — unlock the container.
+          await db.container.update({ where: { id: container.id }, data: { isLocked: false } });
+          await db.chatMessage.create({
+            data: { roomId: room.id, role: "system", speaker: "", round: room.round,
+              content: `🔓 ${playerName} взламывает замок (бросок ${lockpickRoll} vs DC ${container.lockDC}). Контейнер открыт!` },
+          });
+          // Now open it.
+          await db.container.update({ where: { id: container.id }, data: { isOpen: true } });
+          invalidateSnapshotCache(room.id);
+          let items: any[] = [];
+          try { items = JSON.parse(container.itemsJson || "[]"); } catch {}
+          await db.chatMessage.create({
+            data: { roomId: room.id, role: "system", speaker: "", round: room.round,
+              content: `📦 ${playerName} открывает ${container.type === "corpse" ? "труп" : "сундук"}. Внутри: ${container.gold > 0 ? `${container.gold} золота` : "нет золота"}${items.length > 0 ? `, ${items.map((i: any) => i.name).join(", ")}` : ""}.` },
+          });
+          const snapshot = await getSnapshot(roomCode);
+          return NextResponse.json({ ok: true, snapshot, container: { gold: container.gold, items }, lockpickSuccess: true });
+        } else {
+          await db.chatMessage.create({
+            data: { roomId: room.id, role: "system", speaker: "", round: room.round,
+              content: `🔒 ${playerName} не смог взломать замок (бросок ${lockpickRoll} vs DC ${container.lockDC}).` },
+          });
+          return NextResponse.json({ ok: false, error: `Замок не поддался (бросок ${lockpickRoll} vs DC ${container.lockDC}).`, lockpickFailed: true }, { status: 400 });
+        }
       }
       await db.container.update({ where: { id: container.id }, data: { isOpen: true } });
       invalidateSnapshotCache(room.id);

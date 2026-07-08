@@ -84,6 +84,20 @@ export const RACIAL_ABILITIES: Record<string, Ability[]> = {
   ],
 };
 
+// ===== D&D 5e Racial Cantrips (V2 C7) =====
+// Each race gets 1 cantrip at level 1 (simplified — some races get them later in SRD).
+export const RACIAL_CANTRIPS: Record<string, { spellId: string; name: string; description: string }> = {
+  elf: { spellId: "fire_bolt", name: "Огненный сгусток", description: "Заговор: 1d10 урона огнём (дальнобой)." },
+  gnome: { spellId: "minor_illusion", name: "Малая иллюзия", description: "Заговор: создаёт звук/образ (канплот)." },
+  tiefling: { spellId: "thaumaturgy", name: "Тауматургия", description: "Заговор: громкий звук, дрожание земли." },
+  dragonborn: { spellId: "fire_bolt", name: "Огненный сгусток", description: "Заговор: 1d10 урона огнём." },
+  halforc: { spellId: "true_strike", name: "Верный удар", description: "Заговор: преимущество на следующую атаку." },
+  halfling: { spellId: "light", name: "Свет", description: "Заговор: освещает предмет как факел." },
+  dwarf: { spellId: "mending", name: "Починка", description: "Заговор: ремонтирует мелкие предметы." },
+  githyanki: { spellId: "mage_hand", name: "Рука мага", description: "Заговор: спектральная рука для манипуляций." },
+  human: { spellId: "fire_bolt", name: "Огненный сгусток", description: "Заговор: 1d10 урона огнём." },
+};
+
 // ---------- Class starting features ----------
 export const CLASS_ABILITIES: Record<string, Ability[]> = {
   fighter: [

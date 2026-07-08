@@ -107,6 +107,17 @@ export async function POST(req: NextRequest) {
       lines.push(`Короткие отдыхи: ${newCount}/${MAX_SHORT_RESTS}.`);
     } else {
       // Long rest: full HP + all slots restored + reset short rest counter.
+      // D&D 5e (V2 A9): Camp supplies — need 1 supply per long rest.
+      const supplies = room.campSupplies ?? 5;
+      if (supplies <= 0) {
+        return NextResponse.json({
+          ok: false,
+          error: "Недостаточно припасов для лагеря. Найдите еду или провизию в подземелье.",
+        }, { status: 400 });
+      }
+      // Consume 1 supply.
+      await db.room.update({ where: { id: room.id }, data: { campSupplies: supplies - 1 } });
+      lines.push(`Припасы лагеря: ${supplies - 1} осталось.`);
       const missing = player.maxHp - player.hp;
       if (missing > 0) {
         await healPlayer(room.id, playerName, missing);

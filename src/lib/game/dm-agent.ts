@@ -2601,19 +2601,62 @@ export async function resolvePlayerMechanics(
       } as MechanicsResult;
     }
     // Set dashActive + consume the action.
-    await db.player.update({
-      where: { id: actor.id },
-      data: { dashActive: true, actionUsed: true },
-    });
-    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
-    await db.chatMessage.create({
-      data: { roomId, role: "dm", speaker: "", round,
-        content: `💨 ${actorName} использует Рывок! Скорость передвижения удвоена до ${actor.speed * 2} футов в этом ходу.` },
-    });
-    // Advance the turn (Dash consumes the action but not the bonus action).
+    // D&D 5e (V2 A1): Monk (Ki) and Rogue (Cunning Action) can Dash as bonus.
+    const isMonkOrRogue = actor.charClass?.toLowerCase() === "monk" || actor.charClass?.toLowerCase() === "rogue";
+    const isBonusDash = isMonkOrRogue && !actor.bonusActionUsed;
+    if (isBonusDash) {
+      // Dash as bonus action — doesn't consume Action, only bonus.
+      await db.player.update({
+        where: { id: actor.id },
+        data: { dashActive: true, bonusActionUsed: true },
+      });
+      // Monk spends 1 Ki point.
+      if (actor.charClass?.toLowerCase() === "monk") {
+        await spendClassResource(roomId, actorName, "ki", 1);
+      }
+      await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round,
+          content: `💨 ${actorName} использует Рывок как бонус-действие! Скорость ×2. Действие сохранено.` },
+      });
+    } else {
+      // Normal Dash — consumes Action.
+      await db.player.update({
+        where: { id: actor.id },
+        data: { dashActive: true, actionUsed: true },
+      });
+      await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+      await db.chatMessage.create({
+        data: { roomId, role: "dm", speaker: "", round,
+          content: `💨 ${actorName} использует Рывок! Скорость передвижения удвоена до ${actor.speed * 2} футов в этом ходу.` },
+      });
+    }
+    // Advance the turn — BUT if Dash was a bonus action (Monk/Rogue),
+    // don't advance: player still has their Action to use.
     let nextTurnName: string | null = null;
     let nextTurnType: "player" | "monster" | null = null;
     let combatEnded = false;
+
+    if (isBonusDash) {
+      // Bonus-action Dash: player keeps their turn (still has Action).
+      const snapBD = await getSnapshot(roomCode);
+      return {
+        actorName,
+        playerRolls: [], monsterRolls: [],
+        outcome: "success",
+        combatStarted: false, combatEnded: false,
+        damageDealtToMonster: 0, monsterThatDied: null,
+        damageDealtToPlayer: 0, damagedPlayer: null,
+        healingToPlayer: 0, healedPlayer: null,
+        inventoryChanges: [], goldChange: 0,
+        imagePrompt: "", imageNeeded: false,
+        branchNarrative: `${actorName} использует Рывок как бонус-действие!`,
+        playerAction, location: snapBD?.location ?? "",
+        nextTurn: actorName, nextTurnType: "player",
+        round,
+        statusEffectNotes: [], lootNotes: [],
+      } as MechanicsResult;
+    }
     const adv = await advanceTurn(roomCode, roomId);
     if (adv.ended) combatEnded = true;
     nextTurnName = adv.nextTurnName;
