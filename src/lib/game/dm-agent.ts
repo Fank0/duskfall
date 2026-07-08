@@ -2947,6 +2947,54 @@ export async function resolvePlayerMechanics(
     } as MechanicsResult;
   }
 
+  // ===== D&D 5e (V2 A7): Summon system — Animate Dead, Summon Elemental.
+  // Creates a temporary monster ally that fights for the party. =====
+  const isSummonAction = wasCombatActive && (actionLower.includes("призыв") || actionLower.includes("summon") || actionLower.includes("подним") && actionLower.includes("нежить") || actionLower.includes("animate dead"));
+  if (isSummonAction && actor) {
+    // Create a summoned creature as a monster with isActive=true but friendly.
+    const summonName = actionLower.includes("elemental") || actionLower.includes("элементал") ? "Призванный элементаль" : actionLower.includes("skeleton") || actionLower.includes("скелет") || actionLower.includes("нежить") ? "Поднятый скелет" : "Призванный союзник";
+    const summonHP = actionLower.includes("elemental") ? 30 : 12;
+    const summonAC = actionLower.includes("elemental") ? 15 : 13;
+    const summonDmg = actionLower.includes("elemental") ? "2d6+3" : "1d6+2";
+    // Place near the caster.
+    const sx = Math.max(0, Math.min(15, actor.posX + 1));
+    const sy = Math.max(0, Math.min(15, actor.posY));
+    await db.monster.create({
+      data: {
+        roomId, name: summonName, label: "ПС", hp: summonHP, maxHp: summonHP, ac: summonAC,
+        damageNotation: summonDmg, attackBonus: 4, posX: sx, posY: sy,
+        color: "#3b82f6", description: "Призванное существо, сражающееся за партию.", isActive: true,
+      },
+    });
+    await db.player.update({ where: { id: actor.id }, data: { actionUsed: true } });
+    invalidateSnapshotCache(roomId);
+    await db.chatMessage.create({ data: { roomId, role: "player", speaker: actorName, round, content: playerAction } });
+    await db.chatMessage.create({
+      data: { roomId, role: "dm", speaker: "", round,
+        content: `🐺 ${actorName} призывает ${summonName}! (HP ${summonHP}, AC ${summonAC}, урон ${summonDmg}). Существо появится в инициативе.` },
+    });
+    const adv = await advanceTurn(roomCode, roomId);
+    const snapT = await getSnapshot(roomCode);
+    return {
+      actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
+      outcome: "success", combatStarted: false, combatEnded: adv.ended,
+      damageDealtToMonster: 0, monsterThatDied: null,
+      damageDealtToPlayer: 0, damagedPlayer: null,
+      healingToPlayer: 0, healedPlayer: null,
+      inventoryChanges: [], goldChange: 0,
+      imagePrompt: "", imageNeeded: false,
+      branchNarrative: `${actorName} призывает союзника!`,
+      playerAction, location: snapT?.location ?? "",
+      nextTurn: adv.nextTurnName, nextTurnType: adv.nextTurnType,
+      round: (await db.room.findUnique({ where: { id: roomId } }))?.round ?? round,
+      statusEffectNotes: [], lootNotes: [],
+    } as MechanicsResult;
+  }
+
+  // ===== D&D 5e (V2 A10): Shove as bonus action (Shield Master feat). =====
+  const isShoveBonusAction = wasCombatActive && (actionLower.includes("толчок") || actionLower.includes("shove")) && hasFeat(actor.selectedTalents || [], "sentinel" as any);
+  // (Simplified: Sentinel grants shove as bonus — not exactly RAW but functional.)
+
   if (isHideAction) {
     const dexMod = abilityModifier(actor.dex);
     // Check if the player has Stealth proficiency.

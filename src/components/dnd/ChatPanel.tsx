@@ -36,6 +36,10 @@ interface ChatPanelProps {
   currentTurnName: string | null;
   onSend: (text: string) => void;
   onRest?: (restType: "short" | "long") => void;
+  /** V2 D9: Party chat handler — sends message to other players (not DM). */
+  onPartyChat?: (text: string) => void;
+  /** V2 D9: Player name for party chat. */
+  playerName?: string;
   /** D&D 5e: when provided, the "Атаковать" button enters targeting mode
    * (player clicks a monster on the grid) instead of sending a generic
    * attack action. Item #10. */
@@ -79,6 +83,7 @@ export const ChatPanel = memo(function ChatPanel({
   maxActionPoints,
 }: ChatPanelProps) {
   const [input, setInput] = useState("");
+  const [partyMode, setPartyMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   /** Older messages loaded via /api/game/chat-history (prepended to the view). */
   const [older, setOlder] = useState<ChatMessageState[]>([]);
@@ -387,8 +392,12 @@ export const ChatPanel = memo(function ChatPanel({
 
   function submit(text?: string) {
     const value = (text ?? input).trim();
-    if (!value || !canAct) return;
-    onSend(value);
+    if (!value) return;
+    if (partyMode && onPartyChat) {
+      onPartyChat(value);
+    } else if (!partyMode && canAct) {
+      onSend(value);
+    }
     setInput("");
   }
 
@@ -570,17 +579,34 @@ export const ChatPanel = memo(function ChatPanel({
 
       {/* Input */}
       <div className="flex items-end gap-2 p-3">
+        {onPartyChat && (
+          <button
+            type="button"
+            onClick={() => setPartyMode((v) => !v)}
+            title={partyMode ? "Переключить на Мастера" : "Переключить на чат группы"}
+            className={cn(
+              "shrink-0 rounded-md border px-2 py-2 text-[10px] font-medium transition-colors",
+              partyMode
+                ? "border-sky-500 bg-sky-950/50 text-sky-200"
+                : "border-border/60 bg-stone-900/50 text-muted-foreground hover:border-amber-600/40"
+            )}
+          >
+            {partyMode ? "🗣️ Группа" : "🎩 Мастер"}
+          </button>
+        )}
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={!canAct}
+          disabled={!partyMode && !canAct}
           placeholder={
-            isDead
-              ? tt("chat.dead_placeholder")
-              : locked
-                ? tt("chat.waiting_placeholder", { name: currentTurnName ?? "" })
-                : tt("chat.action_placeholder")
+            partyMode
+              ? "Сообщение для группы…"
+              : isDead
+                ? tt("chat.dead_placeholder")
+                : locked
+                  ? tt("chat.waiting_placeholder", { name: currentTurnName ?? "" })
+                  : tt("chat.action_placeholder")
           }
           className="min-h-[44px] max-h-32 resize-none bg-stone-950/60 text-sm"
           rows={1}

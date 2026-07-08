@@ -899,25 +899,24 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
     `=== Время суток и погода ===\nСейчас: ${timeOfDayLabelRu(snap.timeOfDay)} · ${weatherLabelRu(snap.weather)}`
   );
 
-  // Recent chat: trim to the last 30 messages. If there are older messages,
-  // include a one-line condensed summary so the DM still has some continuity.
-  const RECENT_CHAT_LIMIT = 30;
+  // D&D 5e (V2 E5): AI context compression — trim to last 20 messages.
+  // Older messages are condensed into a single-line summary to save tokens.
+  const RECENT_CHAT_LIMIT = 20;
   const allChat = snap.chat;
   const recent = allChat.slice(-RECENT_CHAT_LIMIT);
   if (recent.length > 0) {
     lines.push("=== Недавние события ===");
-    // If there are older messages we skipped, condense the first 5 of them into
-    // a multi-line summary so the DM has more context continuity.
     if (allChat.length > RECENT_CHAT_LIMIT) {
-      const older = allChat.slice(0, Math.min(5, allChat.length - RECENT_CHAT_LIMIT));
+      // Compress ALL older messages into a single summary line.
+      const older = allChat.slice(0, allChat.length - RECENT_CHAT_LIMIT);
       const condensed = older
         .map((c) => {
-          const who = c.role === "player" ? `${c.speaker}` : c.role === "system" ? "Система" : "Мастер";
-          const snippet = c.content.replace(/\s+/g, " ").trim().slice(0, 120);
-          return `${who}: ${snippet}`;
+          const who = c.role === "player" ? c.speaker : c.role === "system" ? "С" : "М";
+          const snippet = c.content.replace(/\s+/g, " ").trim().slice(0, 80);
+          return `${who}:${snippet}`;
         })
-        .join(" / ");
-      lines.push(`Ранее: ${condensed}`);
+        .join(" | ");
+      lines.push(`Ранее (${older.length} событий): ${condensed.slice(0, 500)}`);
     }
     for (const c of recent) {
       const who = c.role === "player" ? `Игрок ${c.speaker}` : c.role === "system" ? "Система" : "Мастер";

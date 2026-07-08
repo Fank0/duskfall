@@ -1416,6 +1416,19 @@ export default function Home() {
                 yourName={session.playerName}
                 currentTurnName={snapshot.combatActive ? snapshot.currentTurnName : snapshot.currentExplorerName}
                 onSend={sendAction}
+                onPartyChat={async (text) => {
+                  if (!session) return;
+                  try {
+                    await fetch("/api/game/party-chat", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ roomCode: session.roomCode, playerName: session.playerName, message: text }),
+                    });
+                    fetchState(session.roomCode, true);
+                    pingRoom(session.roomCode);
+                  } catch {}
+                }}
+                playerName={session.playerName}
                 onRest={handleRest}
                 onAttackTargeting={requestAttackTargeting}
                 isTargetingActive={targetingMode !== "none"}

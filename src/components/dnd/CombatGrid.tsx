@@ -997,7 +997,7 @@ function PlayerToken({
         {/* HP bar — thin (3px), at bottom of token, color gradient green→yellow→red. */}
         <div
           className="absolute bottom-0 left-1/2 h-[3px] w-[80%] -translate-x-1/2 overflow-hidden rounded-full bg-black/60"
-          title={`${p.hp}/${p.maxHp} HP`}
+          title={`${p.hp}/${p.maxHp} HP (${Math.round(hpPct)}%) · AC ${p.ac} · ${p.raceName} ${p.charClass} ур.${p.level}`}
         >
           <div
             className="h-full transition-all duration-500"

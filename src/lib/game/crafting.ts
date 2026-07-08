@@ -391,3 +391,17 @@ export function abilityLabelRu(ability: "int" | "str" | "wis"): string {
   if (ability === "str") return "СИЛ";
   return "МУД";
 }
+
+// ===== D&D 5e Crafting Combos (V2 B5): item + item = new item =====
+export const CRAFTING_COMBOS: { id: string; input1: string; input2: string; output: string; outputDesc: string }[] = [
+  { id: "combo_poison_weapon", input1: "Зелье лечения", input2: "Кинжал", output: "Отравленный кинжал", outputDesc: "Кинжал с ядовитым покрытием (+1d4 яда на 3 атаки)." },
+  { id: "combo_fire_arrow", input1: "Факел", input2: "Стрела", output: "Огненная стрела", outputDesc: "Стрела с огненным наконечником (+1d4 огня при попадании)." },
+  { id: "combo_holy_water", input1: "Святое масло", input2: "Фляга", output: "Святая вода", outputDesc: "Наносит 2d6 урона нежити при попадании." },
+  { id: "combo_smoke_bomb", input1: "Масляная бомба", input2: "Факел", output: "Дымовая бомба", outputDesc: "Создаёт облако дыма (затрудняет видимость на 3 клетки)." },
+];
+
+export function findCraftingCombo(item1: string, item2: string) {
+  return CRAFTING_COMBOS.find(
+    (c) => (c.input1 === item1 && c.input2 === item2) || (c.input1 === item2 && c.input2 === item1)
+  );
+}

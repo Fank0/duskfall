@@ -612,3 +612,21 @@ html.ui-scale-150 { font-size: 24px; }
   pointer-events: none;
   backdrop-filter: blur(4px);
 }
+
+/* V2 C4: Weapon coating indicator on tokens */
+@keyframes coatingGlow {
+  0%, 100% { box-shadow: 0 0 4px 1px var(--coating-color, rgba(249,115,22,0.5)); }
+  50% { box-shadow: 0 0 12px 3px var(--coating-color, rgba(249,115,22,0.7)); }
+}
+.weapon-coated { animation: coatingGlow 1.5s ease-in-out infinite; }
+.weapon-coated-fire { --coating-color: rgba(249,115,22,0.6); }
+.weapon-coated-poison { --coating-color: rgba(132,204,22,0.6); }
+.weapon-coated-acid { --coating-color: rgba(163,230,53,0.6); }
+.weapon-coated-cold { --coating-color: rgba(125,211,252,0.6); }
+
+/* V2 D10: Loading screen */
+@keyframes loadingPulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+}
+.loading-skull { animation: loadingPulse 2s ease-in-out infinite; }
