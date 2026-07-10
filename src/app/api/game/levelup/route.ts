@@ -144,3 +144,33 @@ async function maybeBumpSaveSlot(
     });
   }
 }
+
+// ===== D&D 5e (V2 C1): Multiclassing — pick a new class on level up. =====
+// POST /api/game/levelup with { roomCode, playerName, type: "multiclass", newClass: "Wizard" }
+// Adds the new class to classLevelsJson and updates charClass for display.
+export async function multiclassLevelUp(
+  roomId: string,
+  playerName: string,
+  newClass: string
+): Promise<boolean> {
+  const p = await db.player.findFirst({ where: { name: playerName, roomId } });
+  if (!p) return false;
+  // Parse existing multiclass levels.
+  let levels: Record<string, number> = {};
+  try { levels = JSON.parse(p.classLevelsJson || "{}"); } catch {}
+  // Add 1 level to the new class.
+  levels[newClass] = (levels[newClass] || 0) + 1;
+  // Update charClass to the new class if it's the highest level.
+  const sorted = Object.entries(levels).sort((a, b) => b[1] - a[1]);
+  const primaryClass = sorted[0]?.[0] || p.charClass;
+  await db.player.update({
+    where: { id: p.id },
+    data: {
+      classLevelsJson: JSON.stringify(levels),
+      charClass: primaryClass,
+      pendingLevelUp: false,
+    },
+  });
+  invalidateSnapshotCache(roomId);
+  return true;
+}

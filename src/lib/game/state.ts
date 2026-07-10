@@ -2524,3 +2524,31 @@ export async function restoreClassResources(roomId: string, playerName: string):
   });
   invalidateSnapshotCache(roomId);
 }
+
+// ===== D&D 5e (V2 E3): Undo last action =====
+// Stores the last room snapshot before a mutation. Only 1 level of undo.
+let undoStack: Map<string, { snapshot: GameStateSnapshot; timestamp: number }> = new Map();
+
+/** Save the current snapshot as undo point. Called before each player action. */
+export function saveUndoPoint(roomId: string, snapshot: GameStateSnapshot): void {
+  undoStack.set(roomId, { snapshot, timestamp: Date.now() });
+}
+
+/** Check if an undo point exists for this room. */
+export function hasUndoPoint(roomId: string): boolean {
+  const entry = undoStack.get(roomId);
+  if (!entry) return false;
+  // Undo expires after 60 seconds.
+  return Date.now() - entry.timestamp < 60_000;
+}
+
+/** Get the undo snapshot for a room (or null if expired/missing). */
+export function getUndoSnapshot(roomId: string): GameStateSnapshot | null {
+  const entry = undoStack.get(roomId);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp >= 60_000) {
+    undoStack.delete(roomId);
+    return null;
+  }
+  return entry.snapshot;
+}

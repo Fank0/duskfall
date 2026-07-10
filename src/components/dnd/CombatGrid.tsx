@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Swords, MapPin, Crosshair } from "lucide-react";
 import type { PlayerState, MonsterState, ConditionState } from "@/lib/game/types";
@@ -211,6 +211,8 @@ export const CombatGrid = memo(function CombatGrid({
 
   // Track previous positions (item 17 requirement — used to detect token movement).
   const prevPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+  // V2 D7: AoE preview — hovered cell during AoE targeting.
+  const [aoeHoverCell, setAoeHoverCell] = useState<{ x: number; y: number } | null>(null);
 
   // Detect movement: when positions change, apply a brief glow animation to
   // moved tokens via the Web Animations API (no React state involved).
@@ -537,6 +539,11 @@ export const CombatGrid = memo(function CombatGrid({
               const monsterInCell = targetingMode === "ability" || targetingMode === "item" ? monsterByCell.get(`${x},${y}`) : undefined;
               const playerInCell = targetingMode === "ability" || targetingMode === "item" ? playerByCell.get(`${x},${y}`) : undefined;
               const isAoeTargetCell = targetingMode === "aoe";
+              const isAoePreviewCell = isAoeTargetCell && aoeHoverCell && (() => {
+                const dx = Math.abs(x - aoeHoverCell.x);
+                const dy = Math.abs(y - aoeHoverCell.y);
+                return Math.max(dx, dy) <= 2;
+              })();
               // Click-to-move: ONLY in combat. When not in combat, the grid
               // is display-only (no click handlers on empty cells).
               const canMoveHere = combatActive && targetingMode === "none" && onMoveClick && !monsterInCell && !playerInCell && terrainType !== "full_cover";
@@ -560,6 +567,7 @@ export const CombatGrid = memo(function CombatGrid({
                     "relative rounded-[2px] border border-border/20",
                     tint,
                     // AoE-targeting: every cell is clickable + hover highlight.
+                    isAoeTargetCell && setAoeHoverCell({ x, y }),
                     isAoeTargetCell &&
                       "cursor-crosshair border-amber-400/40 hover:bg-amber-500/30 hover:border-amber-400/80",
                     // Ability-targeting: only cells with a monster are clickable.
