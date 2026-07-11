@@ -35,7 +35,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getSocket, joinRoomSocket, pingRoom, onRoomRefresh } from "@/lib/game/socket";
+import { getSocket, pingRoom } from "@/lib/game/socket";
+import { useRoomSocket } from "@/hooks/useRoomSocket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent, InventoryItemState } from "@/lib/game/types";
 import { t } from "@/lib/game/i18n";
 import { GRID_SIZE } from "@/lib/game/state";
@@ -155,6 +156,11 @@ export default function Home() {
   const [targetingMode, setTargetingMode] = useState<"none" | "ability" | "aoe" | "item">("none");
   const [targetingAbility, setTargetingAbility] = useState<Ability | InventoryItemState | null>(null);
 
+  // D8: Movement mode — toggled by the "Двигаться" button in BottomPanel. When
+  // on (and combat is active), the CombatGrid shows a BG3/DOS2-style A* path
+  // preview on hover (numbered cells + total movement cost in feet).
+  const [moveMode, setMoveMode] = useState(false);
+
   // UI customization settings (item 21) — read at the top so the hook order is stable.
   const settings = useSettings();
   // i18n helper bound to the selected language.
@@ -167,22 +173,6 @@ export default function Home() {
     if (s) setSession(s);
     else setIsLoading(false);
   }, []);
-
-  // Join socket room whenever session changes.
-  useEffect(() => {
-    if (!session) return;
-    joinRoomSocket(session.roomCode, session.playerName);
-  }, [session]);
-
-  // Listen for refresh pings from other players.
-  useEffect(() => {
-    if (!session) return;
-    const unsub = onRoomRefresh(() => {
-      // Re-fetch state when pinged.
-      fetchState(session.roomCode, true);
-    });
-    return unsub;
-  }, [session]);
 
   const fetchState = useCallback(async (roomCode: string, silent = false) => {
     try {
@@ -208,20 +198,33 @@ export default function Home() {
     if (session) fetchState(session.roomCode);
   }, [session, fetchState]);
 
-  // ===== Adaptive polling (item 24) =====
-  // 5s during exploration, 1.5s during combat, paused while the DM narrative
-  // is streaming (isThinking). If the socket is connected AND we received a
-  // room:refresh ping within the last 5s, the next poll tick is skipped —
-  // socket-driven refresh is fresher than any poll could be.
+  // ===== Real-time socket subscription (E1) =====
+  // One hook replaces three previous useEffects:
+  //   1. Join the socket.io room for `session.roomCode`.
+  //   2. Listen for BOTH legacy `room:refresh` pings AND server-pushed
+  //      `state:changed` events (fired by API routes via the game-sync relay
+  //      after every state mutation — turn change, monster action, chat msg,
+  //      combat start/end, equip, craft, level-up, rest, move-room).
+  //   3. On any event: synchronously update `lastSocketPingRef` (so the
+  //      polling fallback below can skip its next tick) and debounce-trigger
+  //      `fetchState(..., true)` after 200ms — coalescing bursts of mutations
+  //      (e.g. monster AI turn → narrative → image) into a single refetch.
+  // Polling at 5s (combat) / 5s (exploration) remains as a safety net for
+  // any socket events the client might miss.
   const lastSocketPingRef = useRef<number>(0);
-  useEffect(() => {
-    if (!session) return;
-    // Track the last time the socket pushed a room:refresh.
-    const unsub = onRoomRefresh(() => {
-      lastSocketPingRef.current = Date.now();
-    });
-    return unsub;
-  }, [session]);
+  useRoomSocket(
+    session?.roomCode ?? null,
+    session?.playerName ?? null,
+    {
+      onRefresh: () => {
+        if (session) fetchState(session.roomCode, true);
+      },
+      onEvent: () => {
+        lastSocketPingRef.current = Date.now();
+      },
+      debounceMs: 200,
+    }
+  );
 
   // ===== Audio: sync settings + play music by mood (item 6.2) =====
   useEffect(() => {
@@ -290,12 +293,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!session) return;
-    // Choose the poll interval based on combat vs. exploration, and pause
-    // entirely while a DM narrative is streaming.
-    const interval = isThinking ? null : snapshot?.combatActive ? 1500 : 5000;
+    // Polling is now a SAFETY NET — the socket.io `state:changed` push
+    // (delivered via the `useRoomSocket` hook above) gives every client an
+    // instant refetch on mutation. We still poll every 5s in case a socket
+    // event was missed (relay restart, brief network drop, etc.). Polling
+    // is paused entirely while a DM narrative is streaming (isThinking),
+    // and any tick that falls within 5s of a recent socket push is skipped
+    // (the socket data is fresher than a poll could be).
+    const interval = isThinking ? null : 5000;
     if (interval === null) return;
     const id = setInterval(() => {
-      // Skip this tick if the socket is connected and pinged us recently.
+      // Skip this tick if the socket is connected and pushed recently.
       const socket = getSocket();
       const recentPing = Date.now() - lastSocketPingRef.current;
       if (socket?.connected && recentPing < 5000) {
@@ -305,7 +313,7 @@ export default function Home() {
       fetchState(session.roomCode, true);
     }, interval);
     return () => clearInterval(id);
-  }, [session, fetchState, isThinking, snapshot?.combatActive]);
+  }, [session, fetchState, isThinking]);
 
   const handleEntered = useCallback((roomCode: string, playerName: string) => {
     const s = { roomCode, playerName };
@@ -891,6 +899,9 @@ export default function Home() {
   const requestAbilityTargeting = useCallback((target: Ability | InventoryItemState, mode: "ability" | "aoe" | "item") => {
     setTargetingAbility(target);
     setTargetingMode(mode);
+    // D8: entering any targeting mode implicitly leaves move mode so the path
+    // preview overlay doesn't compete with the targeting highlight.
+    setMoveMode(false);
     try { sfxTargetSelect(); } catch {}
   }, []);
 
@@ -906,6 +917,7 @@ export default function Home() {
   const requestAttackTargeting = useCallback(() => {
     setTargetingAbility({ kind: "attack" } as any);
     setTargetingMode("ability");
+    setMoveMode(false);
     try { sfxTargetSelect(); } catch {}
   }, []);
 
@@ -1015,8 +1027,12 @@ export default function Home() {
     if (snapshot && prevCombatActive.current && !snapshot.combatActive && targetingMode !== "none") {
       cancelTargeting();
     }
+    // D8: leave move mode when combat ends so the path preview doesn't linger.
+    if (snapshot && prevCombatActive.current && !snapshot.combatActive && moveMode) {
+      setMoveMode(false);
+    }
     if (snapshot) prevCombatActive.current = snapshot.combatActive;
-  }, [snapshot, targetingMode, cancelTargeting]);
+  }, [snapshot, targetingMode, cancelTargeting, moveMode]);
 
   // Track whether any modal is open — hotkeys are suppressed while a modal
   // captures input (the modal's own Escape handler still works).
@@ -1492,6 +1508,8 @@ export default function Home() {
               yourName={session?.playerName}
               yourPosition={you ? { x: you.posX, y: you.posY } : null}
               targetingRange={targetingMode !== "none" ? (targetingMode === "aoe" ? 8 : 1) : undefined}
+              moveMode={moveMode}
+              remainingMovementFeet={you ? Math.max(0, (you.dashActive ? you.speed * 2 : you.speed) - you.movementUsed) : undefined}
             />
           </aside>
         </div>
@@ -1511,8 +1529,13 @@ export default function Home() {
             onUnequip={(slot) => unequipItem(slot as any)}
             hasAnyStation={snapshot.hasAlchemy || snapshot.hasForge || snapshot.hasEnchant}
             onCraft={craftItem}
+            moveMode={moveMode}
             onMoveMode={() => {
-              toast(tt("ui.move_combat_hint"));
+              // D8: toggle move mode. The grid is already clickable in combat
+              // for movement — this just enables the BG3/DOS2-style A* path
+              // preview overlay on hover.
+              setMoveMode((m) => !m);
+              toast(tt(snapshot.combatActive ? "ui.move_mode_active" : "ui.move_combat_hint"));
             }}
             combatActive={snapshot.combatActive}
             nearestMonsterName={nearestMonsterName}

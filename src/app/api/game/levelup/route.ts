@@ -7,6 +7,7 @@ import type { StatKey } from "@/lib/game/types";
 import { getAccountFromRequest } from "@/lib/auth/get-account";
 import { bumpSaveSlotLevel } from "@/lib/auth/save-slot";
 import { logger } from "@/lib/game/logger";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,9 @@ export async function POST(req: NextRequest) {
       // If the requester is authenticated, mirror the new level onto any
       // SaveSlots pointing at this (account, room, player).
       await maybeBumpSaveSlot(req, room.id, me.id, snapshot);
+      // E1: push state:changed so other clients see the new ASI-modified
+      // stats and the cleared pendingASI flag.
+      pushStateChange(roomCode);
       return NextResponse.json({ ok: true, snapshot, asi: { stat } });
     }
 
@@ -101,6 +105,9 @@ export async function POST(req: NextRequest) {
     const snapshot = await getSnapshot(roomCode);
     // ===== Save-slot bump (auth-restore) =====
     await maybeBumpSaveSlot(req, room.id, me.id, snapshot);
+    // E1: push state:changed so other clients see the new talent, the
+    // levelled-up HP / proficiency, and the cleared pendingLevelUp flag.
+    pushStateChange(roomCode);
     return NextResponse.json({
       ok: true,
       snapshot,

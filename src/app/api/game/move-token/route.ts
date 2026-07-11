@@ -4,6 +4,7 @@ import { getSnapshot, invalidateSnapshotCache, moveToken, damagePlayer } from "@
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 import { rollD20, rollDice } from "@/lib/game/dice";
 import { getTerrainCells, isDifficultTerrain } from "@/lib/game/terrain";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -148,6 +149,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // E1: push state:changed so other clients in the room immediately see
+    // the new token position / movement points / opportunity-attack results.
+    pushStateChange(roomCode);
     const snapshot = await getSnapshot(roomCode);
     return NextResponse.json({ ok: true, snapshot, opportunityAttacks });
   } catch (e: any) {

@@ -10,6 +10,8 @@ import { GRID_SIZE } from "@/lib/game/state";
 import { useSettings } from "@/lib/game/settings";
 import { t, type Lang } from "@/lib/game/i18n";
 import { shallowEqual } from "@/lib/game/shallow";
+import { findPath } from "@/lib/game/pathfinding";
+import { movementCostOf, type TerrainCellState } from "@/lib/game/terrain";
 
 /** AoE overlay info passed from the page (transient — lasts ~2s). */
 export interface AoEOverlay {
@@ -91,6 +93,18 @@ export interface CombatGridProps {
   yourPosition?: { x: number; y: number } | null;
   /** Range in cells for the current targeting action (1 = melee, 5 = ranged, 6 = move). */
   targetingRange?: number;
+  /**
+   * D8 — BG3/DOS2-style path preview. When true (and combat is active and
+   * targetingMode === "none"), hovering a reachable cell renders the full
+   * A* path with numbered steps + total movement cost.
+   */
+  moveMode?: boolean;
+  /**
+   * D8 — Player's remaining movement budget in feet (speed × [dash?2:1] − movementUsed).
+   * Cells whose cumulative path cost exceeds this are rendered red (over budget).
+   * `undefined` disables the over-budget coloring (everything shown as in-range).
+   */
+  remainingMovementFeet?: number;
 }
 
 /**
@@ -117,6 +131,8 @@ export const CombatGrid = memo(function CombatGrid({
   yourName,
   yourPosition,
   targetingRange,
+  moveMode = false,
+  remainingMovementFeet,
 }: CombatGridProps) {
   const settings = useSettings();
   const tokenShape = settings.tokenShape;
@@ -213,6 +229,10 @@ export const CombatGrid = memo(function CombatGrid({
   const prevPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
   // V2 D7: AoE preview — hovered cell during AoE targeting.
   const [aoeHoverCell, setAoeHoverCell] = useState<{ x: number; y: number } | null>(null);
+  // D8: Path preview — hovered cell while in move mode (BG3/DOS2-style).
+  // Tracked only on cell-entry (mouseenter) so the path is recomputed once
+  // per cell change, not on every pixel move (perf requirement).
+  const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null);
 
   // Detect movement: when positions change, apply a brief glow animation to
   // moved tokens via the Web Animations API (no React state involved).
@@ -447,6 +467,86 @@ export const CombatGrid = memo(function CombatGrid({
 
   const cellPct = 100 / GRID_SIZE;
 
+  // ===== D8: Path preview (BG3/DOS2-style) =====
+  // Build the occupied set (other players + monsters — yourself excluded) and
+  // the terrain array used by the existing A* `findPath` from pathfinding.ts.
+  // We do NOT modify the A* algorithm itself; we just call it with the same
+  // terrain/occupied model the monster AI uses.
+  const occupiedForPath = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of alivePlayers) {
+      if (yourName && p.name === yourName) continue;
+      set.add(`${p.posX},${p.posY}`);
+    }
+    for (const m of activeMonsters) {
+      set.add(`${m.posX},${m.posY}`);
+    }
+    return set;
+  }, [alivePlayers, activeMonsters, yourName]);
+
+  const terrainForPath = useMemo<TerrainCellState[] | null>(() => {
+    const cells = gridExtras?.terrainCells;
+    if (!cells?.length) return null;
+    // Structural cast: {x,y,type:string} → {x,y,type:TerrainType}. The string
+    // values are always one of the TerrainType union members (see terrain.ts).
+    return cells as unknown as TerrainCellState[];
+  }, [gridExtras?.terrainCells]);
+
+  // Compute the A* path from yourPosition → hoverCell, with per-cell cumulative
+  // movement-point cost (1 normal cell = 1 point = 5 ft; difficult = 2 = 10 ft).
+  // Memoized so it only recomputes when hoverCell / yourPosition / terrain /
+  // occupied / moveMode change — NOT on every mouse pixel move (mouseenter fires
+  // once per cell entry, and we additionally bail out if the cell didn't change).
+  const pathPreview = useMemo<{
+    cells: { x: number; y: number; cumulativeCost: number }[];
+    totalCost: number;
+    reachable: boolean;
+  } | null>(() => {
+    // Only show in move mode + combat + no other targeting + valid hover.
+    if (!moveMode || !combatActive || targetingMode !== "none") return null;
+    if (!yourPosition || !hoverCell) return null;
+    // Same cell as origin — no path to draw.
+    if (hoverCell.x === yourPosition.x && hoverCell.y === yourPosition.y) return null;
+    if (!terrainForPath) {
+      // No terrain data — treat as empty grid (findPath handles empty terrain).
+    }
+    const terrain = terrainForPath ?? [];
+    const result = findPath(
+      yourPosition.x,
+      yourPosition.y,
+      hoverCell.x,
+      hoverCell.y,
+      terrain,
+      occupiedForPath,
+      Infinity,
+    );
+    if (result.path.length === 0 || !Number.isFinite(result.cost)) {
+      // Unreachable — return an empty marker so the UI can show ✕ on hover.
+      return { cells: [], totalCost: Infinity, reachable: false };
+    }
+    // Compute per-cell cumulative cost (in movement-points) by re-iterating the
+    // path and summing movementCostOf. We don't touch findPath internals.
+    const cells: { x: number; y: number; cumulativeCost: number }[] = [];
+    let cumulative = 0;
+    for (const cell of result.path) {
+      cumulative += movementCostOf(terrain, cell.x, cell.y);
+      cells.push({ x: cell.x, y: cell.y, cumulativeCost: cumulative });
+    }
+    return { cells, totalCost: result.cost, reachable: true };
+  }, [moveMode, combatActive, targetingMode, yourPosition, hoverCell, terrainForPath, occupiedForPath]);
+
+  // Mouse-enter handler factory: only attach when move mode is active so we
+  // don't fire setState on every cell entry during normal play.
+  const onCellHover = moveMode && combatActive && targetingMode === "none"
+    ? (x: number, y: number) => {
+        setHoverCell((prev) => {
+          if (prev && prev.x === x && prev.y === y) return prev;
+          return { x, y };
+        });
+      }
+    : undefined;
+  const clearHover = () => setHoverCell(null);
+
   return (
     <Card className="parchment rune-border border-border/80 gap-0 py-0 flex-1 min-h-0 overflow-hidden flex flex-col">
       <CardHeader className="pb-1 pt-1.5 px-3">
@@ -482,9 +582,11 @@ export const CombatGrid = memo(function CombatGrid({
         <div className="mx-auto aspect-square w-full max-w-[200px] sm:max-w-[240px] lg:max-w-[280px] xl:max-w-[340px]">
           <div
             ref={gridRef}
+            onMouseLeave={clearHover}
             className={cn(
               "relative grid h-full w-full rounded-md border border-border/70 bg-stone-950/60 p-1",
               isTargetingActive && "ring-1 ring-amber-500/60",
+              moveMode && combatActive && !isTargetingActive && "ring-1 ring-sky-500/50",
               gridCursorClass,
             )}
             style={{
@@ -563,6 +665,7 @@ export const CombatGrid = memo(function CombatGrid({
                 <div
                   key={idx}
                   onClick={cellClick}
+                  onMouseEnter={onCellHover ? () => onCellHover(x, y) : undefined}
                   className={cn(
                     "relative rounded-[2px] border border-border/20",
                     tint,
@@ -653,6 +756,79 @@ export const CombatGrid = memo(function CombatGrid({
                       <span className="text-[8px] opacity-80">⬆️</span>
                     </div>
                   )}
+                  {/* ===== DOS2-style reactive surface effects (Task A6) ===== */}
+                  {terrainType === "fire" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-orange-600/45 border border-orange-400/60 animate-pulse"
+                      title={t(settings.lang, "terrain.fire")}
+                    >
+                      <span className="text-[10px]">🔥</span>
+                    </div>
+                  )}
+                  {terrainType === "ice" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-sky-300/45 border border-sky-200/70"
+                      title={t(settings.lang, "terrain.ice")}
+                    >
+                      <span className="text-[10px]">❄️</span>
+                    </div>
+                  )}
+                  {terrainType === "poison" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-lime-500/40 border border-lime-400/60 animate-pulse"
+                      title={t(settings.lang, "terrain.poison")}
+                    >
+                      <span className="text-[10px]">☠️</span>
+                    </div>
+                  )}
+                  {terrainType === "acid" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-lime-700/50 border border-lime-500/70"
+                      title={t(settings.lang, "terrain.acid")}
+                    >
+                      <span className="text-[10px]">🧪</span>
+                    </div>
+                  )}
+                  {terrainType === "web" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-stone-500/35 border border-stone-400/50"
+                      title={t(settings.lang, "terrain.web")}
+                    >
+                      <span className="text-[10px]">🕸️</span>
+                    </div>
+                  )}
+                  {terrainType === "smoke" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-stone-500/55 border border-stone-400/40"
+                      title={t(settings.lang, "terrain.smoke")}
+                    >
+                      <span className="text-[10px]">💨</span>
+                    </div>
+                  )}
+                  {terrainType === "steam" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-slate-200/55 border border-slate-100/40 animate-pulse"
+                      title={t(settings.lang, "terrain.steam")}
+                    >
+                      <span className="text-[10px]">♨️</span>
+                    </div>
+                  )}
+                  {terrainType === "electrified" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-yellow-400/45 border border-yellow-300/70 animate-pulse"
+                      title={t(settings.lang, "terrain.electrified")}
+                    >
+                      <span className="text-[10px]">⚡</span>
+                    </div>
+                  )}
+                  {terrainType === "holy_water" && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center rounded-[2px] bg-yellow-200/45 border border-yellow-100/70"
+                      title={t(settings.lang, "terrain.holy_water")}
+                    >
+                      <span className="text-[10px]">✨</span>
+                    </div>
+                  )}
                   {/* Loot cell shimmer (item 20) */}
                   {lootItems && lootItems.length > 0 && (
                     <div
@@ -683,6 +859,99 @@ export const CombatGrid = memo(function CombatGrid({
                 </div>
               );
             })}
+
+            {/* ===== D8: Path preview overlay (BG3/DOS2-style) — pointer-events-none so
+                clicks pass through to the underlying cell click handlers. Rendered
+                above cells (z-15) but below tokens (z-20) so tokens remain visible. ===== */}
+            {pathPreview && pathPreview.reachable && pathPreview.cells.length > 0 && (
+              <div className="pointer-events-none absolute inset-1 z-[15]">
+                {pathPreview.cells.map((cell, idx) => {
+                  const stepNum = idx + 1;
+                  const feet = cell.cumulativeCost * 5; // 1 movement-point = 5 ft
+                  const overBudget =
+                    remainingMovementFeet !== undefined && feet > remainingMovementFeet;
+                  return (
+                    <div
+                      key={`pp-${idx}`}
+                      className={cn(
+                        "absolute flex items-center justify-center rounded-[2px] border text-[8px] font-bold leading-none shadow-sm",
+                        overBudget
+                          ? "bg-red-500/40 border-red-400/80 text-red-100"
+                          : "bg-amber-500/35 border-amber-400/80 text-amber-100"
+                      )}
+                      style={{
+                        left: `${cell.x * cellPct}%`,
+                        top: `${cell.y * cellPct}%`,
+                        width: `${cellPct}%`,
+                        height: `${cellPct}%`,
+                      }}
+                    >
+                      <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)]">{stepNum}</span>
+                    </div>
+                  );
+                })}
+                {/* Total cost label near destination (above the last cell). */}
+                {(() => {
+                  const last = pathPreview.cells[pathPreview.cells.length - 1];
+                  const totalFeet = pathPreview.totalCost * 5;
+                  const totalCells = pathPreview.cells.length;
+                  const overBudget =
+                    remainingMovementFeet !== undefined && totalFeet > remainingMovementFeet;
+                  const overBy =
+                    overBudget && remainingMovementFeet !== undefined
+                      ? totalFeet - remainingMovementFeet
+                      : 0;
+                  // Clamp the label inside the grid if the destination is on the top row.
+                  const labelTop = last.y === 0 ? (last.y + 1.4) * cellPct : last.y * cellPct;
+                  const labelTransform =
+                    last.y === 0 ? "translate(-50%, 0%)" : "translate(-50%, -100%)";
+                  return (
+                    <div
+                      className={cn(
+                        "absolute z-[16] whitespace-nowrap rounded px-1 py-px text-[9px] font-bold shadow-md",
+                        overBudget
+                          ? "bg-red-950/95 text-red-200 border border-red-500/70"
+                          : "bg-amber-950/95 text-amber-200 border border-amber-500/70"
+                      )}
+                      style={{
+                        left: `${(last.x + 0.5) * cellPct}%`,
+                        top: `${labelTop}%`,
+                        transform: labelTransform,
+                      }}
+                    >
+                      {overBudget
+                        ? t(settings.lang, "ui.path_over_budget", {
+                            feet: totalFeet,
+                            over: overBy,
+                          })
+                        : t(settings.lang, "ui.path_cost", {
+                            feet: totalFeet,
+                            cells: totalCells,
+                          })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            {/* Unreachable indicator: red ✕ on the hovered cell. */}
+            {pathPreview && !pathPreview.reachable && hoverCell && (
+              <div
+                className="pointer-events-none absolute inset-1 z-[15] flex items-center justify-center"
+              >
+                <div
+                  className="absolute flex items-center justify-center rounded-[2px] border border-red-400/70 bg-red-500/40 text-[10px] font-bold text-red-100"
+                  style={{
+                    left: `${hoverCell.x * cellPct}%`,
+                    top: `${hoverCell.y * cellPct}%`,
+                    width: `${cellPct}%`,
+                    height: `${cellPct}%`,
+                  }}
+                  title={t(settings.lang, "ui.path_unreachable")}
+                >
+                  <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)]">✕</span>
+                </div>
+              </div>
+            )}
 
             {/* ===== Token layer — absolutely positioned, transitions on left/top. ===== */}
             <div className="pointer-events-none absolute inset-1 z-20">
@@ -769,6 +1038,12 @@ export const CombatGrid = memo(function CombatGrid({
           <span className="flex items-center gap-0.5"><span>🪨</span> {t(settings.lang, "terrain.full_cover_short")}</span>
           <span className="flex items-center gap-0.5"><span>⬆️</span> {t(settings.lang, "terrain.high_ground_short")}</span>
           <span className="flex items-center gap-0.5"><span>🌊</span> {t(settings.lang, "terrain.water_short")}</span>
+          <span className="flex items-center gap-0.5"><span>🔥</span> {t(settings.lang, "terrain.fire")}</span>
+          <span className="flex items-center gap-0.5"><span>❄️</span> {t(settings.lang, "terrain.ice")}</span>
+          <span className="flex items-center gap-0.5"><span>☠️</span> {t(settings.lang, "terrain.poison")}</span>
+          <span className="flex items-center gap-0.5"><span>💨</span> {t(settings.lang, "terrain.smoke")}</span>
+          <span className="flex items-center gap-0.5"><span>♨️</span> {t(settings.lang, "terrain.steam")}</span>
+          <span className="flex items-center gap-0.5"><span>⚡</span> {t(settings.lang, "terrain.electrified")}</span>
         </div>
       )}
     </Card>
@@ -782,7 +1057,8 @@ export const CombatGrid = memo(function CombatGrid({
  * - monsters' grid-relevant fields changed (position, HP, color, isActive, name, label, damageNotation)
  * - conditions list changed (length + id+condition+duration)
  * - aoe / lastAnimEvent reference changed
- * - gridExtras.lootCells / traps changed
+ * - gridExtras.lootCells / traps / terrainCells changed
+ * - D8: moveMode / remainingMovementFeet / yourPosition / yourName changed
  */
 function combatGridComparator(prev: CombatGridProps, next: CombatGridProps): boolean {
   if (
@@ -797,11 +1073,23 @@ function combatGridComparator(prev: CombatGridProps, next: CombatGridProps): boo
   ) {
     return false;
   }
+  // D8: path preview dependencies.
+  if (!Object.is(prev.moveMode, next.moveMode)) return false;
+  if (!Object.is(prev.remainingMovementFeet, next.remainingMovementFeet)) return false;
+  if (!Object.is(prev.yourName, next.yourName)) return false;
+  if (!posEqual(prev.yourPosition, next.yourPosition)) return false;
   if (!playersGridEqual(prev.players, next.players)) return false;
   if (!monstersGridEqual(prev.monsters, next.monsters)) return false;
   if (!conditionsListEqual(prev.conditions, next.conditions)) return false;
   if (!gridExtrasEqual(prev.gridExtras, next.gridExtras)) return false;
   return true;
+}
+
+/** D8: shallow-equal two {x,y}|null positions (yourPosition). */
+function posEqual(a: { x: number; y: number } | null | undefined, b: { x: number; y: number } | null | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.x === b.x && a.y === b.y;
 }
 
 function playersGridEqual(a: PlayerState[], b: PlayerState[]): boolean {
@@ -877,7 +1165,12 @@ function gridExtrasEqual(
 ): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return shallowEqual(a.lootCells, b.lootCells) && shallowEqual(a.traps, b.traps);
+  // D8: include terrainCells — the path preview depends on it.
+  return (
+    shallowEqual(a.lootCells, b.lootCells) &&
+    shallowEqual(a.traps, b.traps) &&
+    shallowEqual(a.terrainCells, b.terrainCells)
+  );
 }
 
 /** Small vertical stack of condition emoji icons shown at the top-right of a token. */

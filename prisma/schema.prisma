@@ -469,13 +469,18 @@ model StoryMemory {
 ///   - full_cover: solid wall/large boulder — blocks line of sight + projectiles
 ///   - high_ground: elevation — advantage on attacks, enemies have disadvantage
 ///   - water: shallow water — no special effect but visible
+///   - fire | ice | poison | acid | web | smoke | steam | electrified | holy_water
+///     — DOS2-style reactive surface effects (A6). These persist for N rounds
+///     and interact with each other (fire+water→steam, ice+fire→water, etc.).
+///     `duration` is rounds remaining (0 = permanent terrain like difficult).
 model TerrainCell {
   id        String   @id @default(cuid())
   roomId    String
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
   x         Int
   y         Int
-  type      String   // difficult | half_cover | full_cover | high_ground | water
+  type      String   // difficult | half_cover | full_cover | high_ground | water | fire | ice | poison | acid | web | smoke | steam | electrified | holy_water
+  duration  Int      @default(0) // rounds remaining (0 = permanent terrain like difficult/half_cover/etc.)
   createdAt DateTime @default(now())
 
   @@unique([roomId, x, y])

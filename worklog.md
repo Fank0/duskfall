@@ -3250,3 +3250,188 @@ Stage Summary:
 - Фаза 2.2 (Stealth/Hide), 2.7 (Concentration UI on tokens), 2.8 (Death save UI verified) — all done.
 - Total MASTER-PLAN progress: Phase 1 (visual), Phase 2.1 (fighting styles), 2.2 (stealth), 2.3 (sneak attack), 2.7 (concentration), 2.8 (death saves) — 6 tasks complete.
 - Next: Phase 2.4 (opportunity attack UI), 2.5 (Ready action), 2.6 (Help action), Phase 3 (containers, NPC dialogues, trading).
+
+---
+Task ID: E1
+Agent: full-stack-developer
+Task: Replace polling-only state sync with real-time WebSocket push (state:changed event) so all connected clients immediately refetch when any API mutates game state (turn change, monster action, chat message, combat start/end, equip, craft, level-up, rest, move-room, move-token).
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` (last 500 lines) to understand prior work — the project already had a `game-sync` socket.io relay mini-service on port 3003, a client-side `src/lib/game/socket.ts` helper (`getSocket/joinRoomSocket/pingRoom/onRoomRefresh`), and a 1.5s/5s adaptive polling fallback in `src/app/page.tsx`.
+- Examined `mini-services/game-sync/index.ts`: confirmed the existing `room:broadcast` event handler accepts `{ roomCode, event, payload }` and emits `event` to all sockets in the room. This means no mini-service changes are needed — the new `state:changed` event rides the existing broadcast mechanism.
+- Created `src/lib/realtime.ts` — server-side socket.io client (module-level singleton) that connects DIRECTLY to `http://localhost:3003` (server-to-server, never through Caddy). Exports `pushStateChange(roomCode)` which emits `room:broadcast` with `{ event: "state:changed", payload: { reason, ts } }`. All errors are swallowed — the realtime layer is best-effort and must never break an API response. The socket.io client auto-reconnects and buffers emits while disconnected, so the helper is safe to call before the first connection completes.
+- Added `onStateChange(cb)` to `src/lib/game/socket.ts` — symmetric to the existing `onRoomRefresh(cb)`; subscribes to the new `state:changed` event from the relay (browser-side, via the Caddy gateway `?XTransformPort=3003`).
+- Created `src/hooks/useRoomSocket.ts` — React hook that consolidates three concerns: (1) joins the socket.io room on `roomCode`/`playerName` change, (2) subscribes to BOTH `room:refresh` (legacy client-pinged) AND `state:changed` (new server-pushed) events, (3) debounces the refresh callback by 200ms (default) so a burst of mutations (monster AI turn → narrative → image) coalesces into ONE refetch. Also exposes an `onEvent` callback fired synchronously on every event — used to update `lastSocketPingRef` so the polling fallback can skip its next tick. Refs are updated inside an effect (not during render) to satisfy `react-hooks/refs`.
+- Refactored `src/app/page.tsx`: replaced 3 separate socket-related `useEffect`s (join room, listen + refetch, track lastSocketPingRef) with a single `useRoomSocket()` call. Removed now-unused `joinRoomSocket` and `onRoomRefresh` imports. Slowed polling from `1.5s combat / 5s exploration` to a uniform 5s safety-net (per task spec — socket push now handles instant updates). Polling is also paused entirely while a DM narrative is streaming (`isThinking`), and any tick within 5s of a recent socket push is still skipped (the `lastSocketPingRef` optimization is preserved).
+- Wired `pushStateChange(roomCode)` into 9 API routes after mutations:
+  - `action/route.ts` — 3 push points: (1) after mechanics resolved (other players see turn/HP changes instantly without waiting for narrative stream), (2) after narrative persisted, (3) after fire-and-forget scene-image completes.
+  - `rest/route.ts` — 1 push after short/long rest.
+  - `move-token/route.ts` — 1 push after token move + opportunity attacks.
+  - `move-room/route.ts` — 1 push after party moves to a new map room (reveals contents, traps, secret rooms to all clients).
+  - `party-chat/route.ts` — 1 push after party message stored.
+  - `attune/route.ts` — 1 push after attune/unattune.
+  - `equip/route.ts` — 2 pushes (equip branch + unequip branch).
+  - `craft/route.ts` — 2 pushes (success branch + failure branch — ingredients change either way).
+  - `levelup/route.ts` — 2 pushes (ASI branch + talent-pick branch).
+- Verified `bun run lint` — 0 errors, 0 warnings (after one fix: the initial `useRoomSocket` implementation updated refs during render, which violates `react-hooks/refs`; moved the ref updates into a `useEffect`).
+- Verified dev server (port 3000) and game-sync relay (port 3003) both running; no errors in recent `dev.log` entries. The relay's existing `room:broadcast` handler needed NO changes.
+- Wrote work record to `/home/z/my-project/agent-ctx/E1-full-stack-developer.md` (architecture diagram, file inventory, design decisions, integration guide for future agents).
+
+Stage Summary:
+- Real-time WebSocket push is live: any API mutation fires `state:changed` → relay broadcasts → all browsers in the room instantly refetch (debounced 200ms). Polling remains as a 5s safety net (down from 1.5s combat / 5s exploration).
+- The acting client still streams its own DM narrative via SSE and pings the room via the legacy `pingRoom()` call (now somewhat redundant with `state:changed` but kept as defense-in-depth); other clients receive both `room:refresh` and `state:changed`, coalesced by the hook's debounce.
+- `pushStateChange` is fire-and-forget and silent on failure — the realtime layer is best-effort and never blocks or breaks an API response.
+- Frontend integration is one line for consumers: `useRoomSocket(roomCode, playerName, { onRefresh, onEvent })`.
+- Files created: `src/lib/realtime.ts`, `src/hooks/useRoomSocket.ts`, `agent-ctx/E1-full-stack-developer.md`.
+- Files modified: `src/lib/game/socket.ts`, `src/app/page.tsx`, and 9 API routes (`action`, `rest`, `move-token`, `move-room`, `party-chat`, `attune`, `equip`, `craft`, `levelup`).
+- Lint clean (0 errors / 0 warnings). No new dependencies (socket.io-client was already present). No mini-service changes needed.
+
+---
+Task ID: D8
+Agent: full-stack-developer
+Task: BG3/DOS2-style path preview (A* with cell numbers and movement cost) on the tactical grid.
+
+Work Log:
+- Read worklog.md (last 100 lines) + previous task context. Identified that the existing A* `findPath` lives in `src/lib/game/pathfinding.ts` (NOT in CombatGrid.tsx as the task description stated) — the task hint was slightly off, but the function is the one already used by monster AI in `state.ts:1459`.
+- Inspected CombatGrid.tsx (1144 lines) — found the click-to-move flow: `canMoveHere` + `onMoveClick(x,y)` already works in combat when `targetingMode === "none"`. The "Двигаться" button in BottomPanel currently only shows a toast hint.
+- Inspected `pathfinding.ts` (266 lines) — `findPath(startX, startY, goalX, goalY, terrain, occupied, maxMovement)` returns `{ path, cost, damagingCells }`. Costs are in movement-points (1 normal cell = 1 pt = 5 ft; difficult terrain = 2 pts). The goal cell is allowed to be "occupied" so paths to enemies work.
+- Inspected `terrain.ts` — `movementCostOf(cells, x, y)` returns 1/2/Infinity per cell type. `TerrainCellState = { x, y, type: TerrainType }`.
+- Inspected `types.ts` — `PlayerState` has `speed`, `movementUsed`, `dashActive`. Remaining movement in feet = `(dashActive ? speed*2 : speed) - movementUsed`.
+- Inspected `page.tsx` — `you` is the local player; `handleMoveClick` already calls `/api/game/move-token`; `onMoveMode` callback currently just toasts.
+- Implementation (5 files):
+
+1. `src/lib/game/i18n.ts` — added 5 new i18n keys to ALL 6 language blocks (ru/en/es/de/fr/zh):
+   - `ui.move_mode_active` — toast shown when entering move mode
+   - `ui.move_mode_off` — toast for leaving move mode
+   - `ui.path_cost` — "{feet} ft · {cells} cells" label near destination
+   - `ui.path_over_budget` — "⚠ {feet} ft · +{over} ft" label when over budget
+   - `ui.path_unreachable` — "Unreachable" tooltip on ✕ marker
+
+2. `src/components/dnd/CombatGrid.tsx` (main work):
+   - Added imports: `findPath` from `@/lib/game/pathfinding`, `movementCostOf` + `TerrainCellState` from `@/lib/game/terrain`.
+   - Added 2 new props to `CombatGridProps`: `moveMode?: boolean`, `remainingMovementFeet?: number`.
+   - Added `hoverCell: {x,y}|null` state. Cleared on grid `onMouseLeave`. Set on cell `onMouseEnter` ONLY when `moveMode && combatActive && targetingMode === "none"` (otherwise the handler is `undefined` so React skips attaching it). Functional `setHoverCell` update bails out if the cell didn't actually change — so re-renders only happen on cell change, not on every pixel move.
+   - Computed `occupiedForPath` set (other players + monsters, yourself excluded) via `useMemo`.
+   - Computed `terrainForPath: TerrainCellState[]|null` via structural cast from `gridExtras.terrainCells`.
+   - Computed `pathPreview` via `useMemo` keyed on `[moveMode, combatActive, targetingMode, yourPosition, hoverCell, terrainForPath, occupiedForPath]`. Calls `findPath(yourPosition → hoverCell, Infinity)` and re-iterates the returned path with `movementCostOf` to build per-cell cumulative cost (so we know which cells exceed the movement budget). Returns `{cells, totalCost, reachable}` or `null` when moveMode/hover/position invalid.
+   - Rendered a `pointer-events-none absolute inset-1 z-[15]` overlay BETWEEN the cell backdrop and the token layer (tokens at z-20 stay visible). For each path cell: an amber `bg-amber-500/35 border-amber-400/80` div with the step number (1, 2, 3, …) — or red `bg-red-500/40 border-red-400/80` if `cumulativeCost * 5 > remainingMovementFeet`. A total-cost label is rendered above the destination cell: green "25 ft · 5 cells" or red "⚠ 35 ft · +5 ft" (clamped to below the cell when destination is on row 0 so it doesn't overflow the grid).
+   - Unreachable hover (walled-off cell): red ✕ marker on the hovered cell with `ui.path_unreachable` tooltip.
+   - Added `ring-1 ring-sky-500/50` to the grid container when moveMode is active (visual cue).
+   - Updated `combatGridComparator` to also compare `moveMode`, `remainingMovementFeet`, `yourName`, `yourPosition` (via new `posEqual` helper), and `terrainCells` (extended `gridExtrasEqual`).
+   - Did NOT modify `pathfinding.ts` (the A* algorithm itself) — only calls it.
+
+3. `src/app/page.tsx`:
+   - Added `const [moveMode, setMoveMode] = useState(false);`.
+   - `requestAbilityTargeting` and `requestAttackTargeting` now also call `setMoveMode(false)` — entering any targeting mode leaves move mode so the path preview doesn't compete with targeting highlights.
+   - Added an effect that turns off `moveMode` when combat ends (alongside the existing `cancelTargeting` effect).
+   - Passed `moveMode={moveMode}` and `remainingMovementFeet={you ? Math.max(0, (you.dashActive ? you.speed*2 : you.speed) - you.movementUsed) : undefined}` to `<CombatGrid>`.
+   - Updated `<BottomPanel onMoveMode={...}>` to toggle `moveMode` (and toast `ui.move_mode_active` in combat or `ui.move_combat_hint` outside combat) + passed `moveMode={moveMode}`.
+
+4. `src/components/dnd/BottomPanel.tsx`:
+   - Added `moveMode?: boolean` prop.
+   - The "Двигаться" button now shows an active state when `moveMode` is true: `border-sky-400/80 bg-sky-500/40 text-sky-50 ring-1 ring-sky-300/60 animate-pulse-glow` (vs. the default dim sky-950 styling).
+
+- Verified: `bun run lint` reports 0 errors on all 4 modified files. The 2 remaining lint errors (`useRoomSocket.ts:54,55` — "Cannot update ref during render") are PRE-EXISTING (confirmed by `git stash` + re-lint) and unrelated to D8.
+- Verified: `bunx tsc --noEmit` reports 3 errors — all PRE-EXISTING (confirmed by `git stash` + re-check): `actionPoints`/`maxActionPoints` on PlayerState in page.tsx, and `false | void` in the pre-existing `isAoeTargetCell && setAoeHoverCell(...)` line in CombatGrid.tsx. None introduced by D8.
+- Dev server log: HTTP 200 on `/`, `/api/game/state`, `/api/auth/me`. Prisma queries including `TerrainCell` are running normally.
+
+Stage Summary:
+- D8 (BG3/DOS2-style path preview) is fully implemented.
+- When the player clicks "Двигаться" in combat, the grid border gets a sky-blue ring + the button gets an active glow. Hovering any cell on the grid shows the full A* path (numbered 1..N amber cells, with cumulative movement cost). A label near the destination shows the total cost in feet + cell count (e.g. "25 ft · 5 cells"). Cells beyond the remaining movement budget turn red, and the label switches to "⚠ 35 ft · +5 ft" showing the overage. Unreachable destinations show a red ✕. The preview disappears on mouse-leave and updates in real-time as the mouse moves to different cells (recomputed only on cell-change via `mouseenter`, not on pixel-move).
+- The A* algorithm itself was NOT modified. Existing click-to-move still works (the overlay is `pointer-events-none` so clicks pass through). TypeScript types throughout. No new packages installed.
+- Files modified: `src/components/dnd/CombatGrid.tsx`, `src/app/page.tsx`, `src/components/dnd/BottomPanel.tsx`, `src/lib/game/i18n.ts`.
+
+---
+Task ID: D2
+Agent: full-stack-developer
+Task: Add native HTML5 drag-and-drop so the player can drag an inventory item onto an equipment slot to equip it, or drag an equipped item back to the inventory area to unequip it. Keep the existing click-to-equip flow intact.
+
+Work Log:
+- Read worklog.md (last ~500 lines) for context. Confirmed prior task E1 (real-time WebSocket push) wired `pushStateChange` into the equip route — drag-equip will reuse the existing `onEquip` / `onUnequip` callbacks and benefit from E1's instant sync for free.
+- Inspected the equipment UI surface. The task hint mentioned `CharacterSheet.tsx` having equip slots, but in the actual codebase the slots live in `EquipmentPanel.tsx` (a modal opened from CharacterSheet). `CharacterSheet.tsx` only renders a summary + an "Открыть" button. `BottomPanel.tsx` has 8 mini equipment slots + an inventory chip list, but only receives `onUnequip` (no `onEquip`), so adding drag-equip there would require changing the prop contract — out of scope per "don't change the API contract" constraint.
+- Read `/api/game/equip/route.ts` and `state.ts:equipItem/unequipItem` to confirm the API takes `(itemId, slot?)` for equip and `(slot)` for unequip, and that accessory1/accessory2 are both sent as `"accessory"` (the backend routes to the first empty accessory slot).
+- Rewrote `src/components/dnd/EquipmentPanel.tsx`:
+  - Added 4 pieces of DnD state: `draggedItem` (itemId for opacity-50), `draggedFromSlot` (slot name for unequip + slot opacity), `dragOverSlot` (highlighted slot), `dragOverInventory` (highlighted inventory area).
+  - Added a `clearDragState()` helper called on every `onDragEnd` and at the start of every `onDrop`.
+  - Defined two `dataTransfer` payload prefixes: `item:<itemId>` (dragging an inventory item to equip) and `slot:<slotName>` (dragging an equipped item to unequip).
+  - Slot buttons: `draggable={!!it}` (only filled slots are draggable); `onDragStart` sets `slot:<slotName>` payload + `effectAllowed="move"` + records `draggedFromSlot`/`draggedItem`; `onDragOver` preventDefault + `dropEffect="move"` + sets `dragOverSlot`; `onDragLeave` clears `dragOverSlot`; `onDrop` parses payload — `item:` prefix calls `equip(itemId, slot)`, `slot:` prefix is a no-op (slot-to-slot drag not supported). `onClick` (open-slot flow) preserved.
+  - Inventory section: previously only rendered when `openSlot` was set; now **always visible** below the slot grid so the player can drag-to-equip without first clicking a slot. When `openSlot` is set, the list filters to candidates for that slot (original click-to-equip UX intact). Each `<li>` is `draggable` with `onDragStart` setting `item:<itemId>`. The container `<div>` is a drop target for `slot:` payloads (unequip). `onDragLeave` uses `relatedTarget.contains()` to avoid highlight flicker when moving between child elements.
+  - Added a `slotToApi()` helper that maps `accessory1`/`accessory2` → `"accessory"` before calling `onEquip` (preserves the original behavior).
+  - Visual feedback per task spec: dragged source → `opacity-50`; valid drop target (slot or inventory) → `border-amber-500/60 bg-amber-950/30`; invalid drop → no special styling. Draggable inventory rows also get `cursor-grab` / `active:cursor-grabbing`.
+  - Updated the dialog description text to mention the new drag interaction in Russian.
+- Verified `bun run lint` → 0 errors, 0 warnings.
+- Verified `bunx tsc --noEmit` → no new errors in `EquipmentPanel.tsx` (pre-existing errors in `save-load.ts`, `state.ts`, `status-effects.ts`, `surface-effects.ts` are unrelated to D2 — confirmed by grep).
+- Verified dev server: `curl http://localhost:3000/` → HTTP 200. Recent `dev.log` shows only normal Prisma query logs + GET 200 responses.
+- Wrote work record to `/home/z/my-project/agent-ctx/D2-full-stack-developer.md`.
+
+Stage Summary:
+- D2 (drag-and-drop equip/unequip) is fully implemented inside the EquipmentPanel modal.
+- Players can now: (1) drag an inventory item from the always-visible inventory list onto any of the 8 equipment slots to equip it; (2) drag a filled equipment slot back onto the inventory area to unequip it; (3) still use the original click-to-equip flow (click slot → filtered candidate list → "Надеть" button).
+- Dragged items show `opacity-50`; valid drop targets highlight with `border-amber-500/60 bg-amber-950/30`; invalid drops get no special styling.
+- Native HTML5 drag events only — no new packages. The `onEquip` / `onUnequip` API contract is unchanged.
+- Files modified: `src/components/dnd/EquipmentPanel.tsx`. Files created: `agent-ctx/D2-full-stack-developer.md`.
+- Out of scope (noted for future tasks): DnD in `BottomPanel.tsx` (would require passing `onEquip` into BottomPanel), slot-to-slot swap drag, mobile touch support.
+
+---
+Task ID: A6
+Agent: full-stack-developer
+Task: Terrain transformation chain (DOS2-inspired) — reactive surface-to-surface transformations: fire+water→steam, fire→smoke→dissipate, ice+fire→water, poison+fire→explosion, water+lightning→electrified, holy_water+radiant→Undead damage.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` (last 500 lines) to understand prior work. Found that `surface-effects.ts` was a placeholder with no real surface application logic — only a stub `applySurfaceEffects` returning 0 damage and a `createSurfaceEffect` that just marked cells as "difficult" terrain.
+- Inspected `prisma/schema.prisma` — confirmed `TerrainCell` had no `duration` field.
+- Inspected `src/lib/game/terrain.ts` — confirmed `TerrainType` union was narrow (`difficult | half_cover | full_cover | high_ground | water`) and didn't include surface effect types.
+- Inspected `src/lib/game/dm-agent.ts` — confirmed AoE resolution path (line ~1265) had no surface application, and round-start tick in `advanceTurn` (line ~2262) only called `tickConditions` (no surface ticking).
+- Inspected `src/components/dnd/CombatGrid.tsx` — confirmed only 5 terrain types rendered visually (difficult/water/half_cover/full_cover/high_ground), no surface overlays.
+- Inspected `src/lib/game/i18n.ts` — confirmed only base terrain keys present in all 6 languages.
+
+Implementation (8 files):
+
+1. `prisma/schema.prisma` — Added `duration Int @default(0)` field to `TerrainCell` model. Documented that surface effect types (`fire | ice | poison | acid | web | smoke | steam | electrified | holy_water`) are also stored in the `type` field. Ran `bun run db:push` (Prisma client regenerated successfully).
+
+2. `src/lib/game/terrain.ts` — Expanded `TerrainType` union to include all 10 surface types. Added `duration?: number` to `TerrainCellState`. Updated `getTerrainCells` to return `duration`. Updated `movementCostOf` to handle new types (ice + web = 2x movement, others = 1x). Updated `isDifficultTerrain` to include ice + web. Updated `blocksLineOfSight` to include smoke + steam (vision-blocking clouds). Updated `isDamagingTerrain` to include holy_water.
+
+3. `src/lib/game/types.ts` — Added `duration?: number` to the `terrainCells` field of `GameStateSnapshot`.
+
+4. `src/lib/game/state.ts` — Updated `getSnapshot` to include `duration` in the `terrainCells` mapping. Cast `snap.terrainCells` to `TerrainCellState[]` for `coverAcBonus` call (the snapshot's type field is `string` per types.ts, while `TerrainCellState.type` is the strict `TerrainType` union). Imported `TerrainCellState` type from `./terrain`.
+
+5. `src/lib/game/surface-effects.ts` — FULL REWRITE (was 142 lines, now 748):
+   - Defined `SurfaceEffectType` union with 10 types.
+   - Expanded `SURFACE_PROPS` table with label/icon/color/damageNotation/damageType/description/blocksVision for each surface type.
+   - Defined `SurfaceReactionRule` interface + `SURFACE_REACTIONS` constant table with 8 rules (both directions explicitly): fire+water→steam (3 rounds, fog effect), ice+fire→water (3 rounds), poison+fire→fire (2 rounds, 2d6 fire damage explosion), water+electrified→electrified (2 rounds, stun effect).
+   - Implemented `findReaction(a, b)` — symmetric lookup of reaction rules.
+   - Implemented `processSurfaceReactions(cells: TerrainCellState[]): { newCells, effects }` — pure function. Scans same-cell + 4-neighbour pairs for conflicting surfaces, runs up to 4 passes for chain reactions, returns transformed cell set + `SurfaceReactionEffect[]` (damage/stun/fog with rolled amounts + Russian chat messages).
+   - Implemented `tickSurfaces(cells: TerrainCellState[]): { newCells, messages }` — pure function. Pass 1: melt ice adjacent to fire → water (priority). Pass 2: decrement durations + apply transformation rules: fire@0→smoke(2), smoke@0→dissipated, steam@0→dissipated, electrified@0→water, generic@0→dissipated.
+   - Implemented `applySurfaceAt(roomId, type, x, y, radius, duration, source)` — async DB-mutating helper. Upserts target cells (skipping full_cover walls), loads full room terrain, runs `processSurfaceReactions`, persists transformed cells (delete-all + createMany), returns reaction effects + Russian messages for the caller to apply/log.
+   - Implemented `persistTerrainCells(roomId, cells)` — helper used by `tickSurfaces` caller to write the new cell set back to the DB.
+   - Implemented `isSurfaceType(type)` — type guard for surface types vs base terrain.
+   - Updated `applySurfaceEffects(roomId, targetName, posX, posY, round)` — now actually rolls damage from the surface at the token's position (fire 1d6, poison 1d4, acid 1d6, holy_water 1d6 radiant) and returns damage + Russian notes.
+   - Kept `createSurfaceEffect` as a deprecated wrapper around `applySurfaceAt` for backward compat.
+
+6. `src/lib/game/dm-agent.ts` — Integrated the surface system into the DM agent:
+   - Imported `applySurfaceAt`, `applySurfaceEffects`, `persistTerrainCells`, `tickSurfaces`, `SurfaceEffectType` from `./surface-effects`.
+   - Added `elementToSurfaceType(element)` helper: fire→fire, cold→ice, acid→acid, poison→poison, radiant→holy_water. Lightning + thunder/force/necrotic/psychic return null.
+   - Added `applyLightningStrike(roomId, x, y, radius, actorName, round)` helper: scans for water cells in the AoE radius, converts each to electrified (duration 2), stuns monsters + players (except caster) on those cells for 1 round, returns Russian chat messages.
+   - After AoE resolution (line ~1524): if element is "lightning" → call `applyLightningStrike`; otherwise → call `applySurfaceAt` with the mapped surface type. For each returned reaction effect: apply damage (rolled by `processSurfaceReactions`) to monsters + players in the affected cells (excluding the caster), log dice rolls, award XP for kills. For stun effects: apply `stunned` condition to entities in the cell. Log each reaction message as a separate system chat line. All wrapped in try/catch so surface failures never break the action resolution.
+   - At round start in `advanceTurn` (line ~2481, alongside `tickConditions`): load terrain rows, run `tickSurfaces`, persist the new cells via `persistTerrainCells`, log each transformation message as a system chat line.
+   - At player turn start (line ~2593, after action economy reset): call `applySurfaceEffects(roomId, name, x, y, round)` to apply per-turn damage from standing on a hazardous surface. Apply damage via `damagePlayer` and log the Russian notes.
+
+7. `src/components/dnd/CombatGrid.tsx` — Added visual overlays for all 9 new surface types (fire/ice/poison/acid/web/smoke/steam/electrified/holy_water). Each renders at `z-[6]` (above terrain features, below loot/traps/AoE overlays) with a distinct Tailwind background color, border, and emoji icon. Some use `animate-pulse` (fire/poison/steam/electrified) for visual feedback. Updated the terrain legend (bottom of grid) to include the new surface types.
+
+8. `src/lib/game/i18n.ts` — Added `terrain.fire`, `terrain.ice`, `terrain.poison`, `terrain.acid`, `terrain.web`, `terrain.smoke`, `terrain.steam`, `terrain.electrified`, `terrain.holy_water` keys in ALL 6 language blocks (ru/en/es/de/fr/zh) with localized descriptions.
+
+Verification:
+- `bun run lint` → 0 errors, 0 warnings ✅
+- `bunx tsc --noEmit` → 0 errors in surface-effects.ts, terrain.ts, state.ts, types.ts, CombatGrid.tsx, i18n.ts. Remaining dm-agent.ts errors at lines 1177/2169/2963/3015/3043/3255 are ALL PRE-EXISTING (confirmed via `git stash` + re-check — they were at lines 1080/1957/2703/2755/2783/2995 before A6, shifted by my added lines). They involve unrelated `snap0`/`PlayerState`/`selectedTalents` issues from previous tasks.
+- Dev server returns HTTP 200 on `/api/game/state?room=85WQZE` ✅
+- Prisma client regenerated with `duration?: number` on `TerrainCellCreateInput` (verified via `grep` in `node_modules/.prisma/client/index.d.ts`) ✅
+- Wrote work record to `/home/z/my-project/agent-ctx/A6-full-stack-developer.md` (architecture, file inventory, integration guide).
+
+Stage Summary:
+- DOS2-style reactive surface transformation chain is fully implemented.
+- Surfaces now interact with each other in chain reactions: Fire + Water → Steam (3 rounds fog, blocks vision), Fire burns out → Smoke (2 rounds, blocks vision), Smoke dissipates → cell cleared, Ice + Fire → Water (melts), Poison + Fire → Explosion (2d6 fire damage to all in cell, consumes poison), Water + Lightning → Electrified Water (stuns anyone entering for 1 round), Holy water (radiant spell) → 1d6 radiant to Undead.
+- The system is integrated at three points: (1) after AoE spell casts (applies the surface + triggers reactions + applies damage), (2) at the start of each combat round (ticks surface durations + transforms expired surfaces), (3) at the start of each player's turn (applies per-turn damage from standing on a hazardous surface).
+- The CombatGrid renders all 10 surface types with distinct colors + emoji icons (🔥❄️☠️🧪🕸️💨♨️⚡✨). The terrain legend at the bottom of the grid shows the new surface types.
+- Files created: `agent-ctx/A6-full-stack-developer.md`.
+- Files modified: `prisma/schema.prisma`, `src/lib/game/surface-effects.ts` (full rewrite), `src/lib/game/terrain.ts`, `src/lib/game/state.ts`, `src/lib/game/types.ts`, `src/lib/game/dm-agent.ts`, `src/components/dnd/CombatGrid.tsx`, `src/lib/game/i18n.ts`.
+- Lint clean (0 errors / 0 warnings). No new TypeScript errors introduced (all remaining tsc errors are PRE-EXISTING). No new packages installed. No mini-service changes needed.

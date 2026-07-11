@@ -8,7 +8,7 @@ import { findBestiaryEntryByName, formatCR } from "./bestiary";
 import { getClassIdByCharClass, isCasterClass } from "./presets";
 import { getSpellById, resolveKnownSpells } from "./spellbook";
 import { generateLoot, findItemByName, rarityLabelRu, type ItemEntry, type ItemRarity } from "./item-database";
-import { coverAcBonus, getTerrainCells } from "./terrain";
+import { coverAcBonus, getTerrainCells, type TerrainCellState } from "./terrain";
 import { findPath } from "./pathfinding";
 import type {
   GameStateSnapshot,
@@ -515,7 +515,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     hasEnchant: Boolean(room.hasEnchant),
     lootCells,
     traps,
-    terrainCells: terrainRows.map((t) => ({ x: t.x, y: t.y, type: t.type })),
+    terrainCells: terrainRows.map((t) => ({ x: t.x, y: t.y, type: t.type, duration: t.duration })),
     dungeonBiome: room.dungeonBiome ?? "dungeon",
     dungeonDepth: room.dungeonDepth ?? 1,
     dungeonCleared: Boolean(room.dungeonCleared),
@@ -777,7 +777,7 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
       // D&D 5e cover: include effective AC (base + cover bonus) so the LLM
       // can correctly set attack target ACs. (item #12: apply cover AC bonus
       // to player attacks too — the DM context now shows the cover-adjusted AC.)
-      const coverBonus = coverAcBonus(snap.terrainCells ?? [], m.posX, m.posY);
+      const coverBonus = coverAcBonus((snap.terrainCells ?? []) as TerrainCellState[], m.posX, m.posY);
       const effectiveAc = m.ac + coverBonus;
       const acTag = coverBonus > 0 ? `AC ${effectiveAc} (база ${m.ac} +${coverBonus} укрытие)` : `AC ${m.ac}`;
       lines.push(

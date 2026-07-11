@@ -16,12 +16,28 @@
 import { db } from "@/lib/db";
 import { GRID_SIZE } from "./state";
 
-export type TerrainType = "difficult" | "half_cover" | "full_cover" | "high_ground" | "water";
+export type TerrainType =
+  | "difficult"
+  | "half_cover"
+  | "full_cover"
+  | "high_ground"
+  | "water"
+  // DOS2-style reactive surface effects (Task A6).
+  | "fire"
+  | "ice"
+  | "poison"
+  | "acid"
+  | "web"
+  | "smoke"
+  | "steam"
+  | "electrified"
+  | "holy_water";
 
 export interface TerrainCellState {
   x: number;
   y: number;
   type: TerrainType;
+  duration?: number; // rounds remaining (0 = permanent). Only set for surface effects (Task A6).
 }
 
 /** Biome-specific terrain generation profiles.
@@ -117,7 +133,7 @@ export async function generateTerrainForRoom(roomId: string, biome: string = "du
 /** Load all terrain cells for a room (for snapshot). */
 export async function getTerrainCells(roomId: string): Promise<TerrainCellState[]> {
   const rows = await db.terrainCell.findMany({ where: { roomId } });
-  return rows.map((r) => ({ x: r.x, y: r.y, type: r.type as TerrainType }));
+  return rows.map((r) => ({ x: r.x, y: r.y, type: r.type as TerrainType, duration: r.duration }));
 }
 
 /** Get terrain at a specific cell, or null if empty. */
@@ -149,16 +165,16 @@ export function highGroundAdvantage(cells: TerrainCellState[], x: number, y: num
   return null;
 }
 
-/** Check if a cell blocks line of sight (full cover). */
+/** Check if a cell blocks line of sight (full cover OR smoke/steam cloud). */
 export function blocksLineOfSight(cells: TerrainCellState[], x: number, y: number): boolean {
   const t = terrainAt(cells, x, y);
-  return t?.type === "full_cover";
+  return t?.type === "full_cover" || t?.type === "smoke" || t?.type === "steam";
 }
 
 /** Check if a cell is difficult terrain (movement costs 2x). */
 export function isDifficultTerrain(cells: TerrainCellState[], x: number, y: number): boolean {
   const t = terrainAt(cells, x, y);
-  return t?.type === "difficult";
+  return t?.type === "difficult" || t?.type === "ice" || t?.type === "web";
 }
 
 /**
@@ -173,8 +189,9 @@ export function isBlockingTerrain(cells: TerrainCellState[], x: number, y: numbe
 /**
  * D&D 5e movement cost in movement-points per cell entered.
  *   - normal/high_ground/half_cover/water: 1 (water is shallow, passable)
- *   - difficult (mud/ice/rubble): 2
+ *   - difficult (mud/ice/rubble): 2 — also ice + web (Task A6 surface effects)
  *   - full_cover (walls/boulders): Infinity (impassable)
+ *   - fire/acid/poison/smoke/steam/electrified/holy_water: 1 (passable but hazardous)
  * Returns 1 for empty cells (no terrain entry).
  */
 export function movementCostOf(cells: TerrainCellState[], x: number, y: number): number {
@@ -184,10 +201,19 @@ export function movementCostOf(cells: TerrainCellState[], x: number, y: number):
     case "full_cover":
       return Infinity;
     case "difficult":
+    case "ice":
+    case "web":
       return 2;
     case "half_cover":
     case "high_ground":
     case "water":
+    case "fire":
+    case "poison":
+    case "acid":
+    case "smoke":
+    case "steam":
+    case "electrified":
+    case "holy_water":
     default:
       return 1;
   }
@@ -195,9 +221,8 @@ export function movementCostOf(cells: TerrainCellState[], x: number, y: number):
 
 /**
  * Returns true for terrain that damages any creature entering it.
- * The current TerrainType union does not include damaging types, but the
- * check is string-based so future extensions (fire, poison, acid, lava,
- * thorns) work without further changes.
+ * Includes DOS2-style reactive surface effects (Task A6): fire, poison, acid,
+ * holy_water (radiant to Undead).
  */
 export function isDamagingTerrain(cells: TerrainCellState[], x: number, y: number): boolean {
   const t = terrainAt(cells, x, y);
@@ -205,6 +230,7 @@ export function isDamagingTerrain(cells: TerrainCellState[], x: number, y: numbe
   const DAMAGING: ReadonlySet<string> = new Set([
     "fire", "poison", "acid", "lava", "thorns",
     "poison_cloud", "web_burning", "trap_spikes",
+    "holy_water",
   ]);
   return DAMAGING.has(t.type as string);
 }

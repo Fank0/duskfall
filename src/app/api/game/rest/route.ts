@@ -8,6 +8,7 @@ import {
 } from "@/lib/game/state";
 import { rollDice } from "@/lib/game/dice";
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +172,9 @@ export async function POST(req: NextRequest) {
       });
     }
     invalidateSnapshotCache(room.id);
+    // E1: push state:changed so other clients in the room immediately
+    // refetch and see the new HP / spell slots / rest counter.
+    pushStateChange(roomCode);
     const snapshot = await getSnapshot(roomCode);
     return NextResponse.json({ ok: true, snapshot });
   } catch (e: any) {

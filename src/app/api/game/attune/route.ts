@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getSnapshot, invalidateSnapshotCache } from "@/lib/game/state";
 import { findItemByName } from "@/lib/game/item-database";
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,9 @@ export async function POST(req: NextRequest) {
     }
 
     const snapshot = await getSnapshot(roomCode);
+    // E1: push state:changed so other clients see the attunement change
+    // (item is now attuned / unattuned, attuned-item count updated).
+    pushStateChange(roomCode);
     return NextResponse.json({ ok: true, snapshot });
   } catch (e: any) {
     console.error("[api/game/attune] error:", e);

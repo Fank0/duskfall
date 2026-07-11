@@ -95,6 +95,7 @@ export const BottomPanel = memo(function BottomPanel({
   hasAnyStation = false,
   onCraft,
   onMoveMode,
+  moveMode = false,
   combatActive = false,
   nearestMonsterName,
   onRequestTargeting,
@@ -110,6 +111,8 @@ export const BottomPanel = memo(function BottomPanel({
   hasAnyStation?: boolean;
   onCraft?: (recipeId?: string) => void;
   onMoveMode?: () => void;
+  /** D8: true when the player has toggled movement mode (path preview on hover). */
+  moveMode?: boolean;
   /** True while combat is active — enables targeted damage text. */
   combatActive?: boolean;
   /** Name of the nearest active monster — used as damage target in text. */
@@ -579,7 +582,9 @@ export const BottomPanel = memo(function BottomPanel({
                   className={cn(
                     "flex items-center justify-center gap-0.5 rounded border px-1 py-0.5 text-[9px] font-medium transition-all text-center",
                     (q as any).moveMode
-                      ? "border-sky-700/40 bg-sky-950/20 text-sky-200"
+                      ? moveMode
+                        ? "border-sky-400/80 bg-sky-500/40 text-sky-50 ring-1 ring-sky-300/60 animate-pulse-glow"
+                        : "border-sky-700/40 bg-sky-950/20 text-sky-200"
                       : "border-amber-700/40 bg-amber-950/20 text-amber-200",
                     canQuickUse && "cursor-pointer hover:border-amber-500/60 hover:bg-amber-950/40",
                     !canQuickUse && "cursor-default opacity-40",

@@ -18,6 +18,7 @@ import { populateRoomContent } from "@/lib/game/dungeon-populate";
 import { getBiome, getImagePrompt, type DungeonBiomeId } from "@/lib/game/dungeon-biomes";
 import { rollD20, abilityModifier } from "@/lib/game/dice";
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -266,6 +267,10 @@ export async function POST(req: NextRequest) {
     }
 
     const snapshot = await getSnapshot(roomCode);
+    // E1: push state:changed so other clients in the room immediately see
+    // the party's new map position, the discovered room's contents, the
+    // trap perception results, and the new scene image.
+    pushStateChange(roomCode);
     return NextResponse.json({
       ok: true,
       snapshot,

@@ -56,6 +56,13 @@ import { rollDice, rollD20, rollD20Advantage, abilityModifier } from "./dice";
 import { extractJson } from "./json";
 import { getCondition, attackBonusDice } from "./conditions";
 import {
+  applySurfaceAt,
+  applySurfaceEffects,
+  persistTerrainCells,
+  tickSurfaces,
+  type SurfaceEffectType,
+} from "./surface-effects";
+import {
   getClassIdByCharClass,
   isCasterClass,
   SLOT_CONSUMING_ABILITIES,
@@ -131,6 +138,96 @@ function inferDamageType(notation: string, actor: PlayerState | null): string | 
   }
   // Default: slashing for weapons.
   return undefined;
+}
+
+/**
+ * Task A6: Map a spell's `aoeElement` to a DOS2-style reactive surface type.
+ * Returns undefined for elements that don't create surfaces (thunder, force,
+ * necrotic, psychic — these dissipate without leaving a ground effect).
+ *
+ *   fire     → fire      (1d6 fire dmg/round, 3 rounds, then → smoke)
+ *   cold     → ice       (DEX save or prone, half speed, 3 rounds)
+ *   acid     → acid      (1d6 acid dmg, -1 AC, 2 rounds)
+ *   poison   → poison    (1d4 poison dmg, disadvantage, 2 rounds)
+ *   lightning → special: handled in applySurfaceAt — if there's water at the
+ *              target cell it becomes electrified; otherwise no surface.
+ *   radiant  → holy_water (1d6 radiant to Undead, 2 rounds)
+ */
+function elementToSurfaceType(element: string): SurfaceEffectType | null {
+  switch (element) {
+    case "fire":
+      return "fire";
+    case "cold":
+      return "ice";
+    case "acid":
+      return "acid";
+    case "poison":
+      return "poison";
+    case "radiant":
+      return "holy_water";
+    // lightning is handled separately — it only creates a surface when it
+    // strikes water. The caller can detect this by checking for existing
+    // water at the origin cell. We return null here and let the lightning-
+    // specific path in the DM agent handle it.
+    case "lightning":
+      return null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Task A6: Apply a lightning strike to the given cell. If there's a water
+ * surface at the cell, convert it to electrified (and stun everyone standing
+ * in it). Otherwise no surface is created — lightning is purely destructive.
+ *
+ * Returns the chat messages to log.
+ */
+async function applyLightningStrike(
+  roomId: string,
+  x: number,
+  y: number,
+  radius: number,
+  actorName: string,
+  round: number
+): Promise<string[]> {
+  const messages: string[] = [];
+  // Check if there's water at any cell in the radius.
+  const cells = await db.terrainCell.findMany({ where: { roomId } });
+  const waterCells = cells.filter(
+    (c) =>
+      c.type === "water" &&
+      Math.abs(c.x - x) <= radius &&
+      Math.abs(c.y - y) <= radius
+  );
+  if (waterCells.length === 0) {
+    return messages;
+  }
+  // Convert each water cell to electrified.
+  for (const wc of waterCells) {
+    await db.terrainCell.update({
+      where: { id: wc.id },
+      data: { type: "electrified", duration: 2 },
+    });
+    messages.push(
+      `⚡💧 Молния бьёт в воду на (${wc.x},${wc.y}) — поверхность наэлектризована! Стоящие на клетке оглушены на 1 раунд (СПАС ТЕЛ DC 12).`
+    );
+    // Stun monsters + players standing on the cell.
+    const cellMonsters = await db.monster.findMany({
+      where: { roomId, isActive: true, posX: wc.x, posY: wc.y },
+    });
+    for (const cm of cellMonsters) {
+      await applyCondition(roomId, cm.name, "monster", "stunned", 1, "Электризованная вода");
+    }
+    const cellPlayers = await db.player.findMany({
+      where: { roomId, posX: wc.x, posY: wc.y, isAlive: true },
+    });
+    for (const cp of cellPlayers) {
+      if (cp.name === actorName) continue;
+      await applyCondition(roomId, cp.name, "player", "stunned", 1, "Электризованная вода");
+    }
+  }
+  return messages;
 }
 
 /** D&D 5e: upcast damage scaling — when a spell is cast using a higher-level
@@ -1420,6 +1517,121 @@ async function resolvePlayerAction(
         },
       });
     }
+
+    // ===== DOS2-style reactive surfaces (Task A6) =====
+    // After the AoE spell resolves, apply a surface based on the spell's
+    // element: fire → fire surface, cold → ice, acid → acid pool, poison →
+    // poison cloud, lightning → either electrified water (if the AoE overlaps
+    // an existing water surface) or no surface, radiant → holy_water.
+    // processSurfaceReactions is then called inside applySurfaceAt — it
+    // detects chain reactions (fire+water→steam, ice+fire→water, poison+fire
+    // → explosion) and applies damage to entities standing in those cells.
+    try {
+      if (element === "lightning") {
+        // Lightning only creates a surface when it strikes water. The
+        // applyLightningStrike helper checks for water cells in the AoE
+        // radius and converts them to electrified.
+        const lightningMsgs = await applyLightningStrike(
+          roomId,
+          origin.x,
+          origin.y,
+          aoeSize,
+          actorName,
+          round
+        );
+        for (const msg of lightningMsgs) {
+          await db.chatMessage.create({
+            data: { roomId, role: "system", speaker: "", round, content: msg },
+          });
+        }
+      } else {
+        const surfaceType = elementToSurfaceType(element);
+        if (surfaceType) {
+          const radius = Math.max(0, Math.min(2, aoeSize - 1)); // AoE radius is bigger than surface spread
+          const duration = surfaceType === "ice" ? 3 : surfaceType === "fire" ? 3 : 2;
+          const surfaceResult = await applySurfaceAt(
+            roomId,
+            surfaceType,
+            origin.x,
+            origin.y,
+            radius,
+            duration,
+            `${actorName}: ${element} AoE`
+          );
+
+          // Apply reaction effects (damage / stun) to entities in the affected
+          // cells. Each effect has an (x,y) and an amount/type. Monsters and
+          // players standing on those cells take the damage.
+          for (const eff of surfaceResult.effects) {
+            if ((eff.type === "damage" || eff.type === "radiant") && eff.amount && eff.amount > 0) {
+              // Find monsters in the cell.
+              const cellMonsters = await db.monster.findMany({
+                where: { roomId, isActive: true, posX: eff.x, posY: eff.y },
+              });
+              for (const cm of cellMonsters) {
+                const r = await damageMonster(roomId, cm.id, eff.amount, eff.damageType);
+                await logDiceRoll(roomId, round, actorName, {
+                  label: `Реакция поверхности: ${eff.amount} урона ${eff.damageType ?? ""} по ${cm.name}`,
+                  notation: eff.amount.toString(),
+                  modifier: 0,
+                  result: eff.amount,
+                  total: eff.amount,
+                  purpose: "player_damage",
+                });
+                if (r.died) {
+                  const xp = xpForMonster(cm.maxHp);
+                  await awardXP(roomId, actorName, xp);
+                  aoeLog.push(`${cm.name} повержен реакцией поверхности! (+${xp} опыта)`);
+                }
+              }
+              // Find players in the cell (except the caster — they don't take
+              // damage from their own spell's surface reaction).
+              const cellPlayers = await db.player.findMany({
+                where: { roomId, posX: eff.x, posY: eff.y },
+              });
+              for (const cp of cellPlayers) {
+                if (cp.name === actorName || cp.hp <= 0 || !cp.isAlive) continue;
+                await damagePlayer(roomId, cp.name, eff.amount);
+                await logDiceRoll(roomId, round, actorName, {
+                  label: `Реакция поверхности: ${eff.amount} урона ${eff.damageType ?? ""} по ${cp.name}`,
+                  notation: eff.amount.toString(),
+                  modifier: 0,
+                  result: eff.amount,
+                  total: eff.amount,
+                  purpose: "player_damage",
+                });
+                damageDealtToPlayer += eff.amount;
+                if (!damagedPlayer) damagedPlayer = cp.name;
+              }
+            } else if (eff.type === "stun") {
+              // Apply stunned condition to entities in the cell (CON save DC 12).
+              const cellMonsters = await db.monster.findMany({
+                where: { roomId, isActive: true, posX: eff.x, posY: eff.y },
+              });
+              for (const cm of cellMonsters) {
+                await applyCondition(roomId, cm.name, "monster", "stunned", eff.duration ?? 1, "Электризованная вода");
+              }
+              const cellPlayers = await db.player.findMany({
+                where: { roomId, posX: eff.x, posY: eff.y, isAlive: true },
+              });
+              for (const cp of cellPlayers) {
+                if (cp.name === actorName) continue;
+                await applyCondition(roomId, cp.name, "player", "stunned", eff.duration ?? 1, "Электризованная вода");
+              }
+            }
+          }
+
+          // Log each reaction message as a separate system chat line.
+          for (const msg of surfaceResult.reactionMessages) {
+            await db.chatMessage.create({
+              data: { roomId, role: "system", speaker: "", round, content: msg },
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[DM] surface application failed:", e);
+    }
   } else if (outcome === "success" && branch.monsterDamage) {
     // Single-target damage (non-AoE).
     const targetName = branch.monsterDamage.target;
@@ -2266,6 +2478,31 @@ async function advanceTurn(
           data: { roomId, role: "system", speaker: "", round, content: msg },
         });
       }
+      // ===== DOS2-style surface ticking (Task A6) =====
+      // Decrement surface durations, transform expired surfaces (fire→smoke,
+      // smoke→dissipate, ice adjacent to fire→water, electrified→water), and
+      // remove dissipated ones. Persists the new terrain back to the DB.
+      try {
+        const terrainRows = await db.terrainCell.findMany({ where: { roomId } });
+        const terrainCells: TerrainCellState[] = terrainRows.map((r) => ({
+          x: r.x,
+          y: r.y,
+          type: r.type as TerrainCellState["type"],
+          duration: r.duration,
+        }));
+        const { newCells, messages: surfaceMsgs } = tickSurfaces(terrainCells);
+        if (surfaceMsgs.length > 0) {
+          await persistTerrainCells(roomId, newCells);
+          invalidateSnapshotCache(roomId);
+          for (const msg of surfaceMsgs) {
+            await db.chatMessage.create({
+              data: { roomId, role: "system", speaker: "", round, content: msg },
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[DM] surface tick failed:", e);
+      }
     }
     const current = order[room.turnIndex];
     if (!current) {
@@ -2353,6 +2590,29 @@ async function advanceTurn(
           dashActive: false,
         },
       });
+      // ===== DOS2-style surface effects (Task A6): apply per-turn damage
+      // from standing on a damaging surface (fire 1d6, poison 1d4, acid 1d6,
+      // holy_water 1d6 radiant if Undead). The damage is rolled and applied
+      // BEFORE the player gets to act. =====
+      try {
+        const surfaceRes = await applySurfaceEffects(
+          roomId,
+          current.combatantName,
+          p.posX,
+          p.posY,
+          room.round
+        );
+        if (surfaceRes.damage > 0) {
+          await damagePlayer(roomId, current.combatantName, surfaceRes.damage);
+          for (const note of surfaceRes.notes) {
+            await db.chatMessage.create({
+              data: { roomId, role: "system", speaker: "", round: room.round, content: note },
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[DM] per-turn surface damage failed:", e);
+      }
       return { ended: false, monsterTurns, nextTurnName: current.combatantName, nextTurnType: "player" };
     }
 

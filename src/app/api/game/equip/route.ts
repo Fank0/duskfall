@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { equipItem, unequipItem, getSnapshot } from "@/lib/game/state";
 import type { EquipmentSlot } from "@/lib/game/types";
 import { validatePlayerName, validateRoomCode, validateShortString } from "@/lib/game/validate";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: false, error: res.error ?? "Не удалось снять предмет." }, { status: 400 });
       }
       const snapshot = await getSnapshot(roomCode);
+      // E1: push state:changed so other clients see the updated equipment / AC.
+      pushStateChange(roomCode);
       return NextResponse.json({ ok: true, snapshot });
     }
 
@@ -66,6 +69,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: res.error ?? "Не удалось экипировать предмет." }, { status: 400 });
     }
     const snapshot = await getSnapshot(roomCode);
+    // E1: push state:changed so other clients see the new equipment / AC.
+    pushStateChange(roomCode);
     return NextResponse.json({ ok: true, snapshot });
   } catch (e: any) {
     console.error("[api/game/equip] error:", e);

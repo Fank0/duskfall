@@ -467,7 +467,7 @@ export interface GameStateSnapshot {
   /** trap cells on the grid (DM-populated; empty for now) — item 20 */
   traps: { x: number; y: number; discovered: boolean }[];
   /** D&D 5e tactical terrain features on the combat grid */
-  terrainCells: { x: number; y: number; type: string }[];
+  terrainCells: { x: number; y: number; type: string; duration?: number }[];
   /** ===== Dungeon generator (Пункт 36) ===== */
   /** Active biome id (catacombs | caves | tower | forest | dungeon). */
   dungeonBiome: string;

@@ -11,6 +11,7 @@ import {
 } from "@/lib/game/crafting";
 import { inferEquipProps } from "@/lib/game/item-props";
 import { validatePlayerName, validateRoomCode, validateShortString } from "@/lib/game/validate";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +125,9 @@ export async function POST(req: NextRequest) {
         snap.round
       );
       const snapshot = await getSnapshot(roomCode);
+      // E1: push state:changed so other clients see the new crafted item /
+      // consumed ingredients in the crafter's inventory.
+      pushStateChange(roomCode);
       return NextResponse.json({
         ok: true,
         snapshot,
@@ -152,6 +156,9 @@ export async function POST(req: NextRequest) {
       snap.round
     );
     const snapshot = await getSnapshot(roomCode);
+    // E1: push state:changed so other clients see the consumed ingredients
+    // even on a failed craft.
+    pushStateChange(roomCode);
     return NextResponse.json({
       ok: true,
       snapshot,

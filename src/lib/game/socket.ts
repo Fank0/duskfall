@@ -39,3 +39,21 @@ export function onRoomRefresh(cb: () => void): () => void {
     s.off("room:refresh", handler);
   };
 }
+
+/**
+ * Subscribe to `state:changed` signals — pushed by the Next.js API routes
+ * (via the game-sync relay) after every game-state mutation (turn change,
+ * monster action, chat message, combat start/end, equip, craft, level-up…).
+ *
+ * The frontend treats this as a "refetch now" notification: on receipt it
+ * calls `fetchState(roomCode, true)` (debounced by the caller, typically via
+ * the `useRoomSocket` hook). Returns an unsubscribe fn.
+ */
+export function onStateChange(cb: () => void): () => void {
+  const s = getSocket();
+  const handler = () => cb();
+  s.on("state:changed", handler);
+  return () => {
+    s.off("state:changed", handler);
+  };
+}

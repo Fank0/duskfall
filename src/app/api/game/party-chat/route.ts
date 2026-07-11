@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { invalidateSnapshotCache } from "@/lib/game/state";
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
+import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
       },
     });
     invalidateSnapshotCache(room.id);
+    // E1: push state:changed so other clients in the room immediately see
+    // the new party chat message in their chat panel.
+    pushStateChange(roomCode);
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

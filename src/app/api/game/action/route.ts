@@ -11,6 +11,7 @@ import { validateActionText, validatePlayerName, validateRoomCode } from "@/lib/
 import { sanitizeLLMOutput, stripEnglishWords } from "@/lib/game/sanitize";
 import { logger } from "@/lib/game/logger";
 import { metrics } from "@/lib/game/metrics";
+import { pushStateChange } from "@/lib/realtime";
 import { defaultLang, type Lang } from "@/lib/game/i18n";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +93,12 @@ export async function POST(req: NextRequest) {
         const mech = await resolvePlayerMechanics(roomCode, playerName, action, lang, req.signal);
         const snapshot = await getSnapshot(roomCode);
         send({ type: "mechanics", event: mech, snapshot });
+        // E1: push state:changed so OTHER clients in the room immediately
+        // refetch and see the turn change / HP / position updates (the acting
+        // client already has them via the snapshot above). This is the
+        // critical push for combat turn changes — other players learn it's
+        // their turn without waiting for the narrative to finish streaming.
+        pushStateChange(roomCode);
 
         // 2. Stream the narrative token-by-token.
         let full = "";
@@ -137,6 +144,8 @@ export async function POST(req: NextRequest) {
               .then((url) => {
                 if (url) {
                   invalidateSnapshotCache(room.id);
+                  // E1: notify clients that a new scene image is ready.
+                  pushStateChange(roomCode);
                   logger.info("scene image generated from DM plan", {
                     roomCode,
                     imageUrl: url,
@@ -150,6 +159,10 @@ export async function POST(req: NextRequest) {
                 });
               });
           }
+          // E1: second push — after the DM narrative is persisted, so other
+          // clients refetch and see the new chat message + any image-prompt
+          // state changes. (The first push above covered the mechanics.)
+          pushStateChange(roomCode);
         }
         send({ type: "done" });
         succeeded = true;
