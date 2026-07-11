@@ -1200,6 +1200,8 @@ async function resolvePlayerAction(
     actionUsed: false, bonusActionUsed: false, reactionUsed: false, concentratingOn: "",
     skillProficiencies: [], saveProficiencies: [], passivePerception: 10, spellSaveDC: 12,
     classResources: {},
+    speed: 30, movementUsed: 0, dashActive: false, fightingStyle: "",
+    gwmActive: false, classLevelsJson: "", isCompanion: false, posZ: 0,
   };
   const playerRolls: ResolvedRoll[] = [];
   let outcome: "success" | "failure" = "success";
@@ -2226,6 +2228,14 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     passivePerception: (target as any).passivePerception ?? 10,
     spellSaveDC: (target as any).spellSaveDC ?? 12,
     classResources: (target as any).classResources ?? {},
+    speed: (target as any).speed ?? 30,
+    movementUsed: (target as any).movementUsed ?? 0,
+    dashActive: Boolean((target as any).dashActive),
+    fightingStyle: (target as any).fightingStyle ?? "",
+    gwmActive: Boolean((target as any).gwmActive),
+    classLevelsJson: (target as any).classLevelsJson ?? "",
+    isCompanion: Boolean((target as any).isCompanion),
+    posZ: (target as any).posZ ?? 0,
   };
   // Check for shielded condition (+2 AC) — effectiveAC only checks talents, not conditions
   const targetConds = await db.condition.findMany({ where: { roomId, targetName: target.name } });
@@ -2977,7 +2987,7 @@ export async function resolvePlayerMechanics(
   const isHelpAction = wasCombatActive && (actionLower.includes("помощ") || actionLower.includes("help"));
   if (isHelpAction) {
     // Find the nearest ally (another player) to grant advantage to.
-    const allies = (snap0?.players ?? []).filter((p) => p.name !== actorName && p.isAlive && p.hp > 0);
+    const allies = (actorSnap?.players ?? []).filter((p) => p.name !== actorName && p.isAlive && p.hp > 0);
     if (allies.length > 0) {
       // Grant "blessed" condition to the nearest ally (represents Help advantage).
       const nearestAlly = allies.reduce((best, a) => {
@@ -3029,7 +3039,7 @@ export async function resolvePlayerMechanics(
         content: `⏳ ${actorName} готовит действие: «${playerAction}». Оно сработает при триггере, который описал игрок.` },
     });
     // Store the ready action as a story memory so the DM remembers it.
-    await addStoryMemory(roomId, `${actorName} подготовил действие: ${playerAction.slice(0, 200)}`);
+    await addStoryMemory(roomId, "event", `${actorName} подготовил действие: ${playerAction.slice(0, 200)}`);
     const adv = await advanceTurn(roomCode, roomId);
     const snapR = await getSnapshot(roomCode);
     return {
@@ -3057,7 +3067,7 @@ export async function resolvePlayerMechanics(
     const isWeaponThrow = !isPotionThrow && (actionLower.includes("оруж") || actionLower.includes("weapon") || actionLower.includes("кинжал") || actionLower.includes("dart"));
     if (isPotionThrow) {
       // Find nearest ally to heal.
-      const allies = (snap0?.players ?? []).filter((p) => p.name !== actorName && p.isAlive && p.hp > 0 && p.hp < p.maxHp);
+      const allies = (actorSnap?.players ?? []).filter((p) => p.name !== actorName && p.isAlive && p.hp > 0 && p.hp < p.maxHp);
       if (allies.length > 0) {
         const target = allies.reduce((best, a) => {
           const distA = Math.max(Math.abs(a.posX - actor.posX), Math.abs(a.posY - actor.posY));
@@ -3269,7 +3279,10 @@ export async function resolvePlayerMechanics(
   }
 
   // ===== D&D 5e (V2 A10): Shove as bonus action (Shield Master feat). =====
-  const isShoveBonusAction = wasCombatActive && (actionLower.includes("толчок") || actionLower.includes("shove")) && hasFeat(actor.selectedTalents || [], "sentinel" as any);
+  const isShoveBonusAction = wasCombatActive && (actionLower.includes("толчок") || actionLower.includes("shove")) && hasFeat(
+    (actor.selectedTalents || "").split(",").map((s) => s.trim()).filter(Boolean),
+    "sentinel" as any
+  );
   // (Simplified: Sentinel grants shove as bonus — not exactly RAW but functional.)
 
   if (isHideAction) {

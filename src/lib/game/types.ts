@@ -271,6 +271,15 @@ export interface PlayerState {
   isCompanion: boolean;
   /** D&D 5e (MASTER-PLAN 6.2): Z-height level (0=ground, 1=ledge, 2=cliff). */
   posZ: number;
+  /**
+   * Optional UI hint: current Action Points (ОД) for this turn, shown as pips
+   * in the ChatPanel. `undefined` hides the pips entirely. The actual action
+   * economy is tracked by `actionUsed` / `bonusActionUsed` / `reactionUsed`;
+   * these two fields are purely presentational and may be derived/undefined.
+   */
+  actionPoints?: number;
+  /** Optional UI hint: max Action Points (ОД) per turn. See `actionPoints`. */
+  maxActionPoints?: number;
 }
 
 export interface MonsterState {
@@ -380,6 +389,54 @@ export interface ConditionState {
   condition: string; // condition id
   duration: number; // rounds remaining
   source: string;
+  createdAt: string;
+}
+
+/**
+ * D&D 5e status effect ids (machine keys). Must match the keys of
+ * `STATUS_EFFECTS` in src/lib/game/status-effects.ts. Kept in sync manually
+ * because the status-effects module imports this type for its registry.
+ */
+export type StatusEffectType =
+  | "poisoned"
+  | "bleeding"
+  | "burning"
+  | "frightened"
+  | "blessed"
+  | "shielded"
+  | "enraged"
+  | "slowed"
+  | "stunned"
+  | "marked";
+
+/**
+ * A status effect (DOT / buff / debuff / control) currently active on a
+ * combatant. Mirrors the `StatusEffect` Prisma model — `effect` is the
+ * `StatusEffectType` key, `magnitude` carries per-application strength
+ * (e.g. shielded AC bonus), and `duration` is rounds remaining.
+ */
+export interface StatusEffectState {
+  id: string;
+  targetName: string;
+  targetType: "player" | "monster";
+  effect: string;
+  duration: number;
+  magnitude: number;
+  source: string;
+  createdAt: string;
+}
+
+/**
+ * A loot drop recorded when a monster is slain — drives the LootLog panel.
+ * `items` is the parsed `itemsJson` field from the `LootDrop` Prisma model.
+ */
+export interface LootDropState {
+  id: string;
+  monsterName: string;
+  killerName: string;
+  gold: number;
+  items: { name: string; type: string; description: string; quantity?: number }[];
+  round: number;
   createdAt: string;
 }
 

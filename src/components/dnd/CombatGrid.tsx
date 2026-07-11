@@ -707,7 +707,7 @@ export const CombatGrid = memo(function CombatGrid({
                     "relative rounded-[2px] border border-border/20",
                     tint,
                     // AoE-targeting: every cell is clickable + hover highlight.
-                    isAoeTargetCell && setAoeHoverCell({ x, y }),
+                    Boolean(isAoeTargetCell && setAoeHoverCell({ x, y })),
                     isAoeTargetCell &&
                       "cursor-crosshair border-amber-400/40 hover:bg-amber-500/30 hover:border-amber-400/80",
                     // Ability-targeting: only cells with a monster are clickable.

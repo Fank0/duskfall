@@ -65,7 +65,7 @@ export function DialoguePanel({
   playerGold: number;
   playerInventory: InventoryItemState[];
   onAction: (
-    action: "intro" | "about" | "business" | "leave" | "buy" | "sell",
+    action: "intro" | "about" | "quest" | "business" | "leave" | "buy" | "sell",
     item?: string
   ) => Promise<{ narrative?: string; stock?: MerchantItem[]; tradeOutcome?: any } | null>;
   isBusy: boolean;

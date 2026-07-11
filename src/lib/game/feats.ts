@@ -25,7 +25,18 @@ export type FeatId =
   | "tough"
   | "mage_slayer"
   | "mobile"
-  | "war_caster";
+  | "war_caster"
+  // ===== Additional feats (V2 C6) — SRD feats that grant smaller benefits. =====
+  | "mage_slayer_feat"
+  | "savage_attacker"
+  | "tavern_brawler"
+  | "athlete"
+  | "alert"
+  | "durable"
+  | "magic_initiate"
+  | "ritual_caster"
+  | "weapon_master"
+  | "lightly_armored";
 
 export interface Feat {
   id: FeatId;

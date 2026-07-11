@@ -868,7 +868,7 @@ export default function Home() {
 
   const handleDialogueAction = useCallback(
     async (
-      action: "intro" | "about" | "business" | "leave" | "buy" | "sell",
+      action: "intro" | "about" | "quest" | "business" | "leave" | "buy" | "sell",
       item?: string
     ): Promise<{ narrative?: string; stock?: any[]; tradeOutcome?: any } | null> => {
       if (!session || !dialogueNpc) return null;

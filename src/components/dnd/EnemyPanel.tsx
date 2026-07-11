@@ -236,7 +236,9 @@ function EnemyRow({
           {monster.name}
         </span>
         {monster.isBoss && (
-          <Crown className="h-3 w-3 shrink-0 text-amber-300" title="Босс" />
+          <span title="Босс" className="shrink-0">
+            <Crown className="h-3 w-3 text-amber-300" />
+          </span>
         )}
         {isTurn && (
           <Badge className="ml-auto shrink-0 bg-primary text-[9px]">

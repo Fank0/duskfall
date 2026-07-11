@@ -66,6 +66,8 @@ model Room {
   storyMemories StoryMemory[]
   terrainCells  TerrainCell[]
   containers    Container[]
+  statusEffects StatusEffect[]
+  lootDrops     LootDrop[]
 }
 
 /// A registered user account (auth-restore). Stores a bcrypt password hash;
@@ -523,6 +525,41 @@ model Container {
   lockDC      Int      @default(0)
   gold        Int      @default(0)
   itemsJson   String   @default("[]") // JSON array of { name, type, description, quantity }
+  createdAt   DateTime @default(now())
+
+  @@index([roomId])
+}
+
+/// Active status effects (DOTs, buffs, debuffs, controls) on players/monsters.
+/// Mirrors `Condition` but carries a magnitude and is keyed by `StatusEffectType`
+/// (poisoned, bleeding, blessed, shielded, etc.). Used by save-load.ts for
+/// export/import and by the LootLog/StatusEffectBadges UI panels.
+model StatusEffect {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  targetName  String   // player or monster name
+  targetType  String   // "player" | "monster"
+  effect      String   // StatusEffectType key (poisoned, blessed, shielded, ...)
+  duration    Int      @default(3) // rounds remaining
+  magnitude   Int      @default(0) // per-application strength (e.g. shielded AC bonus)
+  source      String   @default("") // who/what applied it
+  createdAt   DateTime @default(now())
+
+  @@index([roomId, targetName])
+}
+
+/// Loot drops recorded when a monster is slain. Drives the LootLog panel.
+/// `itemsJson` is a JSON array of { name, type, description, quantity }.
+model LootDrop {
+  id          String   @id @default(cuid())
+  roomId      String
+  room        Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  monsterName String   // the slain monster
+  killerName  String   // the player who dealt the killing blow
+  gold        Int      @default(0)
+  itemsJson   String   @default("[]") // JSON array of { name, type, description, quantity }
+  round       Int      @default(0) // combat round when the drop happened
   createdAt   DateTime @default(now())
 
   @@index([roomId])
