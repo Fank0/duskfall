@@ -15,11 +15,36 @@ import { t } from "@/lib/game/i18n";
 import { cn } from "@/lib/utils";
 import { sfxClick, sfxMove, sfxSpellCast, sfxAbilityUse } from "@/lib/game/audio";
 
+/** STYLING-POLISH: color-coded quick actions.
+ *  attack   → red-700 family  (Sword icon)
+ *  examine  → blue-700 family (Eye icon)
+ *  move     → emerald-700 family (Footprints icon)
+ * Each entry's `accent` is a Tailwind class fragment used by the renderer
+ * to apply matching border/bg/text + hover lift + shadow. */
 const QUICK_ACTIONS = [
-  { labelKey: "actions.attack", icon: Swords, text: "I draw my weapon and attack the nearest enemy!", sfx: "ability" },
-  { labelKey: "actions.explore", icon: Eye, text: "I carefully examine the area — looking for dangers, clues, hidden items.", sfx: "click" },
-  { labelKey: "game.move", icon: Footprints, text: "I carefully move forward, weapon ready.", sfx: "move" },
+  { labelKey: "actions.attack", icon: Swords, text: "I draw my weapon and attack the nearest enemy!", sfx: "ability", accent: "red" as const },
+  { labelKey: "actions.explore", icon: Eye, text: "I carefully examine the area — looking for dangers, clues, hidden items.", sfx: "click", accent: "blue" as const },
+  { labelKey: "game.move", icon: Footprints, text: "I carefully move forward, weapon ready.", sfx: "move", accent: "emerald" as const },
 ];
+
+/** Per-accent Tailwind class bundle for the quick-action chip. */
+const QUICK_ACCENT_CLASSES: Record<"red" | "blue" | "emerald", { base: string; hover: string; targeting: string }> = {
+  red: {
+    base: "border-red-700/60 bg-red-950/40 text-red-200",
+    hover: "hover:border-red-500 hover:bg-red-900/50 hover:text-red-100 hover:shadow-[0_4px_10px_-2px_rgba(220,38,38,0.45)]",
+    targeting: "border-red-500/80 bg-red-950/60 text-red-100 animate-pulse ring-1 ring-red-400/60",
+  },
+  blue: {
+    base: "border-blue-700/60 bg-blue-950/40 text-blue-200",
+    hover: "hover:border-blue-500 hover:bg-blue-900/50 hover:text-blue-100 hover:shadow-[0_4px_10px_-2px_rgba(29,78,216,0.45)]",
+    targeting: "border-blue-500/80 bg-blue-950/60 text-blue-100 animate-pulse ring-1 ring-blue-400/60",
+  },
+  emerald: {
+    base: "border-emerald-700/60 bg-emerald-950/40 text-emerald-200",
+    hover: "hover:border-emerald-500 hover:bg-emerald-900/50 hover:text-emerald-100 hover:shadow-[0_4px_10px_-2px_rgba(5,150,105,0.45)]",
+    targeting: "border-emerald-500/80 bg-emerald-950/60 text-emerald-100 animate-pulse ring-1 ring-emerald-400/60",
+  },
+};
 
 /** How many messages to render initially (item 24: chat virtualization). */
 const VISIBLE_LIMIT = 50;
@@ -546,6 +571,7 @@ export const ChatPanel = memo(function ChatPanel({
           // revealed monsters. Otherwise it sends a generic attack action.
           const isAttackButton = q.labelKey === "actions.attack";
           const useTargeting = isAttackButton && onAttackTargeting && combatActive && !isTargetingActive;
+          const accent = QUICK_ACCENT_CLASSES[q.accent];
           return (
           <button
             key={q.labelKey}
@@ -564,16 +590,17 @@ export const ChatPanel = memo(function ChatPanel({
               }
             }}
             className={cn(
-              "flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+              // STYLING-POLISH: hover lift (-2px) + shadow on hover, accent color
+              // per action type, disabled state opacity-40 + cursor-not-allowed.
+              "flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none",
+              "lift-on-hover",
               isAttackButton && isTargetingActive
-                ? "border-red-500/70 bg-red-950/40 text-red-300 animate-pulse"
-                : isAttackButton && useTargeting
-                  ? "border-primary/60 bg-primary/15 text-primary hover:bg-primary/25"
-                  : "border-border/60 bg-stone-900/50 text-muted-foreground hover:border-primary/60 hover:text-foreground"
+                ? accent.targeting
+                : cn(accent.base, canAct && accent.hover),
             )}
           >
-            <q.icon className="h-3 w-3" />
-            {isAttackButton && isTargetingActive ? "Выберите цель…" : tt(q.labelKey)}
+            <q.icon className="h-3 w-3 shrink-0" />
+            <span className="truncate">{isAttackButton && isTargetingActive ? "Выберите цель…" : tt(q.labelKey)}</span>
           </button>
           );
         })}
@@ -659,17 +686,20 @@ function MessageBubble({
   if (message.role === "player") {
     const isYou = message.speaker === yourName;
     return (
-      <div className={cn("flex animate-fade-up", isYou ? "justify-end" : "justify-start")}>
+      <div className={cn("flex animate-slide-in-bottom", isYou ? "justify-end" : "justify-start")}>
+        {/* STYLING-POLISH: player messages — stone palette + smaller font.
+          Own messages keep a faint amber/primary tint so the speaker can
+          spot their own bubble at a glance. */}
         <div className={cn(
-          "max-w-[85%] rounded-lg px-3 py-2 text-sm",
+          "max-w-[85%] rounded-lg px-3 py-1.5 text-[13px] leading-snug",
           isYou
-            ? "rounded-tr-none border border-primary/40 bg-primary/15"
-            : "rounded-tl-none border border-sky-800/40 bg-sky-950/30"
+            ? "rounded-tr-none border border-amber-800/40 bg-stone-800/70 text-stone-100"
+            : "rounded-tl-none border border-stone-700/50 bg-stone-800/50 text-stone-200"
         )}>
-          <div className={cn("mb-0.5 text-[10px] font-semibold uppercase tracking-wide", isYou ? "text-primary/80" : "text-sky-300/80")}>
+          <div className={cn("mb-0.5 text-[10px] font-semibold uppercase tracking-wide", isYou ? "text-amber-300/80" : "text-stone-400")}>
             {isYou ? tt("common.you") : message.speaker || tt("common.player")}
           </div>
-          <p className="whitespace-pre-wrap leading-snug">{message.content}</p>
+          <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
       </div>
     );
@@ -677,7 +707,8 @@ function MessageBubble({
 
   if (message.role === "system") {
     return (
-      <div className="flex justify-center animate-fade-up">
+      <div className="flex justify-center animate-slide-in-bottom">
+        {/* STYLING-POLISH: system messages (dice, conditions) — italic + muted */}
         <div className="rounded-full border border-border/60 bg-stone-900/50 px-3 py-1 text-center text-[11px] italic text-muted-foreground">
           {message.content}
         </div>
@@ -703,13 +734,16 @@ function MessageBubble({
     onPlayTTS?.(message);
   };
   return (
-    <div className="flex items-start gap-2 animate-fade-up">
+    <div className="flex items-start gap-2 animate-slide-in-bottom">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-700/60 bg-stone-950/80">
         <Skull className="h-4 w-4 text-amber-300" />
       </div>
-      <div className="max-w-[88%] rounded-lg rounded-tl-none border border-border/60 bg-stone-900/60 px-3 py-2">
+      {/* STYLING-POLISH: DM messages — amber/gold border-left + serif font.
+        The left border accent reads as a “narrator quote bar” and the
+        serif body preserves the storytelling tone. */}
+      <div className="max-w-[88%] rounded-lg rounded-tl-none border border-border/60 border-l-2 border-l-amber-500/70 bg-stone-900/60 px-3 py-2 shadow-sm">
         <div className="mb-0.5 flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/80">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/85">
             <Sparkles className="h-3 w-3" /> {tt("chat.master_title")}
           </div>
           {!isStreamingBubble && onPlayTTS && (

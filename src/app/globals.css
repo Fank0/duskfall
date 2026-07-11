@@ -630,3 +630,39 @@ html.ui-scale-150 { font-size: 24px; }
   50% { opacity: 1; transform: scale(1.05); }
 }
 .loading-skull { animation: loadingPulse 2s ease-in-out infinite; }
+
+/* ===== STYLING-POLISH additions ===== */
+
+/* Chat message slide-in from bottom (subtle, used for new bubbles). */
+@keyframes slideInBottom {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-in-bottom {
+  animation: slideInBottom 0.35s ease-out;
+}
+
+/* Dying token — grayscale + reduced opacity (used when HP reaches 0). */
+.token-dying {
+  filter: grayscale(0.85);
+  opacity: 0.55;
+}
+
+/* Quick-action button hover lift (translateY -2px + shadow). */
+.lift-on-hover {
+  transition: transform 0.18s ease-out, box-shadow 0.18s ease-out, background-color 0.18s ease-out, border-color 0.18s ease-out;
+}
+.lift-on-hover:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px -2px oklch(0 0 0 / 0.55);
+}
+
+/* Monster HP ring overlay (conic gradient using the token's HP color). */
+.hp-ring-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  transition: border-color 0.5s ease;
+  pointer-events: none;
+}

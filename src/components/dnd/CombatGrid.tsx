@@ -609,12 +609,14 @@ export const CombatGrid = memo(function CombatGrid({
       </CardHeader>
       <CardContent className="flex-1 min-h-0 overflow-y-auto fantasy-scroll px-2 pb-1 pt-0">
         {/* Tactical grid: square shape, sized to fit the right column without
-            forcing scroll. Capped at 320px on lg, expands to 400px on xl
-            (1920px+ screens) so the 10×10 grid is more usable for tactical
-            positioning. Kept at 400px (not larger) so the SceneViewer + grid
-            + optional targeting banner all fit vertically at 1080px.
-            (audit-v2: grid was 280px — too small at 1920px.) */}
-        <div className="mx-auto aspect-square w-full max-w-[200px] sm:max-w-[240px] lg:max-w-[280px] xl:max-w-[340px]">
+            forcing scroll. STYLING-POLISH: bumped xl max-w from 340px → 460px
+            so at 1920×1080 each of the 16×16 cells is ~28px (460/16) — well
+            above the 28-px minimum requested for tactical readability. The
+            right column is ~28% of 1920px ≈ 537px, so a 460px grid fits with
+            comfortable padding without overflowing the column. Kept below
+            500px so the SceneViewer (28vh) + grid + optional targeting
+            banner still fit vertically at 1080px. */}
+        <div className="mx-auto aspect-square w-full max-w-[200px] sm:max-w-[240px] lg:max-w-[300px] xl:max-w-[460px]">
           <div
             ref={gridRef}
             onMouseLeave={clearHover}
@@ -1310,14 +1312,17 @@ function PlayerToken({
   const isTurn = currentTurnName === p.name;
   const hpPct = p.maxHp > 0 ? (p.hp / p.maxHp) * 100 : 0;
   const hpColor = hpGradientColor(hpPct);
+  const isDying = p.hp <= 0;
   const shapeClass = tokenShape === "square" ? "rounded-md" : "rounded-full";
   const hasPortrait = Boolean(p.portraitUrl);
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center p-0.5">
+    <div className={cn("flex h-full w-full flex-col items-center justify-center p-0.5", isDying && "token-dying")}>
       <div
         className={cn(
           "relative flex aspect-square w-[88%] items-center justify-center border-2 text-[8px] font-bold leading-none text-white shadow-md",
           shapeClass,
+          // STYLING-POLISH: subtle inner shadow + ring border in player color
+          "shadow-[inset_0_2px_4px_rgba(0,0,0,0.45),0_2px_4px_rgba(0,0,0,0.5)]",
           isTurn && "ring-2 ring-amber-300 animate-pulse-glow"
         )}
         style={{
@@ -1325,6 +1330,9 @@ function PlayerToken({
             ? undefined
             : `radial-gradient(circle at 30% 25%, ${p.color}, ${shade(p.color, -25)})`,
           borderColor: shade(p.color, 30),
+          // ring border using the player color (box-shadow ring avoids
+          // layout shift and stacks cleanly with the inner shadow).
+          boxShadow: `inset 0 2px 4px rgba(0,0,0,0.45), 0 0 0 1px ${shade(p.color, 30)}55, 0 2px 4px rgba(0,0,0,0.5)`,
           backgroundImage: hasPortrait ? `url(${p.portraitUrl})` : undefined,
           backgroundSize: "cover",
           backgroundPosition: "center",
@@ -1337,6 +1345,15 @@ function PlayerToken({
         {players.length > 1 && (
           <span className="absolute -left-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-stone-800 text-[7px] text-amber-300">
             {players.length}
+          </span>
+        )}
+        {/* Dying overlay — skull icon centered over the grayscale token. */}
+        {isDying && (
+          <span
+            className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center text-[12px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]"
+            title={`${p.name} — без сознания (0 HP)`}
+          >
+            💀
           </span>
         )}
         <BuffAura conditions={conditions} />
@@ -1405,6 +1422,7 @@ function MonsterToken({
 }) {
   const hpPct = monster.maxHp > 0 ? (monster.hp / monster.maxHp) * 100 : 0;
   const hpColor = hpGradientColor(hpPct);
+  const isDying = monster.hp <= 0;
   const shapeClass = tokenShape === "square" ? "rounded-md" : "rounded-full";
   // D3 — scale fonts and the HP bar width for multi-cell tokens so a 2×2 ogre
   // has a readable label and a 3×3 dragon's HP bar isn't tiny relative to body.
@@ -1412,8 +1430,12 @@ function MonsterToken({
   const hpTextSize = dim >= 3 ? "text-[11px]" : dim === 2 ? "text-[9px]" : "text-[7px]";
   const nameTextSize = dim >= 3 ? "text-[14px]" : dim === 2 ? "text-[11px]" : "text-[10px]";
   const borderW = dim >= 3 ? "border-4" : dim === 2 ? "border-[3px]" : "border-2";
+  // STYLING-POLISH: HP ring conic-gradient thickness scales with the token size
+  // so a 2×2 / 3×3 monster still shows a readable ring at its larger radius.
+  const ringThickness = dim >= 3 ? 6 : dim === 2 ? 4 : 3;
+  const hpRingBackground = `conic-gradient(${hpColor} ${Math.max(0, Math.min(100, hpPct)) * 3.6}deg, rgba(0,0,0,0.55) 0deg)`;
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center p-0.5">
+    <div className={cn("flex h-full w-full flex-col items-center justify-center p-0.5", isDying && "token-dying")}>
       <div
         className={cn(
           "relative flex aspect-square w-[88%] items-center justify-center font-bold leading-none text-white shadow-md",
@@ -1444,6 +1466,33 @@ function MonsterToken({
           {monster.isBoss && <div className="mt-1 text-amber-300 font-bold">⚡ БОСС</div>}
           {monster.specialAbility && <div className="mt-1 text-[9px] text-amber-200/80">⚡ {monster.specialAbility}</div>}
         </div>
+
+        {/* STYLING-POLISH: HP ring overlay (conic-gradient) using the existing
+            `.hp-ring` CSS wrapper class. The inner mask creates the ring shape
+            (transparent center, colored outer band). Sits ABOVE the token body
+            but BELOW condition icons / flash overlays. */}
+        <div className="hp-ring" aria-hidden>
+          <div
+            className="hp-ring-fill"
+            style={{
+              background: hpRingBackground,
+              // mask creates the ring shape (outer radius minus inner radius)
+              WebkitMask: `radial-gradient(circle, transparent calc(50% - ${ringThickness}px), #000 calc(50% - ${ringThickness}px + 0.5px), #000 calc(50% - 1px), transparent 50%)`,
+              mask: `radial-gradient(circle, transparent calc(50% - ${ringThickness}px), #000 calc(50% - ${ringThickness}px + 0.5px), #000 calc(50% - 1px), transparent 50%)`,
+            }}
+          />
+        </div>
+
+        {/* Dying overlay — skull icon centered over the grayscale token. */}
+        {isDying && (
+          <span
+            className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center text-[14px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]"
+            title={`${monster.name} — повержен (0 HP)`}
+          >
+            💀
+          </span>
+        )}
+
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{monster.label}</span>
         <BuffAura conditions={conditions} />
         <ConditionIcons conditions={conditions} lang={lang} />

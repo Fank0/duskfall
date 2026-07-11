@@ -59,10 +59,15 @@ export function SceneViewer({
         </div>
       )}
 
+      {/* STYLING-POLISH: subtle vignette using the existing `.scene-vignette`
+          CSS (radial gradient darkening at the edges). Sits above the image
+          but below weather/time overlays so it doesn't tint them. */}
+      <div className="scene-vignette" aria-hidden />
+
       {/* Time-of-day tint overlay */}
       {timeOfDay !== "day" && (
         <div
-          className="pointer-events-none absolute inset-0 mix-blend-multiply transition-colors duration-700"
+          className="pointer-events-none absolute inset-0 z-[2] mix-blend-multiply transition-colors duration-700"
           style={{
             background: timeOfDay === "dawn"
               ? "linear-gradient(rgba(255,170,80,0.18), rgba(255,140,60,0.08))"
@@ -74,38 +79,50 @@ export function SceneViewer({
       )}
 
       {/* Weather overlays */}
-      {weather === "rain" && <div className="pointer-events-none absolute inset-0 weather-rain" />}
-      {weather === "fog" && <div className="pointer-events-none absolute inset-0 weather-fog" />}
+      {weather === "rain" && <div className="pointer-events-none absolute inset-0 z-[2] weather-rain" />}
+      {weather === "fog" && <div className="pointer-events-none absolute inset-0 z-[2] weather-fog" />}
       {weather === "storm" && (
         <>
-          <div className="pointer-events-none absolute inset-0 weather-storm" />
-          <div className="pointer-events-none absolute inset-0 weather-storm-flash" />
+          <div className="pointer-events-none absolute inset-0 z-[2] weather-storm" />
+          <div className="pointer-events-none absolute inset-0 z-[2] weather-storm-flash" />
         </>
       )}
-      {weather === "snow" && <div className="pointer-events-none absolute inset-0 weather-snow" />}
+      {weather === "snow" && <div className="pointer-events-none absolute inset-0 z-[2] weather-snow" />}
 
       {/* Time indicator (top-right) */}
-      <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-1.5 rounded-full border border-amber-700/40 bg-stone-950/70 px-2.5 py-1 text-xs text-amber-200 backdrop-blur">
+      <div className="pointer-events-none absolute right-3 top-3 z-[3] flex items-center gap-1.5 rounded-full border border-amber-700/40 bg-stone-950/70 px-2.5 py-1 text-xs text-amber-200 backdrop-blur">
         <span className="text-sm">{timeEmoji}</span>
         <span className="font-medium">{timeLabel}</span>
       </div>
 
-      {/* Location caption */}
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-amber-300/80">{tt("ui.location")}</p>
-        <h2 className="font-serif text-lg font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">{location}</h2>
+      {/* STYLING-POLISH: location caption pinned to bottom-left with
+          text-shadow for legibility over busy scene art. The gradient
+          scrim improves contrast at the bottom of the image. */}
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-[3] bg-gradient-to-t from-black/90 via-black/45 to-transparent p-3">
+        <p
+          className="text-[10px] uppercase tracking-[0.2em] text-amber-300/85"
+          style={{ textShadow: "0 1px 3px rgba(0,0,0,0.95)" }}
+        >
+          {tt("ui.location")}
+        </p>
+        <h2
+          className="font-serif text-lg font-bold text-white"
+          style={{ textShadow: "0 1px 4px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.6)" }}
+        >
+          {location}
+        </h2>
       </div>
 
       {/* Generating badge */}
       {isGenerating && (
-        <div className="absolute right-3 top-12 flex items-center gap-2 rounded-full border border-amber-700/60 bg-stone-950/80 px-3 py-1 text-xs text-amber-300 backdrop-blur">
+        <div className="absolute right-3 top-12 z-[4] flex items-center gap-2 rounded-full border border-amber-700/60 bg-stone-950/80 px-3 py-1 text-xs text-amber-300 backdrop-blur">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           {tt("ui.drawing_scene")}
         </div>
       )}
 
       {/* AI disclaimer */}
-      <div className="pointer-events-none absolute bottom-1 right-2 text-[8px] text-white/30">
+      <div className="pointer-events-none absolute bottom-1 right-2 z-[3] text-[8px] text-white/30">
         {tt("ui.ai_generated")}
       </div>
     </div>

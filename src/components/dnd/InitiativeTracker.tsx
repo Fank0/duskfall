@@ -68,12 +68,16 @@ export function InitiativeTracker({
                 <div
                   className={cn(
                     "flex min-w-[64px] flex-col items-center rounded-md border px-2 py-1 transition-all",
+                    // STYLING-POLISH: current turn = amber border + bg-amber-950/30 +
+                    //   pulsing amber glow ring (animate-pulse-glow). Was primary/scale-105.
                     isCurrent
-                      ? "border-primary bg-primary/15 scale-105 animate-pulse-glow"
-                      : isNext
-                        ? "border-amber-600/50 bg-amber-950/20"
+                      ? "border-amber-500/70 bg-amber-950/30 scale-105 animate-pulse-glow ring-1 ring-amber-400/50"
+                      // STYLING-POLISH: next turn = subtle blue tint (was amber).
+                      : isNext && !dead
+                        ? "border-sky-700/50 bg-sky-950/25"
                         : "border-border/50 bg-stone-900/40",
-                    dead && "opacity-40"
+                    // STYLING-POLISH: dead = opacity-50 + line-through on the label.
+                    dead && "opacity-50 saturate-50"
                   )}
                 >
                   <div className="flex items-center gap-1">
@@ -81,11 +85,12 @@ export function InitiativeTracker({
                       className="inline-block h-2 w-2 rounded-full"
                       style={{ background: colorFor(e.combatantName, e.combatantType) }}
                     />
-                    <span className="truncate text-[10px] font-semibold">{label}</span>
+                    <span className={cn("truncate text-[10px] font-semibold", dead && "line-through")}>{label}</span>
                   </div>
                   <span className="font-mono text-xs font-bold text-amber-300">{e.initiative}</span>
-                  {isCurrent && <span className="text-[8px] text-primary">▶ {tt("game.now")}</span>}
-                  {isNext && !isCurrent && !dead && <span className="text-[8px] text-amber-400">→ {tt("game.next")}</span>}
+                  {/* STYLING-POLISH: ▶ indicator on the current-turn combatant. */}
+                  {isCurrent && <span className="text-[8px] font-bold text-amber-300">▶ {tt("game.now")}</span>}
+                  {isNext && !isCurrent && !dead && <span className="text-[8px] text-sky-400/80">→ {tt("game.next")}</span>}
                   {dead && <span className="text-[8px] text-red-400">{tt("char.dead_short")}</span>}
                 </div>
                 {i < initiatives.length - 1 && (

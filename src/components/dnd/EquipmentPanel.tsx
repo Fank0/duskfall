@@ -6,6 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
+import {
   Shield, Sword, HardHat, Shirt, Footprints, Hand, Gem, X, Loader2, ChevronRight, Backpack,
 } from "lucide-react";
 import type { PlayerState, InventoryItemState, EquipmentSlot } from "@/lib/game/types";
@@ -157,7 +162,10 @@ export function EquipmentPanel({
             const it = equippedBySlot[s.slot];
             const isDragOver = dragOverSlot === s.slot;
             const isDraggedFrom = draggedFromSlot === s.slot;
-            return (
+            // STYLING-POLISH: empty slots use a dashed border + greyed icon
+            //   placeholder. Filled slots use a solid amber border (item color).
+            //   On hover, a shadcn Tooltip surfaces the item name + stats.
+            const slotButton = (
               <button
                 key={s.slot}
                 type="button"
@@ -194,17 +202,20 @@ export function EquipmentPanel({
                 className={cn(
                   "flex min-h-[88px] flex-col items-start gap-1 rounded-md border p-2 text-left transition-all",
                   it
-                    ? "border-amber-700/50 bg-amber-950/20 hover:bg-stone-800/50"
-                    : "border-border/50 bg-stone-900/40 hover:border-amber-500/50 hover:bg-stone-900/70",
+                    ? // Filled slot — solid amber border with the item's color tint.
+                      "border-amber-700/60 bg-amber-950/20 hover:bg-amber-950/35 hover:border-amber-500/70"
+                    : // Empty slot — dashed border + greyed placeholder.
+                      "border-dashed border-border/60 bg-stone-900/40 hover:border-amber-600/50 hover:bg-stone-900/70",
                   // D2: valid drop target — amber highlight.
-                  isDragOver && "border-amber-500/60 bg-amber-950/30",
+                  isDragOver && "border-amber-500/80 bg-amber-950/40",
                   // D2: dragged source — faded.
                   isDraggedFrom && "opacity-50",
                 )}
               >
                 <div className="flex w-full items-center justify-between">
-                  <span className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground">
-                    {s.icon}
+                  <span className={cn("flex items-center gap-1 text-[10px] uppercase", it ? "text-amber-300/80" : "text-muted-foreground/60")}>
+                    {/* STYLING-POLISH: greyed icon when empty. */}
+                    <span className={cn(!it && "opacity-40 grayscale")}>{s.icon}</span>
                     {s.label}
                   </span>
                   {it && (
@@ -233,10 +244,36 @@ export function EquipmentPanel({
                     </div>
                   </>
                 ) : (
-                  <span className="mt-auto text-[10px] italic text-muted-foreground">пусто</span>
+                  <span className="mt-auto flex items-center gap-1 text-[10px] italic text-muted-foreground/50">
+                    <span className="opacity-40 grayscale">{s.icon}</span>
+                    пусто
+                  </span>
                 )}
               </button>
             );
+            // STYLING-POLISH: wrap each slot in a shadcn Tooltip so hovering
+            //   surfaces the item name + stats without opening the modal.
+            if (it) {
+              const props = inferEquipProps(it.itemName, it.itemType, it.description);
+              return (
+                <Tooltip key={s.slot}>
+                  <TooltipTrigger asChild>{slotButton}</TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[220px] text-left text-[10px] leading-tight">
+                    <div className="space-y-0.5">
+                      <div className="font-semibold text-amber-200">{it.itemName}</div>
+                      <div className="text-[9px] text-muted-foreground">Тип: {it.itemType}{it.equipSlot ? ` · слот: ${it.equipSlot}` : ""}</div>
+                      {props.acBonus > 0 && <div className="text-[9px] text-sky-300">+{props.acBonus} AC</div>}
+                      {props.damageNotation && <div className="text-[9px] text-red-300">Урон: {props.damageNotation}</div>}
+                      {Object.entries(props.statBonus).map(([k, v]) => v ? (
+                        <div key={k} className="text-[9px] text-emerald-300">+{v} {k.toUpperCase()}</div>
+                      ) : null)}
+                      {it.description && <div className="text-[9px] text-muted-foreground italic line-clamp-3">{it.description}</div>}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
+            return slotButton;
           })}
         </div>
 
