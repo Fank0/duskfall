@@ -57,7 +57,8 @@ export const BIOME_MONSTER_IDS: Record<DungeonBiomeId, string[]> = {
 
 /** Convert a bestiary entry into the BiomeMonster shape the room-population
  *  engine expects (lossy: discards CR/loot/specialAbility — those are read
- *  back from the bestiary on the DM-context side via findBestiaryEntryByName). */
+ *  back from the bestiary on the DM-context side via findBestiaryEntryByName).
+ *  D3 — keeps the bestiary's `size` so multi-cell bodies spawn correctly. */
 function bestiaryToBiomeMonster(e: BestiaryEntry): BiomeMonster {
   return {
     name: e.name,
@@ -67,6 +68,7 @@ function bestiaryToBiomeMonster(e: BestiaryEntry): BiomeMonster {
     attackBonus: e.attackBonus,
     color: CATEGORY_HEX[e.category],
     description: e.description,
+    size: e.size,
   };
 }
 
@@ -126,6 +128,8 @@ export interface BiomeMonster {
   attackBonus: number;
   color: string;
   description: string;
+  /** D3 — D&D 5e size category (Tiny/Small/Medium/Large/Huge/Gargantuan). */
+  size: string;
 }
 
 /** A boss template — twice the HP, has a special ability blurb. */
@@ -138,6 +142,8 @@ export interface BiomeBoss {
   color: string;
   description: string;
   specialAbility: string;
+  /** D3 — D&D 5e size category (defaults to "Huge" for bosses if absent). */
+  size?: string;
 }
 
 export interface BiomeLootItem {
@@ -511,6 +517,8 @@ export function scaleBiomeMonster(
     posY: 1 + Math.floor(Math.random() * 2),
     color: m.color,
     description: m.description,
+    // D3 — propagate size so multi-cell bodies render on the grid.
+    size: m.size ?? "medium",
   };
 }
 
@@ -538,5 +546,7 @@ export function scaleBiomeBoss(
     description: `${b.description} Особая способность: ${b.specialAbility}`,
     isBoss: true,
     specialAbility: b.specialAbility,
+    // D3 — bosses default to Huge when not specified.
+    size: b.size ?? "huge",
   };
 }

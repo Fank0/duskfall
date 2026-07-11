@@ -40,6 +40,8 @@ import { useRoomSocket } from "@/hooks/useRoomSocket";
 import type { GameStateSnapshot, NpcState, ResolvedEvent, InventoryItemState } from "@/lib/game/types";
 import { t } from "@/lib/game/i18n";
 import { GRID_SIZE } from "@/lib/game/state";
+// B6: client-safe NPC schedule helpers (no DB imports).
+import { isNpcUnavailableForDialogue } from "@/lib/game/npc-schedule-client";
 import { findNearestMonsterName, buildAbilityQuickText, buildItemQuickText, classifyAbilityTargeting, type QuickActionContext } from "@/lib/game/quick-use";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 
@@ -1311,16 +1313,34 @@ export default function Home() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                {snapshot.npcs.map((n) => (
-                  <DropdownMenuItem
-                    key={n.id}
-                    onClick={() => openDialogueWith(n)}
-                    className="flex items-center justify-between gap-2 text-xs"
-                  >
-                    <span className="truncate">{n.name}</span>
-                    <span className="text-[9px] uppercase text-muted-foreground">{n.role}</span>
-                  </DropdownMenuItem>
-                ))}
+                {snapshot.npcs.map((n) => {
+                  // B6: show a sleeping/busy badge next to NPCs who aren't
+                  // available at the current time-of-day. Clicking them still
+                  // opens the dialogue panel — the dialogue route will return
+                  // the "💤 X сейчас спит" message and write a system chat line.
+                  const sched = isNpcUnavailableForDialogue(n, snapshot.timeOfDay);
+                  const schedActivity = sched.activity;
+                  return (
+                    <DropdownMenuItem
+                      key={n.id}
+                      onClick={() => openDialogueWith(n)}
+                      className="flex items-center justify-between gap-2 text-xs"
+                    >
+                      <span className="truncate">{n.name}</span>
+                      {sched.unavailable ? (
+                        <span className="text-[9px] uppercase text-rose-400/80" title={sched.reason}>
+                          💤 {schedActivity ?? "занят"}
+                        </span>
+                      ) : schedActivity ? (
+                        <span className="text-[9px] uppercase text-emerald-400/70" title={`Сейчас: ${schedActivity}`}>
+                          {schedActivity.length > 16 ? schedActivity.slice(0, 14) + "…" : schedActivity}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] uppercase text-muted-foreground">{n.role}</span>
+                      )}
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -1603,6 +1623,7 @@ export default function Home() {
         playerInventory={snapshot.inventory.filter((i) => i.playerName === session.playerName)}
         onAction={handleDialogueAction}
         isBusy={isDialogueBusy}
+        timeOfDay={snapshot.timeOfDay}
       />
 
       {/* ===== Save game dialog ===== */}

@@ -2,7 +2,7 @@
 // + opening scene + narrative. Each new game begins somewhere different.
 
 import { db } from "@/lib/db";
-import type { CharClassPreset, RacePreset, BackgroundPreset } from "./types";
+import type { CharClassPreset, RacePreset, BackgroundPreset, NpcScheduleEntry } from "./types";
 import {
   PARTY_POSITIONS, applyRaceBonuses,
   maxSpellSlotsForLevel, isCasterClass, hitDiceForClass,
@@ -12,7 +12,7 @@ import { generateDungeonMap } from "./world-map";
 import { inferEquipProps } from "./item-props";
 import { randomBiomeId } from "./dungeon-biomes";
 import { ITEM_DATABASE, type ItemEntry } from "./item-database";
-import { addDatabaseItemToInventory } from "./state";
+import { addDatabaseItemToInventory, upsertNpc, setNpcSchedule } from "./state";
 import { generateTerrainForRoom } from "./terrain";
 import { abilityModifier } from "./dice";
 
@@ -91,6 +91,15 @@ export async function seedRoomContent(roomId: string, input: CreatePlayerInput) 
   // dm-agent.resolvePlayerMechanics). We just flag the room so the DM knows
   // to generate the intro on the next action.
   await db.room.update({ where: { id: roomId }, data: { introNeeded: true } });
+
+  // B6: seed a handful of sample NPCs with daily schedules so the schedule
+  // system has something to demonstrate out-of-the-box. Wrapped in try/catch
+  // so a seed failure never blocks room creation.
+  try {
+    await seedSampleNpcs(roomId);
+  } catch (e) {
+    console.error("[seed] seedSampleNpcs failed:", e);
+  }
 }
 
 /** Create a room and seed its world. */
@@ -461,4 +470,142 @@ function getClassResources(charClass: string, level: number, chaScore: number): 
   // Ranger: no special resources at low levels.
 
   return res;
+}
+
+// ============================================================================
+// B6: Sample NPC schedules
+// ============================================================================
+//
+// Three sample NPCs are seeded into every new room so the schedule system has
+// something to demonstrate out-of-the-box:
+//   1. Торин (старый следопыт) — ally, friendly. Day=market, dusk=tavern, night=patrol.
+//      Patrol unlocks the "Ночной патруль" quest at night.
+//   2. Мерлин (купец) — merchant, neutral. Day=shop, dusk=tavern, night=sleeping (no dialogue).
+//   3. Капитан стражи (guard captain) — questgiver, neutral. Night=guard tower
+//      (offers "Ночная стража" quest ONLY at night).
+//
+// Dawn is intentionally left empty for all three so NPCs are "off-shift" at
+// dawn (their behavior at dawn defaults to whatever their `location` field
+// already says — they don't move, but they're still available for dialogue).
+
+interface SampleNpcDef {
+  name: string;
+  role: "merchant" | "questgiver" | "ally" | "enemy";
+  disposition: "friendly" | "neutral" | "hostile";
+  location: string;
+  notes: string;
+  schedule: NpcScheduleEntry[];
+}
+
+const SAMPLE_NPCS: SampleNpcDef[] = [
+  {
+    name: "Торин",
+    role: "ally",
+    disposition: "friendly",
+    location: "Рыночная площадь",
+    notes: "Старый следопыт. Знает окрестные леса как свои пять пальцев.",
+    schedule: [
+      {
+        timeOfDay: "day",
+        location: "Рыночная площадь",
+        activity: "Закупка припасов",
+        dialogueHint: "Торин бродит между лавками, проверяя верёвки и стрелы. Упомяни, что сегодня видел следы волков к северу.",
+      },
+      {
+        timeOfDay: "dusk",
+        location: "Таверна «Старый дуб»",
+        activity: "Ужин",
+        dialogueHint: "Торин сидит у огня с кружкой эля. Он расслаблен, но настороженно слушает разговоры.",
+      },
+      {
+        timeOfDay: "night",
+        location: "Окрестности деревни",
+        activity: "Патруль",
+        availableQuests: ["Ночной патруль"],
+        dialogueHint: "Торин в доспехах, лук натянут. Он предлагает игроку присоединиться к ночному патрулю.",
+      },
+    ],
+  },
+  {
+    name: "Мерлин",
+    role: "merchant",
+    disposition: "neutral",
+    location: "Лавка Мерлина",
+    notes: "Купец из дальних краёв. Продаёт зелья и свитки.",
+    schedule: [
+      {
+        timeOfDay: "dawn",
+        location: "Лавка Мерлина",
+        activity: "Открытие лавки, раскладка товара",
+        dialogueHint: "Мерлин зевает, раскладывает товары на прилавке. Он ещё не совсем проснулся.",
+      },
+      {
+        timeOfDay: "day",
+        location: "Лавка Мерлина",
+        activity: "Торговля",
+        dialogueHint: "Мерлин за прилавком, готов торговаться. Подчеркни, что цены сегодня выгодные.",
+      },
+      {
+        timeOfDay: "dusk",
+        location: "Таверна «Старый дуб»",
+        activity: "Ужин и подсчёт дневной выручки",
+        dialogueHint: "Мерлин считает монеты и потягивает вино. Он не против поболтать, но без сделок.",
+      },
+      {
+        timeOfDay: "night",
+        location: "Комната Мерлина над лавкой",
+        activity: "Спит",
+        dialogueHint: "Спит и храпит. Любой стук в дверь остаётся без ответа.",
+      },
+    ],
+  },
+  {
+    name: "Капитан стражи",
+    role: "questgiver",
+    disposition: "neutral",
+    location: "Казармы стражи",
+    notes: "Суровый командир деревенской стражи. Днём обучает новобранцев.",
+    schedule: [
+      {
+        timeOfDay: "day",
+        location: "Плац казарм",
+        activity: "Обучение новобранцев",
+        dialogueHint: "Капитан рычит на неуклюжих рекрутов. Он раздражён, но может выкроить минуту для разговора.",
+      },
+      {
+        timeOfDay: "dusk",
+        location: "Казармы стражи",
+        activity: "Разбор рапортов за день",
+        dialogueHint: "Капитан завален бумагами. Он коротко отвечает, не отрываясь от работы.",
+      },
+      {
+        timeOfDay: "night",
+        location: "Сторожевая башня",
+        activity: "Дежурство на башне",
+        availableQuests: ["Ночная стража"],
+        dialogueHint: "Капитан на башне, в полном доспехе, смотрит в темноту. Он предлагает игроку важное ночное задание.",
+      },
+    ],
+  },
+];
+
+/**
+ * B6: Create the three sample NPCs and apply their schedules. Idempotent —
+ * if the NPCs already exist (e.g. from a previous seed), their schedule is
+ * overwritten with the canonical one.
+ */
+async function seedSampleNpcs(roomId: string) {
+  for (const def of SAMPLE_NPCS) {
+    const npc = await upsertNpc(
+      roomId,
+      def.name,
+      def.role,
+      def.disposition,
+      def.location,
+      def.notes
+    );
+    if (npc) {
+      await setNpcSchedule(roomId, def.name, def.schedule);
+    }
+  }
 }

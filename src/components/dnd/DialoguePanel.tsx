@@ -14,6 +14,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, MessageSquare, Coins, Package, ArrowRightLeft } from "lucide-react";
 import type { NpcState, InventoryItemState } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
+// B6: client-safe NPC schedule helpers.
+import { isNpcUnavailableForDialogue } from "@/lib/game/npc-schedule-client";
 
 interface MerchantItem {
   name: string;
@@ -55,6 +57,7 @@ export function DialoguePanel({
   playerInventory,
   onAction,
   isBusy,
+  timeOfDay,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -66,6 +69,8 @@ export function DialoguePanel({
     item?: string
   ) => Promise<{ narrative?: string; stock?: MerchantItem[]; tradeOutcome?: any } | null>;
   isBusy: boolean;
+  /** B6: current time-of-day cycle from the room snapshot. */
+  timeOfDay?: "dawn" | "day" | "dusk" | "night";
 }) {
   const [messages, setMessages] = useState<DialogueMessage[]>([]);
   const [mode, setMode] = useState<"chat" | "trade">("chat");
@@ -117,6 +122,11 @@ export function DialoguePanel({
 
   if (!npc) return null;
   const dispColor = DISPOSITION_COLOR[npc.disposition];
+  // B6: derive the NPC's current activity + availability from their schedule.
+  // `timeOfDay` is optional — when missing, fall back to no schedule info.
+  const sched = timeOfDay ? isNpcUnavailableForDialogue(npc, timeOfDay) : { unavailable: false };
+  const currentActivity = sched.activity;
+  const currentLocation = sched.location;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -142,8 +152,14 @@ export function DialoguePanel({
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {npc.disposition === "friendly" ? "Дружелюбный" : npc.disposition === "hostile" ? "Враждебный" : "Нейтральный"}
-                {npc.location ? ` · ${npc.location}` : ""}
+                {` · ${currentLocation || npc.location || "—"}`}
+                {currentActivity ? ` · ${currentActivity}` : ""}
               </p>
+              {sched.unavailable && sched.reason && (
+                <p className="mt-1 text-[11px] font-medium text-rose-300">
+                  {sched.reason}
+                </p>
+              )}
             </div>
           </DialogTitle>
           <DialogDescription className="sr-only">Диалог с NPC</DialogDescription>

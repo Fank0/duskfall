@@ -13,6 +13,16 @@
  * Costs returned by `findPath` and `reachableCells` are in movement-points
  * (1 cell of normal terrain = 1 point). Divide by speed-in-cells to compare
  * against a creature's movement allowance (30 ft = 6 cells).
+ *
+ * D3 — Multi-cell bodies: a Large (2×2), Huge (3×3) or Gargantuan (4×4)
+ * creature occupies every cell in its bounding box. Its (x, y) is the TOP-LEFT
+ * cell. When `findPath`/`reachableCells` are called with `bodyDim > 1`, the
+ * algorithm checks that ALL body cells at each candidate top-left position are
+ * passable (in-bounds, no blocking terrain, not in the occupied set). The
+ * goal-cell exemption still applies — the goal is the *target* cell (e.g. the
+ * player the monster wants to reach), not the monster's resting position, so
+ * the body may not actually fit there. Callers (monster AI) are expected to
+ * stop 1 short of the goal and let the body's edge touch the target.
  */
 
 import { GRID_SIZE } from "./state";
@@ -40,6 +50,11 @@ export interface PathfindResult {
 /** Set of "x,y" keys representing occupied (impassable) cells. */
 export type OccupiedSet = Set<string>;
 
+// D3 — D&D 5e creature size category. Stored on Monster.size as a lowercase
+// string, but the bestiary uses Title-case strings ("Small", "Large", etc.).
+// `normalizeSize` below unifies both spellings.
+export type MonsterSize = "tiny" | "small" | "medium" | "large" | "huge" | "gargantuan";
+
 const NEIGHBORS: ReadonlyArray<[number, number]> = [
   [0, -1], // N
   [1, 0],  // E
@@ -58,6 +73,122 @@ function heuristic(x0: number, y0: number, x1: number, y1: number): number {
 
 function inBounds(x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < GRID_SIZE && y < GRID_SIZE;
+}
+
+/**
+ * D3 — Normalize a size string from any spelling (case-insensitive) into the
+ * canonical lowercase union. Unknown / missing values default to "medium".
+ */
+export function normalizeSize(size: string | undefined | null): MonsterSize {
+  const s = (size ?? "medium").toString().trim().toLowerCase();
+  if (s === "tiny" || s === "small" || s === "medium" || s === "large" || s === "huge" || s === "gargantuan") {
+    return s;
+  }
+  return "medium";
+}
+
+/**
+ * D3 — Grid dimension (in cells) occupied by a creature of the given size.
+ *   tiny / small / medium → 1 (visually smaller, but body is 1 cell)
+ *   large                 → 2 (2×2)
+ *   huge                  → 3 (3×3)
+ *   gargantuan            → 4 (4×4)
+ */
+export function getMonsterDimension(size: string | undefined | null): number {
+  switch (normalizeSize(size)) {
+    case "large": return 2;
+    case "huge": return 3;
+    case "gargantuan": return 4;
+    default: return 1;
+  }
+}
+
+/**
+ * D3 — Visual scale (0..1) for a creature's token relative to one cell.
+ * Tiny / small creatures render smaller than 1 cell (centered within it).
+ * Medium+ creatures render at 1 cell × their dimension.
+ */
+export function getMonsterVisualScale(size: string | undefined | null): number {
+  switch (normalizeSize(size)) {
+    case "tiny": return 0.7;
+    case "small": return 0.85;
+    default: return 1;
+  }
+}
+
+/**
+ * D3 — All grid cells occupied by a creature of the given size whose
+ * TOP-LEFT cell is (x, y). For a 1×1 creature this returns just [{x,y}].
+ * For a 2×2 at (5,5) it returns [(5,5),(6,5),(5,6),(6,6)].
+ */
+export function getMonsterCells(
+  size: string | undefined | null,
+  x: number,
+  y: number,
+): PathCell[] {
+  const dim = getMonsterDimension(size);
+  const out: PathCell[] = [];
+  for (let dy = 0; dy < dim; dy++) {
+    for (let dx = 0; dx < dim; dx++) {
+      out.push({ x: x + dx, y: y + dy });
+    }
+  }
+  return out;
+}
+
+/**
+ * D3 — Continuous-space center of a creature of the given size whose top-left
+ * is (x, y). For a 2×2 at (5,5) → (5.5, 5.5); for a 3×3 at (5,5) → (6, 6).
+ * Used for attack-range / AoE-origin / distance calculations where the body's
+ * center is more meaningful than its top-left corner.
+ */
+export function getMonsterCenter(
+  size: string | undefined | null,
+  x: number,
+  y: number,
+): { x: number; y: number } {
+  const dim = getMonsterDimension(size);
+  return { x: x + (dim - 1) / 2, y: y + (dim - 1) / 2 };
+}
+
+/**
+ * D3 — Chebyshev (8-way) distance from a multi-cell monster's body to a
+ * single-cell target at (px, py). This is the minimum Chebyshev distance from
+ * any of the monster's body cells to the target. Returns 0 if the target
+ * overlaps the body, 1 if the target is edge-adjacent (in melee reach), etc.
+ *
+ * Use this instead of `Math.max(|mx-px|, |my-py|)` whenever the monster may
+ * be Large / Huge / Gargantuan.
+ */
+export function chebyshevDistanceFromBody(
+  size: string | undefined | null,
+  mx: number,
+  my: number,
+  px: number,
+  py: number,
+): number {
+  const dim = getMonsterDimension(size);
+  let best = Infinity;
+  for (let dy = 0; dy < dim; dy++) {
+    for (let dx = 0; dx < dim; dx++) {
+      const d = Math.max(Math.abs(mx + dx - px), Math.abs(my + dy - py));
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * D3 — Set of "x,y" keys covered by a creature of the given size at (x, y).
+ * Convenient for `Set.has()` lookups (e.g. when checking if a cell is inside
+ * a monster's body for AoE / opportunity-attack / threat-zone purposes).
+ */
+export function getMonsterCellKeys(
+  size: string | undefined | null,
+  x: number,
+  y: number,
+): Set<string> {
+  return new Set(getMonsterCells(size, x, y).map((c) => key(c.x, c.y)));
 }
 
 /** Is the cell passable, considering terrain + the occupied set? */
@@ -80,6 +211,37 @@ function isPassable(
 }
 
 /**
+ * D3 — Is the cell at (x, y) passable for a creature whose body spans
+ * `bodyDim` × `bodyDim` cells (top-left at x, y)? Checks every body cell
+ * against bounds, blocking terrain, and the occupied set (with the same
+ * goal-cell exemption as `isPassable`). For bodyDim=1 this is equivalent to
+ * `isPassable`.
+ */
+function isPassableForBody(
+  x: number,
+  y: number,
+  bodyDim: number,
+  terrain: TerrainCellState[],
+  occupied: OccupiedSet,
+  goalX: number,
+  goalY: number,
+): boolean {
+  if (bodyDim <= 1) return isPassable(x, y, terrain, occupied, goalX, goalY);
+  for (let dy = 0; dy < bodyDim; dy++) {
+    for (let dx = 0; dx < bodyDim; dx++) {
+      const bx = x + dx;
+      const by = y + dy;
+      if (!inBounds(bx, by)) return false;
+      if (isBlockingTerrain(terrain, bx, by)) return false;
+      if (!Number.isFinite(movementCostOf(terrain, bx, by))) return false;
+      const isGoal = bx === goalX && by === goalY;
+      if (!isGoal && occupied.has(key(bx, by))) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * A* pathfinding from (startX, startY) to (goalX, goalY).
  *
  * Returns `{ path, cost, damagingCells }`. If no path exists, or the cheapest
@@ -89,6 +251,11 @@ function isPassable(
  * The returned `path` excludes the start cell and includes the goal cell.
  * The `cost` is the sum of `movementCostOf` for every cell entered along the
  * path (i.e. the goal and any intermediate cell, but not the start cell).
+ *
+ * D3 — `bodyDim` (default 1) is the grid dimension of the moving creature
+ * (1 for tiny/small/medium, 2 for large, 3 for huge, 4 for gargantuan). When
+ * greater than 1, the algorithm checks every body cell at each candidate
+ * top-left position before allowing a step. See `getMonsterDimension`.
  */
 export function findPath(
   startX: number,
@@ -98,6 +265,7 @@ export function findPath(
   terrain: TerrainCellState[],
   occupied: OccupiedSet,
   maxMovement: number = Infinity,
+  bodyDim: number = 1,
 ): PathfindResult {
   if (!inBounds(startX, startY) || !inBounds(goalX, goalY)) {
     return { path: [], cost: Infinity, damagingCells: [] };
@@ -165,7 +333,7 @@ export function findPath(
     for (const [dx, dy] of NEIGHBORS) {
       const nx = current.x + dx;
       const ny = current.y + dy;
-      if (!isPassable(nx, ny, terrain, occupied, goalX, goalY)) continue;
+      if (!isPassableForBody(nx, ny, bodyDim, terrain, occupied, goalX, goalY)) continue;
       const nKey = key(nx, ny);
       if (closed.has(nKey)) continue;
 
@@ -204,6 +372,8 @@ export function findPath(
  *
  * Used by the UI to highlight reachable cells on click-to-move, and by
  * monster AI to pick its next position from the full set of legal moves.
+ *
+ * D3 — `bodyDim` (default 1) makes the flood-fill body-aware (see `findPath`).
  */
 export function reachableCells(
   startX: number,
@@ -211,6 +381,7 @@ export function reachableCells(
   maxMovement: number,
   terrain: TerrainCellState[],
   occupied: OccupiedSet,
+  bodyDim: number = 1,
 ): Map<string, number> {
   const result = new Map<string, number>();
   if (!inBounds(startX, startY)) return result;
@@ -244,12 +415,12 @@ export function reachableCells(
     for (const [dx, dy] of NEIGHBORS) {
       const nx = current.x + dx;
       const ny = current.y + dy;
-      if (!inBounds(nx, ny)) continue;
-      if (isBlockingTerrain(terrain, nx, ny)) continue;
+      if (!isPassableForBody(nx, ny, bodyDim, terrain, occupied, -1, -1)) continue;
       const stepCost = movementCostOf(terrain, nx, ny);
       if (!Number.isFinite(stepCost)) continue;
       const nKey = key(nx, ny);
       // Skip occupied neighbor cells (can't move through them).
+      // (Goal-cell exemption not applicable for flood-fill — pass dummy goal.)
       if (occupied.has(nKey)) continue;
       const tentative = current.d + stepCost;
       if (tentative > maxMovement) continue;

@@ -10,7 +10,7 @@ import { GRID_SIZE } from "@/lib/game/state";
 import { useSettings } from "@/lib/game/settings";
 import { t, type Lang } from "@/lib/game/i18n";
 import { shallowEqual } from "@/lib/game/shallow";
-import { findPath } from "@/lib/game/pathfinding";
+import { findPath, getMonsterDimension, getMonsterVisualScale, getMonsterCells } from "@/lib/game/pathfinding";
 import { movementCostOf, type TerrainCellState } from "@/lib/game/terrain";
 
 /** AoE overlay info passed from the page (transient — lasts ~2s). */
@@ -357,19 +357,30 @@ export const CombatGrid = memo(function CombatGrid({
   }, [combatActive, gridExtras?.terrainCells]);
 
   // ===== Threat range: faint red zone around ranged monsters (item 20) =====
+  // D3 — Extended for multi-cell bodies: the threat zone covers every cell
+  // within RADIUS of any body cell (so a 2×2 ogre archer threatens a 2×2+
+  // RADIUS area, not just RADIUS around its top-left).
   const threatCells = useMemo(() => {
     const ranged = activeMonsters.filter(isRangedMonster);
     if (ranged.length === 0) return null;
     const set = new Set<string>();
     const RADIUS = 5;
     for (const m of ranged) {
-      for (let dx = -RADIUS; dx <= RADIUS; dx++) {
-        for (let dy = -RADIUS; dy <= RADIUS; dy++) {
-          const x = m.posX + dx;
-          const y = m.posY + dy;
-          if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
-          if (Math.hypot(dx, dy) > RADIUS) continue;
-          set.add(`${x},${y}`);
+      const dim = getMonsterDimension(m.size);
+      // For each body cell, mark every cell within RADIUS (Chebyshev).
+      for (let bx = 0; bx < dim; bx++) {
+        for (let by = 0; by < dim; by++) {
+          const ox = m.posX + bx;
+          const oy = m.posY + by;
+          for (let dx = -RADIUS; dx <= RADIUS; dx++) {
+            for (let dy = -RADIUS; dy <= RADIUS; dy++) {
+              const x = ox + dx;
+              const y = oy + dy;
+              if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
+              if (Math.hypot(dx, dy) > RADIUS) continue;
+              set.add(`${x},${y}`);
+            }
+          }
         }
       }
     }
@@ -379,19 +390,35 @@ export const CombatGrid = memo(function CombatGrid({
   // D&D 5e (MASTER-PLAN 2.4): Opportunity Attack threat zones — cells adjacent
   // to melee monsters. Moving out of these cells provokes opportunity attacks.
   // Shown as a red dashed border during move mode in combat.
+  // D3 — Extended for multi-cell bodies: the OA zone is the 1-cell ring around
+  // the monster's entire bounding box (not just around the top-left cell).
   const oppAttackCells = useMemo(() => {
     if (!combatActive) return null;
     const melee = activeMonsters.filter((m) => !isRangedMonster(m));
     if (melee.length === 0) return null;
     const set = new Set<string>();
     for (const m of melee) {
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          if (dx === 0 && dy === 0) continue;
-          const x = m.posX + dx;
-          const y = m.posY + dy;
-          if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
-          set.add(`${x},${y}`);
+      const dim = getMonsterDimension(m.size);
+      // Mark every cell adjacent to ANY body cell (Chebyshev distance 1 from
+      // any body cell, but NOT a body cell itself).
+      const body = new Set<string>();
+      for (let dy = 0; dy < dim; dy++) {
+        for (let dx = 0; dx < dim; dx++) {
+          body.add(`${m.posX + dx},${m.posY + dy}`);
+        }
+      }
+      for (let dy = 0; dy < dim; dy++) {
+        for (let dx = 0; dx < dim; dx++) {
+          for (let oy = -1; oy <= 1; oy++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              if (ox === 0 && oy === 0) continue;
+              const x = m.posX + dx + ox;
+              const y = m.posY + dy + oy;
+              if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) continue;
+              if (body.has(`${x},${y}`)) continue; // don't mark own body
+              set.add(`${x},${y}`);
+            }
+          }
         }
       }
     }
@@ -418,10 +445,15 @@ export const CombatGrid = memo(function CombatGrid({
 
   // ===== Item 3: targeting-mode helpers =====
   const monsterByCell = useMemo(() => {
+    // D3 — map every body cell to the monster (so clicking any cell of a 2×2
+    // token hits the same monster entry).
     const m = new Map<string, MonsterState>();
     for (const mon of activeMonsters) {
-      const k = `${mon.posX},${mon.posY}`;
-      if (!m.has(k)) m.set(k, mon);
+      const cells = getMonsterCells(mon.size, mon.posX, mon.posY);
+      for (const c of cells) {
+        const k = `${c.x},${c.y}`;
+        if (!m.has(k)) m.set(k, mon);
+      }
     }
     return m;
   }, [activeMonsters]);
@@ -478,8 +510,11 @@ export const CombatGrid = memo(function CombatGrid({
       if (yourName && p.name === yourName) continue;
       set.add(`${p.posX},${p.posY}`);
     }
+    // D3 — mark every body cell of each monster (not just the top-left) so
+    // the A* path preview doesn't route the player through a 2×2 / 3×3 body.
     for (const m of activeMonsters) {
-      set.add(`${m.posX},${m.posY}`);
+      const cells = getMonsterCells(m.size, m.posX, m.posY);
+      for (const c of cells) set.add(`${c.x},${c.y}`);
     }
     return set;
   }, [alivePlayers, activeMonsters, yourName]);
@@ -956,14 +991,20 @@ export const CombatGrid = memo(function CombatGrid({
             {/* ===== Token layer — absolutely positioned, transitions on left/top. ===== */}
             <div className="pointer-events-none absolute inset-1 z-20">
               {tokenEntries.map((entry) => {
+                // D3 — multi-cell token sizing. Players are always 1×1. Monsters
+                // span dim×dim cells (large=2, huge=3, gargantuan=4). Tiny/small
+                // monsters occupy 1 cell but render smaller inside it (visualScale).
+                const dim = entry.kind === "monster" ? getMonsterDimension(entry.monster.size) : 1;
+                const visualScale =
+                  entry.kind === "monster" ? getMonsterVisualScale(entry.monster.size) : 1;
                 const left = `${entry.x * cellPct}%`;
                 const top = `${entry.y * cellPct}%`;
-                const width = `${cellPct}%`;
-                const height = `${cellPct}%`;
+                const width = `${dim * cellPct}%`;
+                const height = `${dim * cellPct}%`;
                 return (
                   <div
                     key={entry.key}
-                    className="absolute"
+                    className="absolute flex items-center justify-center"
                     style={{
                       left,
                       top,
@@ -977,7 +1018,13 @@ export const CombatGrid = memo(function CombatGrid({
                         if (el) tokenRefs.current.set(entry.name, el);
                         else tokenRefs.current.delete(entry.name);
                       }}
-                      className="h-full w-full"
+                      // D3 — for tiny/small, render the inner token smaller and
+                      // centered within the cell. For medium+, fill the wrapper.
+                      className="flex h-full w-full items-center justify-center"
+                      style={{
+                        width: visualScale < 1 ? `${visualScale * 100}%` : "100%",
+                        height: visualScale < 1 ? `${visualScale * 100}%` : "100%",
+                      }}
                     >
                       {entry.kind === "player" ? (
                         <PlayerToken
@@ -1000,6 +1047,7 @@ export const CombatGrid = memo(function CombatGrid({
                           anim={activeAnim && activeAnim.name === entry.name ? activeAnim : null}
                           critFx={activeCrit && activeCrit.name === entry.name ? activeCrit : null}
                           lang={settings.lang}
+                          dim={dim}
                         />
                       )}
                     </div>
@@ -1133,7 +1181,9 @@ function monstersGridEqual(a: MonsterState[], b: MonsterState[]): boolean {
       x.posX !== y.posX ||
       x.posY !== y.posY ||
       x.isActive !== y.isActive ||
-      x.damageNotation !== y.damageNotation
+      x.damageNotation !== y.damageNotation ||
+      // D3 — size affects token span + threat-zone geometry.
+      (x.size ?? "medium") !== (y.size ?? "medium")
     ) {
       return false;
     }
@@ -1340,6 +1390,7 @@ function MonsterToken({
   anim,
   critFx,
   lang,
+  dim = 1,
 }: {
   monster: MonsterState;
   isTurn: boolean;
@@ -1349,16 +1400,26 @@ function MonsterToken({
   anim: { kind: "hit" | "heal"; id: number } | null;
   critFx: { id: number } | null;
   lang: Lang;
+  /** D3 — grid dimension of the monster (1, 2, 3, or 4). Scales fonts / borders. */
+  dim?: number;
 }) {
   const hpPct = monster.maxHp > 0 ? (monster.hp / monster.maxHp) * 100 : 0;
   const hpColor = hpGradientColor(hpPct);
   const shapeClass = tokenShape === "square" ? "rounded-md" : "rounded-full";
+  // D3 — scale fonts and the HP bar width for multi-cell tokens so a 2×2 ogre
+  // has a readable label and a 3×3 dragon's HP bar isn't tiny relative to body.
+  const labelSize = dim >= 3 ? "text-[16px]" : dim === 2 ? "text-[12px]" : "text-[8px]";
+  const hpTextSize = dim >= 3 ? "text-[11px]" : dim === 2 ? "text-[9px]" : "text-[7px]";
+  const nameTextSize = dim >= 3 ? "text-[14px]" : dim === 2 ? "text-[11px]" : "text-[10px]";
+  const borderW = dim >= 3 ? "border-4" : dim === 2 ? "border-[3px]" : "border-2";
   return (
     <div className="flex h-full w-full flex-col items-center justify-center p-0.5">
       <div
         className={cn(
-          "relative flex aspect-square w-[88%] items-center justify-center border-2 text-[8px] font-bold leading-none text-white shadow-md",
+          "relative flex aspect-square w-[88%] items-center justify-center font-bold leading-none text-white shadow-md",
           shapeClass,
+          labelSize,
+          borderW,
           isTurn && "ring-2 ring-amber-300 animate-pulse-glow"
         )}
         style={{
@@ -1413,9 +1474,9 @@ function MonsterToken({
           </>
         )}
       </div>
-      <span className="text-[7px] leading-none text-muted-foreground">{monster.hp}/{monster.maxHp}</span>
+      <span className={cn("leading-none text-muted-foreground", hpTextSize)}>{monster.hp}/{monster.maxHp}</span>
       {showName && (
-        <span className="mt-0.5 max-w-full truncate rounded bg-black/60 px-1 text-[10px] leading-tight text-amber-100">
+        <span className={cn("mt-0.5 max-w-full truncate rounded bg-black/60 px-1 leading-tight text-amber-100", nameTextSize)}>
           {monster.name}
         </span>
       )}

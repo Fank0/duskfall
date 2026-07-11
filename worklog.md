@@ -3435,3 +3435,126 @@ Stage Summary:
 - Files created: `agent-ctx/A6-full-stack-developer.md`.
 - Files modified: `prisma/schema.prisma`, `src/lib/game/surface-effects.ts` (full rewrite), `src/lib/game/terrain.ts`, `src/lib/game/state.ts`, `src/lib/game/types.ts`, `src/lib/game/dm-agent.ts`, `src/components/dnd/CombatGrid.tsx`, `src/lib/game/i18n.ts`.
 - Lint clean (0 errors / 0 warnings). No new TypeScript errors introduced (all remaining tsc errors are PRE-EXISTING). No new packages installed. No mini-service changes needed.
+
+---
+Task ID: D3
+Agent: full-stack-developer
+Task: Token size variation (Large 2x2 / Huge 3x3 for big monsters) — D&D 5e creature size categories drive on-grid token span, multi-cell pathfinding, threat zones, opportunity-attack zones, and AoE in-area checks.
+
+Work Log:
+- Read worklog.md (last ~500 lines) for context. Confirmed prior task A6 (DOS2 surface effects) and D8 (BG3 path preview) touched pathfinding.ts + CombatGrid.tsx — my D3 changes extend the same files. Also confirmed `prisma/seed.ts` does NOT exist; the bestiary catalogue lives at `src/lib/game/bestiary.ts` and already has a `size: string` field per entry (Tiny/Small/Medium/Large/Huge/Gargantuan) — the seed.ts file mentioned in the task hint was actually bestiary.ts. Verified bestiary sizes match the task requirements for every entry that exists: ogre, brown-bear, dire-wolf, giant-spider, troll = Large ✓; adult-black-dragon, balor, the-bone-lord, valthraxis, malaphax = Huge ✓; ancient-green-dragon, the-forgotten-one = Gargantuan ✓; imp, quasit, owl = Tiny ✓; goblin, kobold, giant-rat, mephits = Small ✓. (Winter Wolf / Pixie / Sprite / Familiar / Gnome / Halfling / Fire-Frost-Storm Giants aren't in the bestiary — out of scope.)
+- Prisma schema: added `size String @default("medium")` to Monster model. Ran `bun run db:push` — Prisma client regenerated successfully (verified `size: string` on `MonsterCreateInput` in `node_modules/.prisma/client/index.d.ts`).
+- types.ts: added `size?: string` to `MonsterState` (defaults to "medium" via mapper when absent).
+- state.ts (`toMonster`): includes `size: (m as any).size ?? "medium"` so legacy rows (created before the column existed) render as 1×1 medium.
+- pathfinding.ts (the bulk of the work): added `MonsterSize` union + 7 exported helpers — `normalizeSize(size)` (case-insensitive), `getMonsterDimension(size)` (1/2/3/4), `getMonsterVisualScale(size)` (0.7/0.85/1), `getMonsterCells(size, x, y)` (all body cells), `getMonsterCenter(size, x, y)` (continuous center for AoE origin / range), `chebyshevDistanceFromBody(size, mx, my, px, py)` (min Chebyshev distance from any body cell to a target — 0 if overlapping, 1 if edge-adjacent), `getMonsterCellKeys(size, x, y)` (Set of "x,y" strings). Added optional `bodyDim` parameter to `findPath` and `reachableCells` (default 1). New internal `isPassableForBody(x, y, bodyDim, ...)` checks every body cell at a candidate top-left position against bounds / blocking terrain / occupied set, with the same goal-cell exemption as `isPassable`. For bodyDim=1 it delegates to the original `isPassable` (zero behavior change for existing callers).
+- state.ts (`moveMonsterTowardNearestPlayer`): rewrote to use `chebyshevDistanceFromBody` for distance-to-player + body-aware A*. Now reads the monster's `size`, builds the occupied set by marking EVERY body cell of each other monster (not just top-left), passes `bodyDim = getMonsterDimension(monsterSize)` to `findPath`, walks the path stopping when the body's edge is adjacent to the player (distance ≤ 1 via `chebyshevDistanceFromBody`), and clamps the new top-left so the full body stays on the 16×16 grid (`nx = max(0, min(GRID_SIZE - dim, nx))`). Both greedy fallbacks (try/catch + no-A*-path) also use body-aware distance + body-aware clamping.
+- CombatGrid.tsx (visual + interaction layer):
+  - Imported `getMonsterDimension`, `getMonsterVisualScale`, `getMonsterCells` from pathfinding.
+  - Token layer: per-entry `dim = entry.kind === "monster" ? getMonsterDimension(entry.monster.size) : 1`. Wrapper width/height = `dim * cellPct%`. Inner content scaled to `visualScale × 100%` for tiny/small (centered within the 1-cell wrapper); 100% for medium+. Added flex centering on the wrapper + inner div so multi-cell tokens center their content visually.
+  - MonsterToken: added `dim?: number` prop. Scales fonts (`labelSize`, `hpTextSize`, `nameTextSize`) and border width (`border-2` / `border-[3px]` / `border-4`) based on dim so a 3×3 dragon's label is readable and its HP bar isn't tiny relative to the body. PlayerToken unchanged (always 1×1).
+  - Threat-zone (ranged monsters) memo: extended to mark every cell within RADIUS of ANY body cell — so a 2×2 ogre archer threatens a 2×2 + RADIUS area, not just RADIUS around its top-left.
+  - Opportunity-attack-zone (melee monsters) memo: extended to mark every cell within 1 Chebyshev-step of any body cell, excluding the body itself — so the OA zone is the 1-cell ring around the entire bounding box.
+  - `monsterByCell` memo: now maps every body cell to the monster (so clicking any cell of a 2×2 token hits the same monster entry — preserves click-to-target behavior for multi-cell tokens).
+  - `occupiedForPath` memo (D8 path preview): marks every body cell of each monster so the A* path preview doesn't route the player through a 2×2 / 3×3 body.
+  - `monstersGridEqual` comparator: added `size` comparison so a size change re-renders the grid.
+- dm-agent.ts:
+  - AoE in-area filter (`inAreaMonsters`): now uses `getMonsterCells` to check if ANY body cell overlaps the AoE cell set (was: just top-left). A 2×2 ogre at (5,5) is now correctly hit by a fireball centered at (6,6) even though its top-left (5,5) isn't in the cell set.
+  - `computePositionalAdvantage`: added optional `targetSize` parameter (defaults to "medium"). Uses `chebyshevDistanceFromBody` for the adjacency check so a player attacking a 2×2 ogre is correctly classified as "melee" when within 1 step of any body cell. Existing callers in dm-agent.ts updated to pass `targetMonster.size`.
+  - Sneak-attack ally-adjacency check: uses `chebyshevDistanceFromBody` so an ally next to ANY body cell of a multi-cell monster qualifies for sneak attack.
+  - Fleeing-monster AI (low-HP intelligent monsters): uses `chebyshevDistanceFromBody` to find the nearest player relative to the body (was: top-left only).
+- move-token route (opportunity attacks): uses `chebyshevDistanceFromBody(monsterSize, m.posX, m.posY, wasFromX, wasFromY)` for `distBefore` and same for `distAfter`. Trigger condition unchanged (`distBefore === 1 && distAfter > 1`) — but now correctly fires when a player moves out of reach of a multi-cell monster's body edge.
+- dungeon-biomes.ts: `BiomeMonster` + `BiomeBoss` interfaces include `size` (BiomeBoss optional, defaults to "huge"). `bestiaryToBiomeMonster` propagates `size` from the bestiary entry. `scaleBiomeMonster` + `scaleBiomeBoss` return `size` in their scaled output (bosses default to "huge" when not specified).
+- dungeon-populate.ts: `spawnMonsters` + `spawnBoss` persist `size` to the DB. Added body-aware spawn-position clamping so a 3×3 dragon spawned at (15,15) doesn't overflow the grid — `safeX = max(0, min(16 - dim, posX))`.
+- encounters.ts: `MonsterTemplate` interface + `EncounterResult.details.monsters` type include `size?: string`. MONSTER_POOL entries marked `size: "small"` where appropriate (goblin, kobold, giant rat). `scaleMonster` returns `size: t.size ?? "medium"`.
+- Verified `bun run lint` → 0 errors, 0 warnings ✓
+- Verified `bunx tsc --noEmit` → 30 errors, ALL pre-existing (confirmed via `git stash` + re-check; before my changes there were 45 — the 15-error reduction is a side-effect of code shifts, not actual fixes). The remaining errors in `dm-agent.ts` (lines 1183, 2186, 2980, 3032, 3060, 3272) and `CombatGrid.tsx` (line 708 — the `false | void` issue from D8) are all pre-existing and unrelated to D3.
+- Verified dev server (port 3000) was running normally — recent dev.log shows HTTP 200 on `/api/game/state` and normal Prisma queries. The server is managed by the system (per project rules I should NOT run `bun run dev`).
+- Wrote work record to `/home/z/my-project/agent-ctx/D3-full-stack-developer.md` (architecture diagram, file inventory, helper reference, integration guide for future agents).
+
+Stage Summary:
+- D3 (token size variation) is fully implemented end-to-end: Prisma schema → types → mapper → pathfinding helpers → CombatGrid rendering → monster AI → AoE filtering → opportunity-attack triggering → dungeon/encounter spawning.
+- Large (2×2), Huge (3×3), and Gargantuan (4×4) monsters now visually span multiple cells on the tactical grid, with scaled-up fonts/borders for readability. Tiny (0.7×) and Small (0.85×) creatures render smaller and centered within their cell.
+- A* pathfinding is body-aware: a 2×2 ogre checks all 4 body cells at each candidate top-left position before stepping. Monster AI stops when the body's edge is adjacent to the player (not when the top-left is adjacent).
+- Threat zones (ranged monsters) and opportunity-attack zones (melee monsters) extend correctly around multi-cell bodies — a 3×3 dragon threatens a 3×3 + 5-cell-radius area, and its OA zone is the 1-cell ring around its 3×3 body.
+- AoE in-area filter uses ALL body cells — a fireball centered on any cell of a 2×2 ogre's body now hits it (previously only a fireball on the top-left cell would).
+- Opportunity attacks fire when a player moves out of reach of ANY body cell of a multi-cell monster (not just the top-left).
+- All existing 1×1 token behavior is preserved — `size` defaults to "medium" at every layer (Prisma default, toMonster fallback, helper functions).
+- Files modified: `prisma/schema.prisma`, `src/lib/game/types.ts`, `src/lib/game/state.ts`, `src/lib/game/pathfinding.ts`, `src/lib/game/dm-agent.ts`, `src/lib/game/dungeon-biomes.ts`, `src/lib/game/dungeon-populate.ts`, `src/lib/game/encounters.ts`, `src/components/dnd/CombatGrid.tsx`, `src/app/api/game/move-token/route.ts`.
+- Files created: `agent-ctx/D3-full-stack-developer.md`.
+- Lint clean (0 errors / 0 warnings). No new TypeScript errors introduced (all 30 remaining tsc errors are PRE-EXISTING). No new packages installed. No mini-service changes needed.
+
+---
+Task ID: B6
+Agent: full-stack-developer
+Task: NPC schedule events (NPCs move between locations / give quests / refuse dialogue at specific times of day, building on B2 day/night cycle).
+
+Work Log:
+- Read worklog.md (last 500 lines) to understand prior work — confirmed B2 day/night cycle is implemented (advanceExplorationTurn in state.ts advances time-of-day every 5 turns and writes a "Время суток меняется" chat line).
+- Inspected target files: prisma/schema.prisma (Npc model), src/lib/game/types.ts (NpcState), src/lib/game/state.ts (toNpc mapper + getDMContext + advanceExplorationTurn), src/app/api/game/dialogue/route.ts (dialogue endpoint), src/lib/game/seed.ts (room seeding), src/components/dnd/DialoguePanel.tsx (dialogue modal), src/app/page.tsx (NPC dropdown).
+- Implementation (8 files):
+
+1. prisma/schema.prisma — added `schedule String @default("")` to the Npc model. Ran `bun run db:push` — Prisma client regenerated successfully.
+
+2. src/lib/game/types.ts — added `TimeOfDay` type, `NpcScheduleEntry` interface (with timeOfDay, location, activity, availableQuests?, dialogueHint?), and added `schedule: NpcScheduleEntry[]` to the `NpcState` interface.
+
+3. src/lib/game/state.ts:
+   - Imported `NpcScheduleEntry` from `./types` + `getNpcActiveSchedule` / `isNpcUnavailableForDialogue` from `./npc-schedule`.
+   - Updated `toNpc` mapper to parse the `schedule` JSON string into `NpcScheduleEntry[]` (tolerant of empty/malformed values).
+   - Added `setNpcSchedule(roomId, name, entries)` + `setNpcLocation(roomId, name, location)` mutation helpers.
+   - Updated `getDMContext`'s `=== NPC в локации ===` block: each NPC now annotates their current schedule entry — ` | Сейчас: <activity> (<location>)`, ` [НЕДОСТУПЕН: <reason>]` when sleeping/busy, ` | Доступные квесты сейчас: <comma-separated>` when available, ` | Подсказка для диалога: <dialogueHint>` when present.
+   - Updated `advanceExplorationTurn`: when the cycle advances, after the existing "Время суток меняется" chat line, lazily imports `applyScheduleForTimeOfDay` from `./npc-schedule` and calls it with `(roomId, newTOD, prevTOD)`. Wrapped in try/catch so a schedule failure can never freeze the exploration turn.
+
+4. src/lib/game/npc-schedule-client.ts (NEW) — pure client-safe helpers, NO DB imports:
+   - `getNpcActiveSchedule(npc, timeOfDay): NpcScheduleEntry | null`
+   - `isActivitySleeping(activity)` — true when activity text contains сон/спит/sleep
+   - `isActivityBusy(activity)` — true when activity text contains занят/busy (patrol is NOT busy — the night-patrol quest is still offerable from a patrolling NPC)
+   - `isNpcUnavailableForDialogue(npc, timeOfDay): { unavailable, reason?, activity?, location? }`
+   - `getScheduledQuests(npcs, timeOfDay): Array<{npcName, questTitle}>`
+
+5. src/lib/game/npc-schedule.ts (NEW) — server-side schedule logic:
+   - Imports the pure helpers from `./npc-schedule-client` and re-exports them so server callers have a single import surface.
+   - `applyScheduleForTimeOfDay(roomId, newTOD, prevTOD?)`: for each living NPC with a schedule, (1) if the new entry's `location` differs from the NPC's current location → call `setNpcLocation` + write "📍 X перемещается: A → B (activity)." system chat line; (2) for each title in the new entry's `availableQuests` that wasn't in the previous entry AND isn't already in the quest journal → call `createQuest` + write "✨ Новый доступный квест от X: «title»" system chat line. Idempotent — safe to call multiple times with the same `newTOD`. Skips sleeping/busy NPCs for quest offers.
+   - `serializeSchedule(entries): string` + `applyNpcSchedule(roomId, name, entries)` convenience helpers.
+
+6. src/app/api/game/dialogue/route.ts:
+   - Imported `getNpcActiveSchedule` + `isNpcUnavailableForDialogue` from `@/lib/game/npc-schedule`.
+   - After loading the NPC + before processing the action: parse the NPC's `schedule` JSON into `NpcScheduleEntry[]`. If `isNpcUnavailableForDialogue` returns `unavailable: true`, write the reason as a system chat message ("💤 X сейчас спит. Вернитесь утром." or "🛑 X сейчас занят: <activity>. Вернитесь попозже.") and return early with `{ ok: true, narrative: reason, snapshot, stock: [], tradeOutcome: null }` so the dialogue panel shows the message inline.
+   - Otherwise, extract `dialogueHint`, `activity`, `location` from the active schedule entry and pass them to `runLlmDialogue` (3 new optional params).
+   - `runLlmDialogue` now includes a "Расписание NPC: ..." line in the system prompt so the LLM produces time-aware in-character replies.
+
+7. src/lib/game/seed.ts:
+   - Imported `NpcScheduleEntry`, `upsertNpc`, `setNpcSchedule`.
+   - Added `seedSampleNpcs(roomId)` called from `seedRoomContent` (wrapped in try/catch). Seeds 3 sample NPCs with full daily schedules:
+     • Торин (ally, friendly): day=Рыночная площадь (закупка припасов) / dusk=Таверна «Старый дуб» (ужин) / night=Окрестности деревни (Патруль, offers «Ночной патруль» quest)
+     • Мерлин (merchant, neutral): dawn=Лавка Мерлина (открытие) / day=Лавка Мерлина (торговля) / dusk=Таверна (ужин) / night=Комната Мерлина (Спит — no dialogue at night)
+     • Капитан стражи (questgiver, neutral): day=Плац казарм (обучение) / dusk=Казармы (разбор рапортов) / night=Сторожевая башня (Дежурство, offers «Ночная стража» quest)
+   - Each NPC has a Russian `dialogueHint` per time slot.
+
+8. src/components/dnd/DialoguePanel.tsx:
+   - Imported `isNpcUnavailableForDialogue` from `@/lib/game/npc-schedule-client`.
+   - Added optional `timeOfDay` prop. Header subtitle now shows `disposition · currentLocation · currentActivity`, plus a rose-300 alert line when the NPC is unavailable. The panel still opens (so the player can see the "💤 спит" message inline); the dialogue route writes a system chat line and returns the reason as `narrative`.
+
+9. src/app/page.tsx:
+   - Imported `isNpcUnavailableForDialogue` from `@/lib/game/npc-schedule-client`.
+   - Passes `timeOfDay={snapshot.timeOfDay}` to `DialoguePanel`.
+   - NPC dropdown now shows a per-NPC status badge: 💤 + activity when sleeping/busy (rose-400), the current activity when available (emerald-400, truncated to 14 chars), or the bare role label when no schedule entry.
+
+10. src/lib/game/i18n.ts — added 5 new keys to ALL 6 language blocks (ru/en/es/de/fr/zh): `ui.npc_sleeping`, `ui.npc_busy`, `ui.npc_activity`, `ui.npc_schedule_quest`, `ui.npc_moves`. Runtime chat messages are emitted directly in Russian by the server (matching the existing convention); the keys are available for future UI surfaces.
+
+Verification:
+- `bun run db:push` — Prisma client regenerated successfully ✅
+- `bun run lint` — 0 errors, 0 warnings ✅
+- `bunx tsc --noEmit` — 0 NEW errors in B6-touched files (npc-schedule.ts, npc-schedule-client.ts, dialogue/route.ts, seed.ts, state.ts, types.ts). All remaining tsc errors are PRE-EXISTING (per worklog for A6: dm-agent.ts, feats.ts, save-load.ts, status-effects.ts, etc.) ✅
+- Wrote work record to `/home/z/my-project/agent-ctx/B6-full-stack-developer.md` (architecture, file inventory, integration guide).
+
+Stage Summary:
+- B6 (NPC schedule events) is fully implemented. NPCs now have a daily schedule (JSON array on the Npc row) that drives three behaviours:
+  1. **Movement**: when time-of-day advances, NPCs whose new schedule entry has a different `location` are moved (their `location` field is updated + a "📍 X перемещается: A → B" system chat line is written).
+  2. **Time-locked quests**: each schedule entry may list `availableQuests` (titles). When time advances into a slot that has new quest titles (not yet in the journal, not offered by the previous slot), the quest is auto-created via `createQuest` + a "✨ Новый доступный квест от X: «title»" system chat line is written.
+  3. **Sleeping/busy dialogue lock**: when the player tries to talk to an NPC whose current activity mentions сон/спит/sleep or занят/busy, the dialogue route writes a "💤 X сейчас спит. Вернитесь утром." system chat line and returns early. The DialoguePanel also shows the activity inline in the header + a rose alert.
+- The DM context (`getDMContext`) now annotates each NPC with their current activity, location, availability, available quests, and dialogue hint — so the DM LLM weaves time-of-day flavour into narration.
+- The dialogue LLM (`runLlmDialogue`) now receives a "Расписание NPC: Сейчас занят: <activity>. Подсказка для ответа: <hint>." line in the system prompt, so in-character replies reflect the NPC's current activity ("я ужинаю", "сейчас моя смена патруля" etc.).
+- 3 sample NPCs (Торин, Мерлин, Капитан стражи) are seeded into every new room with full daily schedules demonstrating all three behaviours.
+- Files created: `src/lib/game/npc-schedule.ts`, `src/lib/game/npc-schedule-client.ts`, `agent-ctx/B6-full-stack-developer.md`.
+- Files modified: `prisma/schema.prisma`, `src/lib/game/types.ts`, `src/lib/game/state.ts`, `src/lib/game/seed.ts`, `src/app/api/game/dialogue/route.ts`, `src/components/dnd/DialoguePanel.tsx`, `src/app/page.tsx`, `src/lib/game/i18n.ts`.
+- Lint clean (0 errors / 0 warnings). No new TypeScript errors introduced (all remaining tsc errors are PRE-EXISTING). No new packages installed. No mini-service changes needed.

@@ -80,6 +80,7 @@ import {
 } from "./talents";
 import { getSpellById } from "./spellbook";
 import { knownSpellsForPlayer, computeAbilities } from "./abilities";
+import { getMonsterCells, chebyshevDistanceFromBody } from "./pathfinding";
 import type {
   DMResolution,
   ResolvedRoll,
@@ -408,13 +409,18 @@ export function hasHighGround(
 
 /** Combined positional advantage check: flanking (melee/adjacent) OR
  *  high ground (ranged/non-adjacent). Returns true if the attacker gets
- *  advantage from positioning. */
+ *  advantage from positioning.
+ *
+ *  D3 — `targetSize` (optional) makes the adjacency check body-aware: a
+ *  player attacking a 2×2 ogre is "in melee" if their cell is within 1
+ *  Chebyshev-step of ANY body cell. Defaults to "medium" (1×1). */
 export function computePositionalAdvantage(
   attacker: { posX: number; posY: number },
   target: { posX: number; posY: number },
-  allies: { posX: number; posY: number }[]
+  allies: { posX: number; posY: number }[],
+  targetSize: string | undefined = "medium",
 ): boolean {
-  const dist = Math.max(Math.abs(attacker.posX - target.posX), Math.abs(attacker.posY - target.posY));
+  const dist = chebyshevDistanceFromBody(targetSize, target.posX, target.posY, attacker.posX, attacker.posY);
   const isMelee = dist <= 1;
   const isRanged = dist > 1;
   if (isMelee && hasFlanking(attacker, target, allies)) return true;
@@ -1226,7 +1232,7 @@ async function resolvePlayerAction(
     : null;
   const allies = snap0?.players.filter((p) => p.name !== actorName && p.isAlive && p.hp > 0) ?? [];
   const positionalAdv = targetMonster
-    ? computePositionalAdvantage(actor, targetMonster, allies)
+    ? computePositionalAdvantage(actor, targetMonster, allies, targetMonster.size)
     : false;
 
   if (plan.rolls.length > 0) {
@@ -1365,7 +1371,13 @@ async function resolvePlayerAction(
     const cellSet = new Set(cells.map((c) => `${c.x},${c.y}`));
     const allMonsters = await db.monster.findMany({ where: { roomId, isActive: true } });
     const allPlayers = await db.player.findMany({ where: { roomId } });
-    const inAreaMonsters = allMonsters.filter((m) => cellSet.has(`${m.posX},${m.posY}`));
+    // D3 — a multi-cell monster is "in area" if ANY of its body cells overlap
+    // the AoE (so a 2×2 ogre at (5,5) is hit by a fireball centered at (6,6)
+    // even though its top-left (5,5) is not in the cell set).
+    const inAreaMonsters = allMonsters.filter((m) => {
+      const bodyCells = getMonsterCells((m as any).size ?? "medium", m.posX, m.posY);
+      return bodyCells.some((c) => cellSet.has(`${c.x},${c.y}`));
+    });
     const inAreaPlayers = allPlayers.filter(
       (p) => p.name !== actorName && p.hp > 0 && p.isAlive && cellSet.has(`${p.posX},${p.posY}`)
     );
@@ -1685,7 +1697,9 @@ async function resolvePlayerAction(
         const allies = snap0?.players.filter((p) => p.name !== actorName && p.isAlive && p.hp > 0) ?? [];
         const hasAdvantage = positionalAdv || attackerCondIds.some((id) => id === "blessed"); // simplified
         const allyAdjacent = allies.some((a) => {
-          const dist = Math.max(Math.abs(a.posX - m.posX), Math.abs(a.posY - m.posY));
+          // D3 — ally is "adjacent" to a multi-cell monster if within 1
+          // Chebyshev-step of ANY body cell.
+          const dist = chebyshevDistanceFromBody((m as any).size ?? "medium", m.posX, m.posY, a.posX, a.posY);
           return dist <= 1;
         });
         if (hasAdvantage || allyAdjacent) {
@@ -2127,10 +2141,13 @@ async function runMonsterTurn(roomId: string, round: number, monsterId: string):
     const alive = players.filter((p) => p.hp > 0);
     if (alive.length > 0) {
       // Move in opposite direction from NEAREST player (not farthest!)
+      // D3 — use body-aware distance so a multi-cell monster flees from the
+      // player whose cell is closest to ANY of its body cells.
+      const monsterSize = (m as any).size ?? "medium";
       let nearestP = alive[0];
       let bestDist = Infinity;
       for (const p of alive) {
-        const d = Math.max(Math.abs(p.posX - m.posX), Math.abs(p.posY - m.posY));
+        const d = chebyshevDistanceFromBody(monsterSize, m.posX, m.posY, p.posX, p.posY);
         if (d < bestDist) { bestDist = d; nearestP = p; }
       }
       const fleeX = Math.max(0, Math.min(GRID_SIZE - 1, m.posX + (m.posX > nearestP.posX ? 1 : -1)));

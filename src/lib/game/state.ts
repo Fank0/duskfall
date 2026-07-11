@@ -9,7 +9,14 @@ import { getClassIdByCharClass, isCasterClass } from "./presets";
 import { getSpellById, resolveKnownSpells } from "./spellbook";
 import { generateLoot, findItemByName, rarityLabelRu, type ItemEntry, type ItemRarity } from "./item-database";
 import { coverAcBonus, getTerrainCells, type TerrainCellState } from "./terrain";
-import { findPath } from "./pathfinding";
+import { findPath, getMonsterDimension, chebyshevDistanceFromBody } from "./pathfinding";
+// B6: NPC daily schedule helpers.
+// `getNpcActiveSchedule` + `isNpcUnavailableForDialogue` are pure read-only
+// helpers used inside getDMContext (synchronously). `applyScheduleForTimeOfDay`
+// is imported lazily inside advanceExplorationTurn to keep the import graph
+// acyclic at module-eval time (npc-schedule.ts imports mutating helpers from
+// this module; the lazy import breaks the cycle for the async call site).
+import { getNpcActiveSchedule, isNpcUnavailableForDialogue } from "./npc-schedule";
 import type {
   GameStateSnapshot,
   PlayerState,
@@ -23,6 +30,7 @@ import type {
   QuestState,
   MapRoomState,
   NpcState,
+  NpcScheduleEntry,
   ResolvedRoll,
   InventoryChange,
   EquipmentSlot,
@@ -154,6 +162,9 @@ function toMonster(m: any): MonsterState {
     resistances: m.resistances ? (typeof m.resistances === "string" ? JSON.parse(m.resistances) : m.resistances) : [],
     immunities: m.immunities ? (typeof m.immunities === "string" ? JSON.parse(m.immunities) : m.immunities) : [],
     conditionImmunities: m.conditionImmunities ? (typeof m.conditionImmunities === "string" ? JSON.parse(m.conditionImmunities) : m.conditionImmunities) : [],
+    // D3: monster size category (tiny/small/medium/large/huge/gargantuan).
+    // Defaults to "medium" for legacy rows created before the size column existed.
+    size: (m as any).size ?? "medium",
   };
 }
 
@@ -302,6 +313,26 @@ function toMapRoom(m: any): MapRoomState {
 }
 
 function toNpc(n: any): NpcState {
+  // B6: parse the schedule JSON array; tolerate missing/invalid strings.
+  let schedule: NpcScheduleEntry[] = [];
+  const raw = n.schedule;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        schedule = parsed.filter(
+          (e: any) =>
+            e &&
+            typeof e === "object" &&
+            typeof e.timeOfDay === "string" &&
+            typeof e.location === "string" &&
+            typeof e.activity === "string"
+        ) as NpcScheduleEntry[];
+      }
+    } catch {
+      /* ignore malformed JSON */
+    }
+  }
   return {
     id: n.id,
     name: n.name,
@@ -311,6 +342,7 @@ function toNpc(n: any): NpcState {
     location: n.location ?? "",
     notes: n.notes ?? "",
     loyalty: n.loyalty ?? 50,
+    schedule,
   };
 }
 
@@ -878,10 +910,25 @@ export async function getDMContext(roomCode: string, actorName: string): Promise
   // NPCs in the room.
   if (snap.npcs.length > 0) {
     lines.push("=== NPC в локации ===");
+    // B6: NPC daily schedule — annotate each NPC with their current activity
+    // + flag sleeping/busy/unavailable NPCs + reveal scheduled quests.
     for (const n of snap.npcs) {
       const loc = n.location ? ` @ ${n.location}` : "";
       const notes = n.notes ? ` | ${n.notes}` : "";
-      lines.push(`${n.name} [${n.role}, ${n.disposition}]${loc}${notes}`);
+      const entry = getNpcActiveSchedule(n, snap.timeOfDay);
+      let schedInfo = "";
+      if (entry) {
+        const unavail = isNpcUnavailableForDialogue(n, snap.timeOfDay);
+        const status = unavail.unavailable ? ` [НЕДОСТУПЕН: ${unavail.reason}]` : "";
+        schedInfo = ` | Сейчас: ${entry.activity} (${entry.location})${status}`;
+        if (entry.availableQuests && entry.availableQuests.length > 0 && !unavail.unavailable) {
+          schedInfo += ` | Доступные квесты сейчас: ${entry.availableQuests.join(", ")}`;
+        }
+        if (entry.dialogueHint) {
+          schedInfo += ` | Подсказка для диалога: ${entry.dialogueHint}`;
+        }
+      }
+      lines.push(`${n.name} [${n.role}, ${n.disposition}]${loc}${notes}${schedInfo}`);
     }
   }
 
@@ -1430,7 +1477,11 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
   const nearest = await nearestAlivePlayer(roomId, m.posX, m.posY);
   if (!nearest) return { newX: m.posX, newY: m.posY, distBefore: 0, distAfter: 0, targetName: null };
   const p = nearest.player;
-  const distBefore = nearest.distance;
+  // D3 — Use the monster's size for body-aware distance + pathfinding.
+  // chebyshevDistanceFromBody returns the distance from the body's nearest
+  // edge to the player, which is what "adjacent" means for multi-cell creatures.
+  const monsterSize = (m as any).size ?? "medium";
+  const distBefore = chebyshevDistanceFromBody(monsterSize, m.posX, m.posY, p.posX, p.posY);
 
   // D&D 5e: A* pathfinding around terrain obstacles (item #9).
   // Fall back to greedy movement if pathfinding fails or terrain is empty.
@@ -1440,28 +1491,39 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
 
   try {
     const terrain = await getTerrainCells(roomId);
-    // Build the occupied set (other monsters + players block movement; the
-    // target player's cell is NOT blocked so the path can reach adjacency).
+    // Build the occupied set (other monsters' BODIES + players block movement;
+    // the target player's cell is NOT blocked so the path can reach adjacency).
     const otherMonsters = await db.monster.findMany({
       where: { roomId, isActive: true, id: { not: monsterId } },
-      select: { posX: true, posY: true },
+      select: { posX: true, posY: true, size: true },
     });
     const otherPlayers = await db.player.findMany({
       where: { roomId, isAlive: true, name: { not: p.name } },
       select: { posX: true, posY: true },
     });
     const occupied = new Set<string>();
-    for (const om of otherMonsters) occupied.add(`${om.posX},${om.posY}`);
+    // D3: mark every cell of each other monster's body as occupied.
+    for (const om of otherMonsters) {
+      const dim = getMonsterDimension((om as any).size ?? "medium");
+      for (let dy = 0; dy < dim; dy++) {
+        for (let dx = 0; dx < dim; dx++) {
+          occupied.add(`${om.posX + dx},${om.posY + dy}`);
+        }
+      }
+    }
     for (const op of otherPlayers) occupied.add(`${op.posX},${op.posY}`);
 
-    // A* to the player's position. The goal cell is enterable even if
-    // "occupied" (so the path can reach it), but we'll stop 1 cell short.
-    const result = findPath(m.posX, m.posY, p.posX, p.posY, terrain, occupied, maxSteps + 1);
+    // D3 — A* with the moving monster's body dimension so multi-cell bodies
+    // don't clip through walls / other creatures when navigating.
+    const bodyDim = getMonsterDimension(monsterSize);
+    const result = findPath(m.posX, m.posY, p.posX, p.posY, terrain, occupied, maxSteps + 1, bodyDim);
     if (result.path.length > 0) {
-      // Walk up to maxSteps cells, but stop at distance 1 (adjacent).
+      // Walk up to maxSteps cells, but stop when the body's edge is adjacent
+      // to the player (distance 1 = in melee reach). For multi-cell bodies
+      // this prevents stepping ONTO the player.
       let walked = 0;
       for (const cell of result.path) {
-        const dist = Math.max(Math.abs(cell.x - p.posX), Math.abs(cell.y - p.posY));
+        const dist = chebyshevDistanceFromBody(monsterSize, cell.x, cell.y, p.posX, p.posY);
         if (dist <= 1) break; // adjacent — don't step onto player
         nx = cell.x;
         ny = cell.y;
@@ -1472,7 +1534,7 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
       // No A* path found (e.g. boxed in) — fall back to greedy movement.
       let steps = maxSteps;
       while (steps > 0) {
-        const dist = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+        const dist = chebyshevDistanceFromBody(monsterSize, nx, ny, p.posX, p.posY);
         if (dist <= 1) break;
         const dx = p.posX - nx;
         const dy = p.posY - ny;
@@ -1487,7 +1549,7 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
     // Fallback: greedy movement.
     let steps = maxSteps;
     while (steps > 0) {
-      const dist = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+      const dist = chebyshevDistanceFromBody(monsterSize, nx, ny, p.posX, p.posY);
       if (dist <= 1) break;
       const dx = p.posX - nx;
       const dy = p.posY - ny;
@@ -1498,10 +1560,12 @@ export async function moveMonsterTowardNearestPlayer(roomId: string, monsterId: 
     }
   }
 
-  nx = Math.max(0, Math.min(GRID_SIZE - 1, nx));
-  ny = Math.max(0, Math.min(GRID_SIZE - 1, ny));
+  // D3 — clamp the monster's top-left so the full body stays on the grid.
+  const dim = getMonsterDimension(monsterSize);
+  nx = Math.max(0, Math.min(GRID_SIZE - dim, nx));
+  ny = Math.max(0, Math.min(GRID_SIZE - dim, ny));
   await db.monster.update({ where: { id: m.id }, data: { posX: nx, posY: ny } });
-  const distAfter = Math.max(Math.abs(nx - p.posX), Math.abs(ny - p.posY));
+  const distAfter = chebyshevDistanceFromBody(monsterSize, nx, ny, p.posX, p.posY);
   invalidateSnapshotCache(roomId);
   return { newX: nx, newY: ny, distBefore, distAfter, targetName: p.name };
 }
@@ -1644,6 +1708,20 @@ export async function advanceExplorationTurn(roomId: string, justActedName: stri
           content: `Время суток меняется: ${timeOfDayLabelRu(newTimeOfDay)}.`,
         },
       });
+      // B6: NPC daily schedule — when time-of-day changes, move NPCs to their
+      // new location and auto-offer any newly-available scheduled quests.
+      // Wrapped in try/catch so a schedule failure can never break the
+      // exploration turn advance (which would freeze the game).
+      try {
+        const { applyScheduleForTimeOfDay } = await import("./npc-schedule");
+        await applyScheduleForTimeOfDay(
+          roomId,
+          newTimeOfDay as "dawn" | "day" | "dusk" | "night",
+          (room.timeOfDay as "dawn" | "day" | "dusk" | "night") || null
+        );
+      } catch (e) {
+        console.error("[advanceExplorationTurn] applyScheduleForTimeOfDay failed:", e);
+      }
     }
     if (weatherChanged) {
       await db.chatMessage.create({
@@ -2247,6 +2325,45 @@ export async function upsertNpc(
   });
   invalidateSnapshotCache(roomId);
   return toNpc(created);
+}
+
+/**
+ * B6: Set an NPC's schedule (JSON array of NpcScheduleEntry).
+ * Pass `entries = []` (or omit) to clear the schedule.
+ */
+export async function setNpcSchedule(
+  roomId: string,
+  name: string,
+  entries: NpcScheduleEntry[]
+): Promise<boolean> {
+  const cleanName = (name || "").trim();
+  if (!cleanName) return false;
+  const json = Array.isArray(entries) ? JSON.stringify(entries) : "[]";
+  const res = await db.npc.updateMany({
+    where: { roomId, name: cleanName, isAlive: true },
+    data: { schedule: json },
+  });
+  if (res.count > 0) invalidateSnapshotCache(roomId);
+  return res.count > 0;
+}
+
+/**
+ * B6: Update an NPC's current location string (used by the schedule tick to
+ * physically move NPCs between in-fiction places when time-of-day changes).
+ */
+export async function setNpcLocation(
+  roomId: string,
+  name: string,
+  location: string
+): Promise<boolean> {
+  const cleanName = (name || "").trim();
+  if (!cleanName) return false;
+  const res = await db.npc.updateMany({
+    where: { roomId, name: cleanName, isAlive: true },
+    data: { location: location || "" },
+  });
+  if (res.count > 0) invalidateSnapshotCache(roomId);
+  return res.count > 0;
 }
 
 /** Mark an NPC as dead (e.g. killed in combat). */

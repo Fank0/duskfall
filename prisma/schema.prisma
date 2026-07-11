@@ -261,6 +261,12 @@ model Monster {
   // JSON array of conditions the monster is immune to.
   // e.g. ["poisoned","charmed","frightened"]
   conditionImmunities String @default("[]")
+  // ===== D3: Token size variation (Large 2x2 / Huge 3x3 for big monsters) =====
+  // D&D 5e creature size category: tiny | small | medium | large | huge | gargantuan.
+  // The monster's token on the combat grid spans `getMonsterDimension(size)` cells
+  // in both width and height (tiny/small/medium = 1, large = 2, huge = 3, gargantuan = 4).
+  // The (posX, posY) field stores the TOP-LEFT cell of the bounding box.
+  size           String   @default("medium")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -421,6 +427,9 @@ model Npc {
   isAlive     Boolean  @default(true)
   location    String   @default("") // where they stand ("У прилавка")
   notes       String   @default("") // free-form DM notes
+  /// B6: time-of-day schedule (JSON array of NpcScheduleEntry). Empty when no schedule.
+  /// Each entry: { timeOfDay, location, activity, availableQuests?, dialogueHint? }
+  schedule    String   @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

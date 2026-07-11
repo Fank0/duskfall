@@ -299,6 +299,12 @@ export interface MonsterState {
   immunities?: string[];
   /** D&D 5e: conditions the monster is immune to. */
   conditionImmunities?: string[];
+  /**
+   * D3 — D&D 5e creature size category: tiny | small | medium | large | huge | gargantuan.
+   * Drives the on-grid token span (1×1 / 2×2 / 3×3 / 4×4) and multi-cell
+   * pathfinding. Defaults to "medium" when not set.
+   */
+  size?: string;
 }
 
 export interface InventoryItemState {
@@ -413,6 +419,28 @@ export interface MapRoomState {
 export type NpcRole = "merchant" | "questgiver" | "ally" | "enemy";
 export type NpcDisposition = "friendly" | "neutral" | "hostile";
 
+/** Time-of-day cycle (matches Room.timeOfDay). */
+export type TimeOfDay = "dawn" | "day" | "dusk" | "night";
+
+/**
+ * B6: A single entry in an NPC's daily schedule.
+ * The NPC is at `location`, doing `activity`, during `timeOfDay`.
+ * Optional `availableQuests` (titles) unlock at this time only.
+ * Optional `dialogueHint` is a Russian free-form hint passed to the LLM
+ * when generating in-character dialogue during this time slot.
+ *
+ * An `activity` containing "сон" / "спит" / "sleep" marks the NPC as
+ * unavailable for dialogue (the dialogue route rejects the request).
+ * An `activity` containing "занят" / "busy" likewise blocks dialogue.
+ */
+export interface NpcScheduleEntry {
+  timeOfDay: TimeOfDay;
+  location: string;
+  activity: string;
+  availableQuests?: string[];
+  dialogueHint?: string;
+}
+
 export interface NpcState {
   id: string;
   name: string;
@@ -423,6 +451,8 @@ export interface NpcState {
   notes: string;
   /** D&D 5e (MASTER-PLAN 6.4): NPC loyalty score 0-100. */
   loyalty: number;
+  /** B6: time-of-day schedule (parsed from JSON; empty when no schedule). */
+  schedule: NpcScheduleEntry[];
 }
 
 export interface GameStateSnapshot {

@@ -33,7 +33,7 @@ export interface EncounterResult {
   type: EncounterType;
   summary: string; // one-line Russian summary for the DM chat
   details: {
-    monsters?: { name: string; label: string; hp: number; maxHp: number; ac: number; damageNotation: string; attackBonus: number; posX: number; posY: number; color: string; description: string }[];
+    monsters?: { name: string; label: string; hp: number; maxHp: number; ac: number; damageNotation: string; attackBonus: number; posX: number; posY: number; color: string; description: string; size?: string }[];
     npcName?: string;
     npcRole?: string;
     puzzlePrompt?: string;
@@ -54,19 +54,21 @@ interface MonsterTemplate {
   attackBonus: number;
   color: string;
   description: string;
+  /** D3 — D&D 5e size category (defaults to "medium" if absent). */
+  size?: string;
 }
 
 const MONSTER_POOL: MonsterTemplate[] = [
-  { name: "Гоблин-разведчик", baseHp: 12, ac: 13, damageNotation: "1d6+2", attackBonus: 4, color: "#16a34a", description: "Кривоногий зеленошкурый гоблин с ржавым ножом." },
+  { name: "Гоблин-разведчик", baseHp: 12, ac: 13, damageNotation: "1d6+2", attackBonus: 4, color: "#16a34a", description: "Кривоногий зеленошкурый гоблин с ржавым ножом.", size: "small" },
   { name: "Скелет-воин", baseHp: 13, ac: 13, damageNotation: "1d6+2", attackBonus: 4, color: "#e5e7eb", description: "Бессмертный костяной страж с ржавым мечом." },
-  { name: "Кобольд-копатель", baseHp: 11, ac: 12, damageNotation: "1d4+2", attackBonus: 4, color: "#a16207", description: "Мелкий чешуйчатый гуманоид с киркой." },
+  { name: "Кобольд-копатель", baseHp: 11, ac: 12, damageNotation: "1d4+2", attackBonus: 4, color: "#a16207", description: "Мелкий чешуйчатый гуманоид с киркой.", size: "small" },
   { name: "Разбойник-головорез", baseHp: 14, ac: 12, damageNotation: "1d8+2", attackBonus: 4, color: "#9a3412", description: "Заросший бандит с тяжёлой булавой." },
   { name: "Болотная тварь", baseHp: 15, ac: 11, damageNotation: "1d6+2", attackBonus: 4, color: "#3f6212", description: "Слизкая гуманоидная тварь из тины." },
   { name: "Утопленник", baseHp: 13, ac: 11, damageNotation: "1d6+2", attackBonus: 4, color: "#155e75", description: "Разбухший труп моряка с чёрными глазами." },
   { name: "Теневой клон", baseHp: 10, ac: 13, damageNotation: "1d6+1", attackBonus: 4, color: "#27272a", description: "Полупрозрачная тень, повторяющая движения." },
   { name: "Павший паладин", baseHp: 18, ac: 15, damageNotation: "1d8+3", attackBonus: 5, color: "#7c2d12", description: "Бывший рыцарь веры, ныне слуга тьмы." },
   { name: "Волк-трупоед", baseHp: 11, ac: 13, damageNotation: "1d6+2", attackBonus: 5, color: "#52525b", description: "Тощий зверь с красными глазами и окровавленной пастью." },
-  { name: "Гигантская крыса", baseHp: 9, ac: 12, damageNotation: "1d4+1", attackBonus: 4, color: "#78350f", description: "Сковрадная зубастая крыса размером с кошку." },
+  { name: "Гигантская крыса", baseHp: 9, ac: 12, damageNotation: "1d4+1", attackBonus: 4, color: "#78350f", description: "Сковрадная зубастая крыса размером с кошку.", size: "small" },
 ];
 
 // ----- NPC name pool (for merchant / npc encounters) -----
@@ -123,6 +125,8 @@ function scaleMonster(t: MonsterTemplate, partyLevel: number, label: string) {
     posY: 1 + Math.floor(Math.random() * 2),
     color: t.color,
     description: t.description,
+    // D3 — propagate size (defaults to medium when the template omits it).
+    size: t.size ?? "medium",
   };
 }
 
@@ -173,6 +177,7 @@ export async function rollEncounter(
         posY: number;
         color: string;
         description: string;
+        size: string;
       }[] = [];
       for (let i = 0; i < count; i++) {
         const tpl = pick(MONSTER_POOL);

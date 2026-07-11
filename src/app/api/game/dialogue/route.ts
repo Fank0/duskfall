@@ -11,6 +11,11 @@ import { chatComplete } from "@/lib/game/llm";
 import { validatePlayerName, validateRoomCode, validateShortString, sanitizeString, LIMITS } from "@/lib/game/validate";
 import { sanitizeLLMOutput } from "@/lib/game/sanitize";
 import { rateLimit, rateLimitedResponse, getClientIp } from "@/lib/game/rate-limit";
+// B6: NPC daily schedule helpers.
+import {
+  getNpcActiveSchedule,
+  isNpcUnavailableForDialogue,
+} from "@/lib/game/npc-schedule";
 
 export const dynamic = "force-dynamic";
 
@@ -127,7 +132,64 @@ export async function POST(req: NextRequest) {
       if (!npc) return NextResponse.json({ ok: false, error: "NPC не найден." }, { status: 404 });
     }
 
+    // ===== B6: NPC daily schedule — block dialogue with sleeping/busy NPCs =====
+    // Parse the NPC's schedule JSON once and check whether they're available
+    // for dialogue at the current time-of-day. If unavailable, write a system
+    // chat message ("💤 X сейчас спит. Вернитесь утром.") and return early.
+    // The auto-created branch above is exempt — a freshly-created NPC has no
+    // schedule, so the check is a no-op for them.
     const round = room.round;
+    let npcSchedule: import("@/lib/game/types").NpcScheduleEntry[] = [];
+    if (typeof npc.schedule === "string" && npc.schedule.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(npc.schedule);
+        if (Array.isArray(parsed)) npcSchedule = parsed;
+      } catch { /* ignore */ }
+    }
+    const timeOfDay = (room.timeOfDay || "day") as "dawn" | "day" | "dusk" | "night";
+    if (npcSchedule.length > 0) {
+      // `isNpcUnavailableForDialogue` only reads `name` + `schedule`, but we
+      // construct a full NpcState-like object for clarity and to keep the
+      // object literal self-documenting.
+      const npcState: import("@/lib/game/types").NpcState = {
+        id: npc.id,
+        name: npc.name,
+        role: npc.role as any,
+        disposition: npc.disposition as any,
+        isAlive: Boolean(npc.isAlive),
+        location: npc.location ?? "",
+        notes: npc.notes ?? "",
+        loyalty: npc.loyalty ?? 50,
+        schedule: npcSchedule,
+      };
+      const unavail = isNpcUnavailableForDialogue(npcState, timeOfDay);
+      if (unavail.unavailable && unavail.reason) {
+        await saveChatMessage(room.id, "system", "", unavail.reason, round);
+        const snapshot = await getSnapshot(roomCode);
+        // Return the reason as `narrative` so the dialogue panel shows it
+        // inline AND as `error` so the toast can surface it too.
+        return NextResponse.json({
+          ok: true,
+          snapshot,
+          narrative: unavail.reason,
+          stock: [],
+          tradeOutcome: null,
+        });
+      }
+    }
+    // Active schedule entry (null when none for the current time-of-day).
+    // We pass its `dialogueHint` to the LLM so in-character lines reflect the
+    // NPC's current activity ("я ужинаю", "сейчас моя смена патруля" etc.).
+    // Only `schedule` is read by getNpcActiveSchedule, but we construct a full
+    // NpcState-like object so the call type-checks even when the helper's
+    // parameter type narrows to Pick<NpcState, "schedule">.
+    const activeEntry = npcSchedule.length > 0
+      ? getNpcActiveSchedule({ schedule: npcSchedule }, timeOfDay)
+      : null;
+    const dialogueHint = activeEntry?.dialogueHint ?? "";
+    const currentActivity = activeEntry?.activity ?? "";
+    const currentLocation = activeEntry?.location ?? "";
+
     let narrative = "";
     let tradeOutcome: { kind: "buy" | "sell"; item?: string; goldChange?: number; success?: boolean; reason?: string } | null = null;
     let stock: MerchantItem[] = [];
@@ -143,7 +205,7 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Non-merchant NPCs don't trade — return a flavour message instead.
-        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "business_unavailable", "", req.signal));
+        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "business_unavailable", "", req.signal, dialogueHint, currentActivity, currentLocation));
         await saveChatMessage(room.id, "dm", "", `${npcName} не торгует: ${narrative}`, round);
         const snapshot = await getSnapshot(roomCode);
         return NextResponse.json({ ok: true, snapshot, narrative, stock: [], tradeOutcome: null });
@@ -165,7 +227,7 @@ export async function POST(req: NextRequest) {
           { action: "add", item: item.name, type: item.type, description: item.description },
         ]);
         tradeOutcome = { kind: "buy", item: item.name, goldChange: -item.price, success: true };
-        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "buy", item.name, req.signal));
+        narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, "buy", item.name, req.signal, dialogueHint, currentActivity, currentLocation));
       }
       await saveChatMessage(room.id, "dm", "", `${npcName}: ${narrative}`, round);
       const snapshot = await getSnapshot(roomCode);
@@ -207,7 +269,7 @@ export async function POST(req: NextRequest) {
     }
 
     // intro / about / leave — call the LLM in-character.
-    narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, action, "", req.signal));
+    narrative = sanitizeLLMOutput(await runLlmDialogue(npc, player, action, "", req.signal, dialogueHint, currentActivity, currentLocation));
     await saveChatMessage(room.id, "dm", "", `${npcName}: ${narrative}`, round);
 
     if (action === "leave") {
@@ -226,13 +288,20 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Call the LLM in-character as the NPC. Returns a Russian in-character line. */
+/** Call the LLM in-character as the NPC. Returns a Russian in-character line.
+ *  B6: `dialogueHint` + `currentActivity` + `currentLocation` come from the
+ *  NPC's active schedule entry (empty when the NPC has no schedule or no
+ *  entry for the current time-of-day) — they let the LLM produce time-aware
+ *  in-character lines ("я ужинаю", "сейчас моя смена патруля" etc.). */
 async function runLlmDialogue(
   npc: { name: string; role: string; disposition: string; notes: string; location: string },
   player: { name: string; charClass: string; raceName: string; level: number; gold: number },
   action: string,
   itemName: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  dialogueHint: string = "",
+  currentActivity: string = "",
+  currentLocation: string = ""
 ): Promise<string> {
   const dispositionRu =
     npc.disposition === "friendly" ? "дружелюбный" :
@@ -241,9 +310,17 @@ async function runLlmDialogue(
     npc.role === "merchant" ? "торговец" :
     npc.role === "questgiver" ? "квестодатель" :
     npc.role === "ally" ? "союзник" : "враг";
+  // B6: include the NPC's current schedule context in the system prompt so
+  // the LLM weaves it into the in-character reply.
+  const scheduleContext = [
+    currentActivity ? `Сейчас занят: ${currentActivity}` : "",
+    currentLocation && currentLocation !== npc.location ? `Текущее место: ${currentLocation}` : "",
+    dialogueHint ? `Подсказка для ответа: ${dialogueHint}` : "",
+  ].filter(Boolean).join(". ");
+  const scheduleLine = scheduleContext ? `\n\nРасписание NPC: ${scheduleContext}.` : "";
   const sysMsg = `${SYSTEM_PROMPT_DIALOGUE}
 
-Ты играешь: ${npc.name}, ${roleRu}, ${dispositionRu}${npc.location ? `, находится: ${npc.location}` : ""}.
+Ты играешь: ${npc.name}, ${roleRu}, ${dispositionRu}${npc.location ? `, находится: ${npc.location}` : ""}.${scheduleLine}
 
 Игрок: ${player.name} (${player.raceName} ${player.charClass}, ур.${player.level}, ${player.gold} золота).`;
 

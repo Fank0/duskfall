@@ -43,6 +43,14 @@ async function spawnMonsters(
     const tpl = pick(biome.monsters);
     const label = `${tpl.name.slice(0, 2)}${i + 1}`;
     const m = scaleBiomeMonster(tpl, partyLevel, label);
+    // D3 — clamp a multi-cell monster's spawn position so its full body fits
+    // on the 16×16 grid (a 3×3 dragon spawned at (15,15) would overflow).
+    const dim =
+      m.size === "large" ? 2 :
+      m.size === "huge" ? 3 :
+      m.size === "gargantuan" ? 4 : 1;
+    const safeX = Math.max(0, Math.min(16 - dim, m.posX));
+    const safeY = Math.max(0, Math.min(16 - dim, m.posY));
     data.push({
       roomId,
       name: m.name,
@@ -52,13 +60,15 @@ async function spawnMonsters(
       ac: m.ac,
       damageNotation: m.damageNotation,
       attackBonus: m.attackBonus,
-      posX: m.posX,
-      posY: m.posY,
+      posX: safeX,
+      posY: safeY,
       color: m.color,
       description: m.description,
       isActive: false,
       isBoss: false,
       specialAbility: "",
+      // D3 — persist size so the grid renders 2×2 / 3×3 tokens.
+      size: m.size,
     });
   }
   await db.monster.createMany({ data });
@@ -74,6 +84,13 @@ async function spawnBoss(
   if (biome.bosses.length === 0) return;
   const tpl = pick(biome.bosses);
   const b = scaleBiomeBoss(tpl, partyLevel, "Б1");
+  // D3 — clamp the boss's spawn position so its (often huge) body fits on the grid.
+  const dim =
+    b.size === "large" ? 2 :
+    b.size === "huge" ? 3 :
+    b.size === "gargantuan" ? 4 : 1;
+  const safeX = Math.max(0, Math.min(16 - dim, b.posX));
+  const safeY = Math.max(0, Math.min(16 - dim, b.posY));
   await db.monster.create({
     data: {
       roomId,
@@ -84,8 +101,8 @@ async function spawnBoss(
       ac: b.ac,
       damageNotation: b.damageNotation,
       attackBonus: b.attackBonus,
-      posX: b.posX,
-      posY: b.posY,
+      posX: safeX,
+      posY: safeY,
       color: b.color,
       description: b.description,
       // Bosses start HIDDEN (isActive=false); the DM agent reveals all
@@ -94,6 +111,8 @@ async function spawnBoss(
       isActive: false,
       isBoss: true,
       specialAbility: b.specialAbility,
+      // D3 — persist size (bosses default to Huge; see scaleBiomeBoss).
+      size: b.size,
     },
   });
 }

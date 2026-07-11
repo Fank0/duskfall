@@ -4,6 +4,7 @@ import { getSnapshot, invalidateSnapshotCache, moveToken, damagePlayer } from "@
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 import { rollD20, rollDice } from "@/lib/game/dice";
 import { getTerrainCells, isDifficultTerrain } from "@/lib/game/terrain";
+import { chebyshevDistanceFromBody } from "@/lib/game/pathfinding";
 import { pushStateChange } from "@/lib/realtime";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +53,9 @@ export async function POST(req: NextRequest) {
 
     // D&D 5e Opportunity Attacks: if in combat and the player was adjacent to
     // a monster, moving away triggers a free attack from that monster.
+    // D3 — "adjacent" for a multi-cell monster means the player's cell is
+    // within 1 Chebyshev-step of ANY body cell. We use chebyshevDistanceFromBody
+    // which returns 0 if the player overlaps the body, 1 if edge-adjacent, etc.
     const wasFromX = player.posX;
     const wasFromY = player.posY;
     let opportunityAttacks: { monsterName: string; hit: boolean; damage: number }[] = [];
@@ -59,8 +63,9 @@ export async function POST(req: NextRequest) {
       const monsters = await db.monster.findMany({ where: { roomId: room.id, isActive: true } });
       for (const m of monsters) {
         if (m.hp <= 0) continue;
-        const distBefore = Math.max(Math.abs(m.posX - wasFromX), Math.abs(m.posY - wasFromY));
-        const distAfter = Math.max(Math.abs(m.posX - x), Math.abs(m.posY - y));
+        const monsterSize = (m as any).size ?? "medium";
+        const distBefore = chebyshevDistanceFromBody(monsterSize, m.posX, m.posY, wasFromX, wasFromY);
+        const distAfter = chebyshevDistanceFromBody(monsterSize, m.posX, m.posY, x, y);
         // If the player was adjacent (dist=1) and is now moving away (dist>1),
         // the monster gets an opportunity attack.
         if (distBefore === 1 && distAfter > 1) {
