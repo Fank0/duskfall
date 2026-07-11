@@ -75,6 +75,8 @@ export const ChatPanel = memo(function ChatPanel({
   currentTurnName,
   onSend,
   onRest,
+  onPartyChat,
+  playerName,
   onAttackTargeting,
   isTargetingActive = false,
   roomCode,
