@@ -13,7 +13,7 @@ import {
 import {
   ScrollIcon, Sparkles, Swords, Heart, Zap, Shield, Package, Wand2,
   Shirt, Hammer, Star, Search, Bed, Moon, Wind, ShieldOff, Clock, Footprints,
-  Hand, ArrowRight, EyeOff,
+  Hand, ArrowRight, EyeOff, RotateCcw,
 } from "lucide-react";
 import { computeAbilities, type Ability } from "@/lib/game/abilities";
 import { useSettings } from "@/lib/game/settings";
@@ -103,6 +103,8 @@ export const BottomPanel = memo(function BottomPanel({
   isThinking = false,
   isDead = false,
   isYourTurn = true,
+  onReplay,
+  hasReplay = false,
 }: {
   player: PlayerState;
   inventory: InventoryItemState[];
@@ -135,6 +137,13 @@ export const BottomPanel = memo(function BottomPanel({
    *  When false, ability/item quick-use chips are disabled to prevent
    *  wasted /api/game/action requests that the server would reject. */
   isYourTurn?: boolean;
+  /** D4 — Replay last combat turn. Called when the player clicks the
+   *  "🔁 Повторить ход" button. The parent should compute the TurnEvents
+   *  for the current round and mount the ReplayOverlay. */
+  onReplay?: () => void;
+  /** D4 — True when there are replayable events for the current round.
+   *  When false (or in exploration), the replay button is hidden. */
+  hasReplay?: boolean;
 }) {
   const settings = useSettings();
   const lang = settings.lang;
@@ -562,6 +571,27 @@ export const BottomPanel = memo(function BottomPanel({
             <div className="flex items-center gap-1.5">
               <Swords className="h-3.5 w-3.5 text-amber-400" />
               <span className="text-[11px] font-semibold gold-text">{tt("ui.combat_actions")}</span>
+              {/* D4 — Replay last turn. Only shown in combat + when there are
+                  replayable events for the current round. Sits in the section
+                  header so it's clearly tied to combat actions, next to the
+                  "Лог боя" semantic (the combat-log button lives in page.tsx
+                  header — this is the in-combat equivalent for replays). */}
+              {combatActive && hasReplay && onReplay && (
+                <button
+                  type="button"
+                  onClick={onReplay}
+                  disabled={isThinking}
+                  title={tt("ui.replay_turn")}
+                  className={cn(
+                    "ml-auto flex items-center gap-1 rounded-full border border-amber-500/60 bg-amber-950/50 px-1.5 py-0.5 text-[9px] font-medium text-amber-200 transition-all",
+                    "hover:border-amber-400/80 hover:bg-amber-900/60 hover:shadow-[0_0_6px_rgba(251,191,36,0.45)]",
+                    "disabled:cursor-not-allowed disabled:opacity-40",
+                  )}
+                >
+                  <RotateCcw className="h-2.5 w-2.5" />
+                  <span className="hidden sm:inline">{tt("ui.replay_turn")}</span>
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-0.5 lg:grid-cols-2">
               {COMBAT_ACTIONS.map((q) => (

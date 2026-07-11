@@ -3558,3 +3558,46 @@ Stage Summary:
 - Files created: `src/lib/game/npc-schedule.ts`, `src/lib/game/npc-schedule-client.ts`, `agent-ctx/B6-full-stack-developer.md`.
 - Files modified: `prisma/schema.prisma`, `src/lib/game/types.ts`, `src/lib/game/state.ts`, `src/lib/game/seed.ts`, `src/app/api/game/dialogue/route.ts`, `src/components/dnd/DialoguePanel.tsx`, `src/app/page.tsx`, `src/lib/game/i18n.ts`.
 - Lint clean (0 errors / 0 warnings). No new TypeScript errors introduced (all remaining tsc errors are PRE-EXISTING). No new packages installed. No mini-service changes needed.
+
+---
+Task ID: D4
+Agent: full-stack-developer
+Task: Combat replay (BG3-inspired "Повторить ход" — visually replay the most recent combat turn: token movements, attacks, damage numbers, spell effects).
+
+Work Log:
+- Read worklog.md (last 500 lines) + the target files (page.tsx, CombatGrid.tsx, CombatTextOverlay.tsx, DiceBar.tsx, BottomPanel.tsx, action/route.ts) + the prisma schema + dm-agent.ts to understand the dice-roll label patterns the DM agent emits (Атака/Урон по:/Урон:/Урон заклинания/Лечение/Спасбросок/Скрытая атака/etc.). Confirmed DiceRoll rows persist `roller`, `round`, `label`, `notation`, `result`, `total`, `success` — enough to reconstruct events; `purpose` lives only on the in-memory ResolvedRoll (not the DB row), so labels are the source of truth.
+- Created `src/lib/game/replay.ts` (NEW, ~370 lines) — pure isomorphic module:
+  - Exports `TurnEvent` union (move/attack/spell/damage/heal/condition) per spec.
+  - Exports `buildTurnEvents(diceRolls, chatMessages, players, monsters, round)` — filters rolls + chat for the requested round, walks rolls chronologically, classifies each by label pattern, pairs attack rolls with the next same-roller damage roll (within ≤6 rolls), infers damage type / spell name / element / condition past-tense verbs from chat. Skips initiative rolls, save rolls (already paired with damage), spell-slot spend records. Move events use the actor's CURRENT position as both `from` and `to` (we don't persist previous positions, so the highlight fires but the token doesn't translate — best-effort).
+- Added 4 new i18n keys to ALL 6 language blocks (ru/en/es/de/fr/zh): `ui.replay_turn`, `ui.replay_skip`, `ui.replay_close`, `ui.replay_no_data`.
+- Created `src/components/dnd/ReplayOverlay.tsx` (NEW, ~430 lines) — the overlay UI:
+  - Single piece of state: `currentIndex`. ALL per-event visual state (moveFx/attackFx/spellFx/conditionFx/floatingTexts) is DERIVED from `events[currentIndex]` + the position lookup via a pure `deriveEffects()` helper. No `setState` in the effect body — satisfies `react-hooks/set-state-in-effect`.
+  - Uses the existing `CombatTextOverlay` + `makeDamageText`/`makeHealText`/`makeMissText` helpers for floating damage/heal/miss numbers. The overlay is `key`ed by `eventKey` so each event advance triggers a clean remount → CSS animations restart.
+  - Effects: move = amber cell highlight + →; attack = ⚔️ icon on attacker + SVG line to target + red pulsing ring on target; spell = fuchsia spell-name banner + colored AoE cell highlights on every affected target (element color); damage/heal = floating text; condition = condition emoji over target.
+  - Bottom controls: progress bar + "🔁 Повторить ход" (restart) + "⏭ Пропустить" + "✕ Закрыть".
+  - onClose ref pattern (updated in useEffect, not during render) + finishedRef guard so the finish-effect fires onClose exactly once.
+- Modified `src/components/dnd/BottomPanel.tsx`:
+  - Added `RotateCcw` icon import.
+  - Added 2 new props: `onReplay?: () => void` and `hasReplay?: boolean`.
+  - Added a "🔁 Повторить ход" button in the Combat Actions section header — only visible when `combatActive && hasReplay && onReplay`. Styled as a small amber pill with a RotateCcw icon; disabled while a DM action is streaming.
+- Modified `src/app/page.tsx`:
+  - Imported `ReplayOverlay` + `buildTurnEvents` + `TurnEvent`.
+  - Added state: `isReplaying`, `replayEvents`.
+  - Defined `closeReplay` as an early `useCallback` (BEFORE the early returns) because it's referenced by the Escape-key effect + the combat-end effect, both of which run on every render.
+  - Defined `startReplay` AFTER the early returns (uses `snapshot`) — builds the events lazily on click (not via useMemo, to keep the hook order stable across the early returns). Also clears moveMode + targeting on open.
+  - Added `hasReplay` cheap check (any dice roll or chat line tagged with the current round — no full buildTurnEvents call on every render).
+  - Added a D4 Escape effect: closes the replay overlay on Escape.
+  - Extended the combat-end effect: cancels the replay when combat ends.
+  - Added `isReplaying` to `anyModalOpen` so hotkeys are suppressed during replay.
+  - Wrapped CombatGrid + ReplayOverlay in a `<div className="relative flex min-h-0 flex-1 flex-col">` so the overlay's `absolute inset-0` aligns exactly with the grid's box (not the whole right column including the scene image).
+  - Passed `onReplay` + `hasReplay` to BottomPanel.
+- Initial runtime error: `Cannot access 'closeReplay' before initialization` — `closeReplay` was originally defined as a plain const AFTER the early returns, but the Escape effect (before the early returns) referenced it. Fixed by moving `closeReplay` to an early `useCallback` (no `snapshot` dependency, so safe to define early). Verified the dev server returned HTTP 200 on `/` after the fix.
+- Lint clean (0 errors, 0 warnings). tsc --noEmit shows 2 PRE-EXISTING errors (`actionPoints` / `maxActionPoints` at page.tsx:1542-1543) — verified via `git stash` that they exist on main without my changes; my D4 changes introduce 0 new TypeScript errors.
+
+Stage Summary:
+- D4 (combat replay) is fully implemented. During combat, players see a "🔁 Повторить ход" button in the BottomPanel's Combat Actions section. Clicking it opens a full-cover overlay over the CombatGrid that visually replays the most recent round's events (attacks, damage, spells, heals, conditions, movement highlights) sequentially at 600ms per event. Skip / Close / Restart buttons + Escape key + combat-end all dismiss the overlay cleanly.
+- The replay events are reconstructed from the persisted DiceRoll rows + chat messages (both already in the snapshot — no new API endpoint needed). Label-pattern classification handles player attacks, monster attacks, AoE spells, sneak attacks, off-hand attacks, Extra Attacks, heals, backlash damage, trap damage, and condition verbs in the DM narrative. Move events are best-effort (no position history → highlight only). Spell-name + damage-type are inferred from a curated Russian spell-name list + element keywords.
+- The overlay reuses the existing CombatTextOverlay infrastructure for floating damage/heal/miss text, the existing CONDITIONS table for condition emojis, and the existing `animate-pulse-glow` / `animate-pulse` CSS classes — no new CSS or animation libraries needed.
+- Files created: `src/lib/game/replay.ts`, `src/components/dnd/ReplayOverlay.tsx`, `agent-ctx/D4-full-stack-developer.md`.
+- Files modified: `src/lib/game/i18n.ts`, `src/components/dnd/BottomPanel.tsx`, `src/app/page.tsx`.
+- Lint clean (0 errors / 0 warnings). No new TypeScript errors. No new packages installed. No mini-service changes. Dev server (port 3000) returns HTTP 200.

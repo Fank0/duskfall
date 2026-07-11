@@ -20,6 +20,8 @@ import { EnemyPanel } from "@/components/dnd/EnemyPanel";
 import { InitiativeTracker } from "@/components/dnd/InitiativeTracker";
 import { Lobby } from "@/components/dnd/Lobby";
 import { ErrorBoundary } from "@/components/dnd/ErrorBoundary";
+import { ReplayOverlay } from "@/components/dnd/ReplayOverlay";
+import { buildTurnEvents, type TurnEvent } from "@/lib/game/replay";
 import { useSettings } from "@/lib/game/settings";
 import {
   resumeAudio, startMusic, stopMusic, setMusicVolume, setSfxVolume, setMusicEnabled,
@@ -162,6 +164,23 @@ export default function Home() {
   // on (and combat is active), the CombatGrid shows a BG3/DOS2-style A* path
   // preview on hover (numbered cells + total movement cost in feet).
   const [moveMode, setMoveMode] = useState(false);
+
+  // D4 — Combat replay state. `isReplaying` mounts the ReplayOverlay over the
+  // CombatGrid; `replayEvents` is the chronologically-ordered list of events
+  // for the most recent round, built once when the player clicks the replay
+  // button (so the overlay can play them back without re-computing on each
+  // 600ms tick). The events list is computed lazily inside `startReplay`
+  // (NOT via useMemo) to keep the hook order stable across the early-return
+  // boundaries below; we only compute when the user actually opens the replay.
+  const [isReplaying, setIsReplaying] = useState(false);
+  const [replayEvents, setReplayEvents] = useState<TurnEvent[]>([]);
+  // `closeReplay` is defined here (not after the early returns) because it's
+  // referenced by the Escape-key + combat-end effects below — those effects
+  // run on every render and need a stable callback before the early returns.
+  const closeReplay = useCallback(() => {
+    setIsReplaying(false);
+    setReplayEvents([]);
+  }, []);
 
   // UI customization settings (item 21) — read at the top so the hook order is stable.
   const settings = useSettings();
@@ -1019,6 +1038,19 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [targetingMode, cancelTargeting]);
 
+  // D4 — Escape closes the replay overlay (in addition to the Close button).
+  useEffect(() => {
+    if (!isReplaying) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeReplay();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isReplaying, closeReplay]);
+
   // Cancel targeting when combat ENDS (transition from active → inactive) so
   // the player is never stuck targeting on a peaceful grid. We track the
   // previous combat state with a ref so we don't cancel targeting that was
@@ -1033,13 +1065,19 @@ export default function Home() {
     if (snapshot && prevCombatActive.current && !snapshot.combatActive && moveMode) {
       setMoveMode(false);
     }
+    // D4: cancel the replay overlay when combat ends so the player is never
+    // stuck watching a replay of a finished encounter.
+    if (snapshot && prevCombatActive.current && !snapshot.combatActive && isReplaying) {
+      closeReplay();
+    }
     if (snapshot) prevCombatActive.current = snapshot.combatActive;
-  }, [snapshot, targetingMode, cancelTargeting, moveMode]);
+  }, [snapshot, targetingMode, cancelTargeting, moveMode, isReplaying, closeReplay]);
 
   // Track whether any modal is open — hotkeys are suppressed while a modal
   // captures input (the modal's own Escape handler still works).
   const anyModalOpen = questOpen || mapOpen || dialogueOpen || settingsOpen
-    || combatLogOpen || bestiaryOpen || spellbookOpen || itemDbOpen || saveDialogOpen;
+    || combatLogOpen || bestiaryOpen || spellbookOpen || itemDbOpen || saveDialogOpen
+    || isReplaying;
 
   // ===== Item 4: Hotkeys for quick-use =====
   // Trigger the Nth ability in the BottomPanel (1..8) using the same targeting
@@ -1175,6 +1213,37 @@ export default function Home() {
   const nearestMonsterName = you
     ? findNearestMonsterName(snapshot.monsters, you.posX, you.posY)
     : undefined;
+
+  // D4 — Cheap "has anything happened this round?" check (no full
+  // buildTurnEvents call) so the BottomPanel can show the "🔁 Повторить ход"
+  // button only when there's something to replay. We look for any dice roll
+  // OR chat line tagged with the current round.
+  const hasReplay = snapshot.combatActive && (
+    snapshot.diceLog.some((r) => r.round === snapshot.round && r.label !== "Инициатива")
+    || snapshot.chat.some((m) => m.round === snapshot.round)
+  );
+  // Build the events lazily on click — avoids running buildTurnEvents on every
+  // render. The built list is stored in state so the overlay can replay it.
+  const startReplay = () => {
+    const events = buildTurnEvents(
+      snapshot.diceLog,
+      snapshot.chat,
+      snapshot.players,
+      snapshot.monsters,
+      snapshot.round,
+    );
+    if (events.length === 0) {
+      toast(tt("ui.replay_no_data"));
+      return;
+    }
+    setReplayEvents(events);
+    setIsReplaying(true);
+    // D8: leave move mode + targeting while the replay is running so the grid
+    // is in a clean state under the overlay.
+    setMoveMode(false);
+    setTargetingMode("none");
+    setTargetingAbility(null);
+  };
 
   // UI customization (item 21): theme + scale, read from the settings store above.
   const themeAttr = settings.theme === "default" ? undefined : settings.theme;
@@ -1506,31 +1575,49 @@ export default function Home() {
                 </button>
               </div>
             )}
-            <CombatGrid
-              players={snapshot.players}
-              monsters={snapshot.monsters}
-              combatActive={snapshot.combatActive}
-              round={snapshot.round}
-              currentTurnName={snapshot.currentTurnName}
-              conditions={snapshot.conditions}
-              aoe={lastAoe}
-              lastAnimEvent={lastAnimEvent}
-              gridExtras={{
-                lootCells: snapshot.lootCells,
-                traps: snapshot.traps,
-                terrainCells: snapshot.terrainCells,
-              }}
-              targetingMode={targetingMode}
-              onMonsterTargetClick={handleMonsterTargetClick}
-              onPlayerTargetClick={handlePlayerTargetClick}
-              onCellTargetClick={handleCellTargetClick}
-              onMoveClick={handleMoveClick}
-              yourName={session?.playerName}
-              yourPosition={you ? { x: you.posX, y: you.posY } : null}
-              targetingRange={targetingMode !== "none" ? (targetingMode === "aoe" ? 8 : 1) : undefined}
-              moveMode={moveMode}
-              remainingMovementFeet={you ? Math.max(0, (you.dashActive ? you.speed * 2 : you.speed) - you.movementUsed) : undefined}
-            />
+            {/* D4 — wrap CombatGrid + ReplayOverlay in a relative container so
+                the overlay's `absolute inset-0` aligns exactly with the grid's
+                box (not the whole right column including the scene image). */}
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              <CombatGrid
+                players={snapshot.players}
+                monsters={snapshot.monsters}
+                combatActive={snapshot.combatActive}
+                round={snapshot.round}
+                currentTurnName={snapshot.currentTurnName}
+                conditions={snapshot.conditions}
+                aoe={lastAoe}
+                lastAnimEvent={lastAnimEvent}
+                gridExtras={{
+                  lootCells: snapshot.lootCells,
+                  traps: snapshot.traps,
+                  terrainCells: snapshot.terrainCells,
+                }}
+                targetingMode={targetingMode}
+                onMonsterTargetClick={handleMonsterTargetClick}
+                onPlayerTargetClick={handlePlayerTargetClick}
+                onCellTargetClick={handleCellTargetClick}
+                onMoveClick={handleMoveClick}
+                yourName={session?.playerName}
+                yourPosition={you ? { x: you.posX, y: you.posY } : null}
+                targetingRange={targetingMode !== "none" ? (targetingMode === "aoe" ? 8 : 1) : undefined}
+                moveMode={moveMode}
+                remainingMovementFeet={you ? Math.max(0, (you.dashActive ? you.speed * 2 : you.speed) - you.movementUsed) : undefined}
+              />
+              {/* D4 — Combat replay overlay. Mounts on top of the CombatGrid when
+                  the player clicks the "🔁 Повторить ход" button in BottomPanel.
+                  The overlay is `absolute inset-0` relative to the wrapper div
+                  above so it covers exactly the grid area. */}
+              {isReplaying && replayEvents.length > 0 && (
+                <ReplayOverlay
+                  events={replayEvents}
+                  players={snapshot.players}
+                  monsters={snapshot.monsters}
+                  lang={lang}
+                  onClose={closeReplay}
+                />
+              )}
+            </div>
           </aside>
         </div>
 
@@ -1564,6 +1651,8 @@ export default function Home() {
             isThinking={isThinking}
             isDead={isDead}
             isYourTurn={isYourTurn}
+            onReplay={startReplay}
+            hasReplay={hasReplay}
           />
         )}
       </main>
