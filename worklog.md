@@ -3704,3 +3704,30 @@ Stage Summary:
   - `prisma/schema.prisma` — added `StatusEffect` + `LootDrop` models and `Room.statusEffects` / `Room.lootDrops` relations.
 - No runtime behaviour changed: every fix is either a type-only annotation, a sensible default for a stub object, a variable rename to the correct in-scope name, or a missing Prisma model that the code was already trying to use.
 - DB pushed via `bun run db:push` (Prisma client regenerated; SQLite tables created). Dev server confirmed healthy — `/api/game/state` returning 200 in ~18ms.
+
+---
+Task ID: BUGFIX-REPLAY-TS
+Agent: main (Z.ai Code)
+Task: Fix replay overlay timing bug + eliminate all 35 TypeScript errors.
+
+Work Log:
+- Discovered replay overlay (D4) was closing almost instantly when there was only 1 event in the round. Root cause: the playback effect scheduled a 600ms timeout for the event, then immediately called onClose when the index advanced past the last event — giving the user no time to see the replay.
+- Also discovered startReplay was targeting the CURRENT round (which has no dice rolls yet) instead of the most recent COMPLETED round. Fixed by computing targetRound = max(round in diceLog where round < currentRound).
+- Fixed replay timing: added INTRO_MS (500ms) delay before first event + OUTRO_MS (1500ms) delay after last event before auto-closing. With 1 event, overlay is now visible for ~2.6s instead of 0.6s.
+- Verified via agent-browser: overlay now shows "Повторить ход / Пропустить / Закрыть" buttons and stays visible long enough to see the replay.
+- Delegated TypeScript error fixing to subagent (TS-FIX). All 35 errors eliminated:
+  - scene-image.ts: added generateImage() export
+  - types.ts: added actionPoints/maxActionPoints to PlayerState + StatusEffectState/LootDropState types
+  - feats.ts: extended FeatId union with 10 new feat IDs
+  - dm-agent.ts: fixed 2 snap0→actorSnap references (would have thrown ReferenceError), added missing PlayerState fields, fixed addStoryMemory call, coerced selectedTalents type
+  - CombatGrid.tsx: wrapped cn() arg in Boolean()
+  - DialoguePanel.tsx: added 'quest' to action union
+  - EnemyPanel.tsx: wrapped Crown icon in span title
+  - schema.prisma: added StatusEffect + LootDrop models
+- All commits pushed to GitHub (3 commits: replay fix, TS fixes, worklog update).
+
+Stage Summary:
+- Replay overlay now works correctly — visible for 2.6s with 1 event, scales up with more events.
+- 0 TypeScript errors (was 35). 0 lint errors. Dev server HTTP 200. No console errors.
+- 2 latent runtime bugs fixed in dm-agent.ts (snap0 references on Help/Throw paths).
+- Project is now fully stable for continued development.
