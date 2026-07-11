@@ -61,6 +61,12 @@ export interface ReplayOverlayProps {
 }
 
 const STEP_MS = 600;
+/** Delay before the first event plays (lets the overlay fade in). */
+const INTRO_MS = 500;
+/** Delay after the last event finishes before auto-closing (lets the user
+ *  see the final effect — without this, a 1-event replay would flash for
+ *  only STEP_MS and feel like nothing happened). */
+const OUTRO_MS = 1500;
 
 const AOE_ELEMENT_BG: Record<string, string> = {
   fire: "rgba(249,115,22,0.55)",
@@ -212,19 +218,22 @@ export function ReplayOverlay({
   // `currentIndex` + `events` (the onClose callback is read via a ref).
   useEffect(() => {
     if (currentIndex >= events.length) {
-      // Playback finished — close (once).
+      // Playback finished — close (once), but wait OUTRO_MS so the user can
+      // see the final event's visual effect before the overlay disappears.
       if (!finishedRef.current) {
         finishedRef.current = true;
-        const id = window.setTimeout(() => onCloseRef.current(), 0);
+        const id = window.setTimeout(() => onCloseRef.current(), OUTRO_MS);
         return () => window.clearTimeout(id);
       }
       return;
     }
     finishedRef.current = false;
-    // Schedule the next event.
+    // First event: wait INTRO_MS (fade-in time) before showing it.
+    // Subsequent events: wait STEP_MS between events.
+    const delay = currentIndex === 0 ? INTRO_MS : STEP_MS;
     timerRef.current = window.setTimeout(() => {
       setCurrentIndex((i) => i + 1);
-    }, STEP_MS);
+    }, delay);
     return () => {
       if (timerRef.current !== null) {
         window.clearTimeout(timerRef.current);

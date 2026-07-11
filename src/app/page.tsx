@@ -1219,18 +1219,30 @@ export default function Home() {
   // button only when there's something to replay. We look for any dice roll
   // OR chat line tagged with the current round.
   const hasReplay = snapshot.combatActive && (
-    snapshot.diceLog.some((r) => r.round === snapshot.round && r.label !== "Инициатива")
+    snapshot.diceLog.some((r) => r.label !== "Инициатива")
     || snapshot.chat.some((m) => m.round === snapshot.round)
   );
   // Build the events lazily on click — avoids running buildTurnEvents on every
   // render. The built list is stored in state so the overlay can replay it.
+  //
+  // Round-selection strategy: dice rolls are tagged with the round in which
+  // they happened. When the player clicks "Повторить ход" during round N,
+  // they want to see what happened in round N-1 (the most recently completed
+  // round). If N-1 has no rolls (e.g. first turn after combat start), fall
+  // back to the highest round that has any dice rolls.
   const startReplay = () => {
+    const currentRound = snapshot.round;
+    const rollRounds = snapshot.diceLog
+      .map((r) => r.round)
+      .filter((r) => r < currentRound);
+    const targetRound =
+      rollRounds.length > 0 ? Math.max(...rollRounds) : currentRound;
     const events = buildTurnEvents(
       snapshot.diceLog,
       snapshot.chat,
       snapshot.players,
       snapshot.monsters,
-      snapshot.round,
+      targetRound,
     );
     if (events.length === 0) {
       toast(tt("ui.replay_no_data"));
