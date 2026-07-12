@@ -139,6 +139,10 @@ export interface ResolvedEvent {
   monsterThatDied: string | null;
   damageDealtToPlayer: number;
   damagedPlayer: string | null;
+  /** NEW-FEATURES-1 (Feature 1): explicit damage type for color-coded floating text.
+   *  One of: fire | cold | lightning | poison | necrotic | radiant | physical | force | acid | thunder.
+   *  Empty string when no damage was dealt or the type is unknown. */
+  damageType: string;
   healingToPlayer: number;
   healedPlayer: string | null;
   inventoryChanges: InventoryChange[];
@@ -440,6 +444,23 @@ export interface LootDropState {
   createdAt: string;
 }
 
+/**
+ * NEW-FEATURES-1 (Feature 2): A grid-placed loot drop sitting on a cell, ready
+ * for auto-pickup when a player walks onto it. Mirrors the new `x`/`y`/
+ * `itemName`/`quantity`/`pickedUp` columns on the `LootDrop` Prisma model.
+ */
+export interface LootDropCellState {
+  id: string;
+  x: number;
+  y: number;
+  itemName: string;
+  quantity: number;
+  /** Slain monster name (for tooltip context). Empty for legacy drops. */
+  monsterName: string;
+  /** ISO timestamp — used for stable ordering + LootLog cross-reference. */
+  createdAt: string;
+}
+
 /** A quest tracked in the room's quest journal. */
 export interface QuestState {
   id: string;
@@ -551,6 +572,9 @@ export interface GameStateSnapshot {
   hasEnchant: boolean;
   /** ground loot cells (items with playerName="__ground__" spread across grid cells) — item 20 */
   lootCells: { x: number; y: number; itemName: string }[];
+  /** NEW-FEATURES-1 (Feature 2): grid-placed loot drops from slain monsters.
+   *  Auto-picked-up when a player walks onto the cell. Rendered as 💰 icons. */
+  lootDrops: LootDropCellState[];
   /** trap cells on the grid (DM-populated; empty for now) — item 20 */
   traps: { x: number; y: number; discovered: boolean }[];
   /** D&D 5e tactical terrain features on the combat grid */

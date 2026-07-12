@@ -3731,3 +3731,75 @@ Stage Summary:
 - 0 TypeScript errors (was 35). 0 lint errors. Dev server HTTP 200. No console errors.
 - 2 latent runtime bugs fixed in dm-agent.ts (snap0 references on Help/Throw paths).
 - Project is now fully stable for continued development.
+
+---
+Task ID: I18N-FIX
+Agent: full-stack-developer
+Task: Add missing tutorial i18n keys (`tutorial.prev`, `tutorial.next`, `tutorial.close`) for all 6 languages (ru, en, es, de, fr, zh) used by `src/components/dnd/Lobby.tsx` tutorial navigation buttons.
+Work Log:
+- Read worklog tail to understand prior context (most recent: TS-FIX + BUGFIX-REPLAY-TS).
+- Inspected `src/components/dnd/Lobby.tsx` — confirmed it calls `tt("tutorial.prev")`, `tt("tutorial.next")`, `tt("tutorial.close")` at lines 351/359/367.
+- Searched `src/lib/game/i18n.ts` (3044 lines) for `tutorial.(prev|next|close)` — 0 matches. The task brief stated these existed in `ru`+`en`, but they were actually missing from EVERY language section. So all 6 sections needed the 3 keys.
+- Located the 6 language sections: `ru:` (L63), `en:` (L560), `es:` (L1057), `de:` (L1491), `fr:` (L1926), `zh:` (L2360).
+- For `ru` and `en`: the tutorial block already exists ending at `tutorial.tip3` (L256 / L753). Inserted the 3 new keys immediately after `tutorial.tip3`, right before `lobby.sign_out_toast`, so they sit naturally with the rest of the tutorial block.
+- For `es`, `de`, `fr`, `zh`: no tutorial keys exist at all (tutorial was never translated for these languages). Per the task brief, added the 3 keys as the final entries of each section — right after `"itemdb.enchantment.holy"` and before the closing `},`. This keeps the lobby Prev/Next/Close buttons rendering properly even though the tutorial body itself isn't localized.
+- Translations used (as specified by the task):
+  - ru: Назад / Далее / Закрыть
+  - en: Previous / Next / Close
+  - es: Anterior / Siguiente / Cerrar
+  - de: Zurück / Weiter / Schließen
+  - fr: Précédent / Suivant / Fermer
+  - zh: 上一页 / 下一页 / 关闭
+- Verified all 18 new entries landed correctly via `grep tutorial.(prev|next|close)` — 6 languages × 3 keys = 18 hits, at expected line ranges.
+- Ran the 3 mandatory tests:
+  - `bun run lint` → 0 warnings, 0 errors ✓
+  - `npx tsc --noEmit` → exit 0, 0 errors ✓
+  - `curl http://localhost:3000/` → HTTP 200 ✓
+Stage Summary:
+- The Lobby tutorial popup Prev/Next/Close buttons now render with proper localized text in all 6 supported languages instead of falling back to the raw key strings.
+- Files modified: `src/lib/game/i18n.ts` (1 file, 18 new lines, 0 deletions, 0 existing keys changed). JSON syntax preserved — all 6 language objects still parse cleanly (verified by tsc + the dev server returning 200).
+- No regressions: lint clean, type-check clean, dev server healthy.
+
+---
+Task ID: NEW-FEATURES-1
+Agent: full-stack-developer
+Task: Add 3 new gameplay features to enrich DUSKFALL — (1) BG3-style floating damage numbers with explicit damageType end-to-end, (2) loot drops from slain monsters (grid-placed 💰 icons + auto-pickup on walk-over), (3) BG3-style status-effect icons on tokens (16px + shadcn Tooltip).
+
+Work Log:
+- Read worklog.md (last 250 lines) + the 3 target files (CombatTextOverlay.tsx, conditions.ts, CombatGrid.tsx) + dm-agent.ts + bestiary.ts + state.ts + page.tsx + move-token route + prisma schema + i18n.ts to understand the existing systems. Confirmed: floating-text overlay + makeDamageText() already existed but inferred damageType from the dice-log label on the client; ConditionIcons already existed at 14px with native title tooltip; LootDrop Prisma model existed but only for the LootLog panel (no grid placement); monster death loot was already rolled via generateLoot() but placed into the __ground__ inventory bucket at hash positions (not the monster's death cell).
+
+Feature 1 — Floating damage numbers (BG3-style):
+- types.ts: added `damageType: string` to ResolvedEvent.
+- dm-agent.ts: added `damageType: string` to ResolutionResult interface; added `let lastDamageType = ""` accumulator in resolvePlayerAction; set it at 3 damage sites (AoE element, single-target monster damage via inferDamageType, player backlash as "physical"); added `damageType: lastDamageType` to resolvePlayerAction return + `damageType: res.damageType` to resolvePlayerMechanics return; added `damageType: ""` to all 14 early-return MechanicsResult stubs (dash/disengage/dodge/rest/craft/move/etc.) via a Python script (13 stubs) + 1 manual edit (invalid-action path).
+- page.tsx: setLastAnimEvent now forwards `damageType: (ev as any).damageType`; the floating-text derivation now prefers ev.damageType and only falls back to dice-log label inference when the event doesn't carry one.
+- CombatGrid.tsx: added `damageType?: string` to CombatAnimEvent (plumbed for future hit-flash color tinting).
+- CombatTextOverlay.tsx: tuned the rise from `setOffset((o) => o - 1.5)` (~112px) to `setOffset((o) => o - 0.55)` (~41px over 1.2s) to match the spec's "Rise upward 40px over 1.2s".
+
+Feature 2 — Loot drops from defeated monsters:
+- prisma/schema.prisma: added `x Int @default(-1)`, `y Int @default(-1)`, `itemName String @default("")`, `quantity Int @default(1)`, `pickedUp Boolean @default(false)` to the LootDrop model. Ran `bun run db:push` — Prisma client regenerated. The new columns are OPTIONAL with defaults so the existing LootLog / save-load code keeps working (legacy rows have x=-1).
+- types.ts: added `LootDropCellState` interface; added `lootDrops: LootDropCellState[]` to GameStateSnapshot.
+- state.ts: imported LootDropCellState; added `db.lootDrop.findMany({ where: { roomId, x: { gte: 0 }, pickedUp: false }})` to the getSnapshot Promise.all; mapped rows to LootDropCellState[]; added `lootDrops` to the snapshot. Added 2 new helpers: `dropLootOnGrid(roomId, x, y, itemName, quantity, monsterName, killerName?, round?)` creates a LootDrop row at (x,y); `pickupLootAtPosition(roomId, x, y, playerName)` picks up all unpicked-up drops at (x,y), transfers items to the player's inventory via addDatabaseItemToInventory (with a generic fallback for items not in the DB), soft-deletes the rows by setting pickedUp=true, returns the picked-up items list. Rewired the damageMonster loot block: replaced `addDatabaseItemToInventory(roomId, "__ground__", entry)` with `dropLootOnGrid(roomId, m.posX, m.posY, entry.name, 1, m.name)`; ALSO drops 1-2 named items from bestiaryEntry.loot.items (50% chance per item, max 2) so unique monster loot like "Ржавый кинжал" actually appears on the grid.
+- /api/game/move-token/route.ts: imported pickupLootAtPosition; after moveToken(...), calls pickupLootAtPosition(room.id, x, y, playerName); returns `pickedUpLoot` in the JSON response.
+- CombatGrid.tsx: added `lootDrops?` to GridExtras; added lootDropMap memo (Map of "x,y" → item info); renders a 💰 icon at each loot drop cell with bg-amber-500/15 + border-amber-400/40 + animate-pulse + tooltip showing item name + quantity + slain monster name; updated gridExtrasEqual to include lootDrops in the shallow-equal check.
+- page.tsx: passes `lootDrops: snapshot.lootDrops` via gridExtras; in handleMoveClick, after a successful move, loops over data.pickedUpLoot and calls toast.success(tt("ui.loot_picked_up", {item, qty})) for each item.
+- i18n.ts: added `ui.loot_picked_up` to all 6 languages (ru/en/es/de/fr/zh) — "💰 Подобрано: {item} ×{qty}" / "💰 Picked up: {item} ×{qty}" / "💰 Recogido: {item} ×{qty}" / "💰 Aufgehoben: {item} ×{qty}" / "💰 Ramassé : {item} ×{qty}" / "💰 拾取：{item} ×{qty}".
+- db.ts: added defensive PrismaClient cache invalidation — verifies the cached global instance has the lootDrop delegate before reusing it; if not, discards the stale instance and creates a fresh PrismaClient. This fixes the dev server's stale @prisma/client module cache after `bun run db:push` regenerates the client. Also `touch next.config.ts` to force a full dev server reload.
+
+Feature 3 — Status effect icons on tokens (BG3-style):
+- CombatGrid.tsx: imported Tooltip/TooltipTrigger/TooltipContent from @/components/ui/tooltip; upgraded ConditionIcons — 16px icons (h-4 w-4 instead of h-3.5 w-3.5) per spec; wrapped each icon in a shadcn Tooltip with TooltipTrigger asChild + TooltipContent side="left" showing condition name (RU + EN) + remaining duration + source + full description; the "+N" overflow badge is now a styled pill (bg-stone-900/90 + border-amber-700/40). Left conditions.ts unchanged (it's the source of truth — the existing emoji/color mappings are very close to the spec examples).
+
+Verification:
+- `bun run db:push` — Prisma client regenerated successfully ✅
+- `bun run lint` — 0 errors, 0 warnings ✅
+- `npx tsc --noEmit` — 0 errors ✅
+- `curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/` — 200 ✅
+- `/api/game/state?room=...` — returns 200 with `lootDrops: []` in the snapshot ✅
+- LootDrop SQL query confirmed in dev.log with all 5 new columns (x, y, itemName, quantity, pickedUp) ✅
+- Wrote work record to `/home/z/my-project/agent-ctx/NEW-FEATURES-1-full-stack-developer.md` (architecture, file inventory, integration notes).
+
+Stage Summary:
+- Feature 1 (floating damage numbers): the damage type now flows explicitly from dm-agent.ts → ResolvedEvent.damageType → page.tsx → makeDamageText() → CombatTextOverlay. Color-coding is reliable (no more fragile client-side keyword inference). Animation tuned to rise ~40px over 1.2s. Crits still show the golden burst + sparkles. Misses still show "ПРОМАХ". Heals still show green +N.
+- Feature 2 (loot drops): slain monsters now drop 1-3 generated items + 0-2 bestiary named items at their death cell. The 💰 icon renders on the CombatGrid. Walking onto the cell auto-pickups the items into the player's inventory and shows a localized toast. All clients see the drops via the snapshot's `lootDrops` array. Soft-delete (pickedUp=true) preserves LootLog history.
+- Feature 3 (status effect icons): ConditionIcons upgraded to 16px + shadcn Tooltip with rich hover (name RU+EN + duration + source + description). First 4 conditions shown; "+N" badge for overflow. Positioned at top-right of each token (not overlapping).
+- Files modified: 12 files (prisma/schema.prisma, src/lib/db.ts, src/lib/game/types.ts, src/lib/game/state.ts, src/lib/game/dm-agent.ts, src/lib/game/i18n.ts, src/app/page.tsx, src/app/api/game/move-token/route.ts, src/components/dnd/CombatGrid.tsx, src/components/dnd/CombatTextOverlay.tsx). No new files. No new packages. No mini-service changes.
+- No regressions: lint clean, type-check clean, dev server healthy (HTTP 200 on /, HTTP 200 on /api/game/state).

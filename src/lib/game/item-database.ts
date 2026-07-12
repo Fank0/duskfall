@@ -328,9 +328,9 @@ const LEGENDARY_ITEMS: ItemEntry[] = [
     weight: 0.5,
   },
   {
-    id: "potion_speed",
-    name: "Зелье скорости",
-    nameEn: "Potion of Speed",
+    id: "potion_speed_greater",
+    name: "Зелье великой скорости",
+    nameEn: "Potion of Greater Speed",
     type: "potion",
     rarity: "veryrare",
     description: "Скорость ×2, +2 AC, преимущество на спасброски ЛОВ на 1 час.",
@@ -348,7 +348,7 @@ const LEGENDARY_ITEMS: ItemEntry[] = [
     weight: 0.5,
   },
   {
-    id: "scroll_hold_person",
+    id: "scroll_hold_person_2",
     name: "Свиток удержания личности",
     nameEn: "Scroll of Hold Person",
     type: "scroll",
@@ -359,7 +359,7 @@ const LEGENDARY_ITEMS: ItemEntry[] = [
     weight: 0.1,
   },
   {
-    id: "scroll_fireball",
+    id: "scroll_fireball_2",
     name: "Свиток огненного шара",
     nameEn: "Scroll of Fireball",
     type: "scroll",
@@ -393,9 +393,9 @@ const LEGENDARY_ITEMS: ItemEntry[] = [
     weight: 0.1,
   },
   {
-    id: "amulet_health",
-    name: "Амулет здоровья",
-    nameEn: "Amulet of Health",
+    id: "amulet_health_greater",
+    name: "Амулет великого здоровья",
+    nameEn: "Amulet of Greater Health",
     type: "amulet",
     rarity: "rare",
     equipSlot: "accessory",
@@ -405,7 +405,7 @@ const LEGENDARY_ITEMS: ItemEntry[] = [
     weight: 0.3,
   },
   {
-    id: "cloak_elvenkind",
+    id: "cloak_elvenkind_2",
     name: "Плащ эльфийской крови",
     nameEn: "Cloak of Elvenkind",
     type: "cloak",
@@ -416,7 +416,7 @@ const LEGENDARY_ITEMS: ItemEntry[] = [
     weight: 1,
   },
   {
-    id: "boots_striding",
+    id: "boots_striding_2",
     name: "Сапоги стремительности",
     nameEn: "Boots of Striding and Springing",
     type: "misc",

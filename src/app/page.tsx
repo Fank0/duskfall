@@ -462,6 +462,11 @@ export default function Home() {
                     damage,
                     isCrit,
                     isHeal,
+                    // NEW-FEATURES-1 (Feature 1): forward the explicit damage type
+                    // from the resolved event so the hit-flash overlay could be
+                    // color-tinted by element in the future (currently unused but
+                    // plumbed through for completeness).
+                    damageType: (ev as any).damageType || undefined,
                   });
                   // ===== Floating combat text (damage/miss/heal numbers) =====
                   if (targetName && snapshot) {
@@ -478,19 +483,26 @@ export default function Home() {
                       ft = makeHealText(relX, relY, damage);
                     } else if (damage > 0) {
                       // D&D 5e (MASTER-PLAN 1.2): color-code damage by type.
-                      // Try to infer the damage type from the roll label.
-                      const dmgRoll = allRolls.find((r: any) =>
-                        r.purpose === "player_damage" || r.purpose === "monster_damage"
-                      );
-                      const labelLower = (dmgRoll?.label || "").toLowerCase();
-                      let dmgType: string | undefined;
-                      if (labelLower.includes("огн") || labelLower.includes("fire")) dmgType = "fire";
-                      else if (labelLower.includes("холод") || labelLower.includes("cold") || labelLower.includes("лёд")) dmgType = "cold";
-                      else if (labelLower.includes("молни") || labelLower.includes("lightning") || labelLower.includes("электр")) dmgType = "lightning";
-                      else if (labelLower.includes("яд") || labelLower.includes("poison")) dmgType = "poison";
-                      else if (labelLower.includes("некро") || labelLower.includes("necrotic")) dmgType = "necrotic";
-                      else if (labelLower.includes("свет") || labelLower.includes("radiant") || labelLower.includes("свят")) dmgType = "radiant";
-                      else dmgType = "physical";
+                      // NEW-FEATURES-1 (Feature 1): prefer the explicit damageType
+                      // carried on the resolved event (set in dm-agent.ts from the
+                      // AoE element or the inferred weapon/spell damage type). Fall
+                      // back to inferring from the dice-log label when the event
+                      // doesn't carry one (e.g. some legacy action paths).
+                      let dmgType: string | undefined =
+                        (ev as any).damageType || undefined;
+                      if (!dmgType) {
+                        const dmgRoll = allRolls.find((r: any) =>
+                          r.purpose === "player_damage" || r.purpose === "monster_damage"
+                        );
+                        const labelLower = (dmgRoll?.label || "").toLowerCase();
+                        if (labelLower.includes("огн") || labelLower.includes("fire")) dmgType = "fire";
+                        else if (labelLower.includes("холод") || labelLower.includes("cold") || labelLower.includes("лёд")) dmgType = "cold";
+                        else if (labelLower.includes("молни") || labelLower.includes("lightning") || labelLower.includes("электр")) dmgType = "lightning";
+                        else if (labelLower.includes("яд") || labelLower.includes("poison")) dmgType = "poison";
+                        else if (labelLower.includes("некро") || labelLower.includes("necrotic")) dmgType = "necrotic";
+                        else if (labelLower.includes("свет") || labelLower.includes("radiant") || labelLower.includes("свят")) dmgType = "radiant";
+                        else dmgType = "physical";
+                      }
                       ft = makeDamageText(relX, relY, damage, isCrit, dmgType);
                     } else {
                       // Check for a miss (d20 attack roll that failed).
@@ -1018,11 +1030,20 @@ export default function Home() {
         if (data.opportunityAttacks?.some((oa: any) => oa.hit)) {
           try { sfxHit(); } catch {}
         }
+        // NEW-FEATURES-1 (Feature 2): show a toast for each picked-up loot drop.
+        // The server auto-pickups any LootDrop rows at the destination cell and
+        // returns the list — we surface each item as a separate toast so the
+        // player knows exactly what they grabbed.
+        if (Array.isArray(data.pickedUpLoot) && data.pickedUpLoot.length > 0) {
+          for (const item of data.pickedUpLoot) {
+            toast.success(tt("ui.loot_picked_up", { item: item.itemName, qty: item.quantity }));
+          }
+        }
       }
     } catch {
       /* network blip — ignore */
     }
-  }, [session, targetingMode, pingRoom]);
+  }, [session, targetingMode, pingRoom, tt]);
 
   // Escape cancels targeting mode. Also cancel when combat ends so the player
   // is never stuck targeting on a peaceful grid.
@@ -1604,6 +1625,8 @@ export default function Home() {
                   lootCells: snapshot.lootCells,
                   traps: snapshot.traps,
                   terrainCells: snapshot.terrainCells,
+                  // NEW-FEATURES-1 (Feature 2): grid-placed loot drops from slain monsters.
+                  lootDrops: snapshot.lootDrops,
                 }}
                 targetingMode={targetingMode}
                 onMonsterTargetClick={handleMonsterTargetClick}

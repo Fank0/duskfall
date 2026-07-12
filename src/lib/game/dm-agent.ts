@@ -1146,6 +1146,8 @@ interface ResolutionResult {
   monsterThatDied: string | null;
   damageDealtToPlayer: number;
   damagedPlayer: string | null;
+  /** NEW-FEATURES-1 (Feature 1): explicit damage type for color-coded floating text. */
+  damageType: string;
   healingToPlayer: number;
   healedPlayer: string | null;
   inventoryChanges: InventoryChange[];
@@ -1339,6 +1341,11 @@ async function resolvePlayerAction(
   let damagedPlayer: string | null = null;
   let healingToPlayer = 0;
   let healedPlayer: string | null = null;
+  // NEW-FEATURES-1 (Feature 1): explicit damage type for color-coded floating text.
+  // Captured at every damage-dealing site below (single-target, AoE, surface
+  // reactions, off-hand / extra attacks). Defaults to "physical" when no type
+  // can be inferred (e.g. plain weapon attacks use the inferred slashing type).
+  let lastDamageType = "";
   const inventoryChanges: InventoryChange[] = branch.inventory || [];
   let goldChange = branch.goldChange || 0;
 
@@ -1368,6 +1375,9 @@ async function resolvePlayerAction(
     const saveDC = plan.saveDC ?? 12;
     const saveAbility = plan.saveAbility ?? "ТЕЛ";
     aoeResult = { shape, size: aoeSize, origin, cells, element, saveDC, saveAbility };
+    // NEW-FEATURES-1 (Feature 1): capture the AoE element as the damage type
+    // for color-coded floating text (fire=orange, cold=cyan, etc.).
+    lastDamageType = element;
 
     // Gather all combatants in the affected cells (exclude the caster).
     const cellSet = new Set(cells.map((c) => `${c.x},${c.y}`));
@@ -1729,6 +1739,10 @@ async function resolvePlayerAction(
       });
       // Determine damage type from notation for resistance/immunity checks.
       const damageType = inferDamageType(branch.monsterDamage.notation, actor);
+      // NEW-FEATURES-1 (Feature 1): capture the inferred damage type for
+      // color-coded floating text on the grid (fire / cold / lightning / etc.).
+      // Fall back to "physical" when no type can be inferred (plain weapon hit).
+      lastDamageType = damageType ?? "physical";
       const result = await damageMonster(roomId, m.id, damageDealtToMonster, damageType);
       // Vampiric heal.
       const vampHeal = rollVampiricHeal(actor, damageDealtToMonster);
@@ -1874,6 +1888,10 @@ async function resolvePlayerAction(
     total = applyDamageReduction(actor, total);
     damageDealtToPlayer = total;
     damagedPlayer = actorName; // failure backlash hits the actor
+    // NEW-FEATURES-1 (Feature 1): backlash / trap / fall damage defaults to
+    // "physical" (gray floating text). The DM may narrate fire/poison etc.,
+    // but the dice-log label doesn't carry element keywords for these cases.
+    if (!lastDamageType) lastDamageType = "physical";
     await logDiceRoll(roomId, round, actorName, {
       label: "Урон по герою" + (total < dmg.total ? ` (−${dmg.total - total} сопр.)` : ""),
       notation: branch.playerDamage.notation, modifier: 0, result: dmg.raw, total, purpose: "player_damage",
@@ -2107,6 +2125,8 @@ async function resolvePlayerAction(
     playerRolls, outcome,
     damageDealtToMonster, monsterThatDied,
     damageDealtToPlayer, damagedPlayer,
+    // NEW-FEATURES-1 (Feature 1): explicit damage type for color-coded floating text.
+    damageType: lastDamageType,
     healingToPlayer, healedPlayer,
     inventoryChanges, goldChange,
     category: plan.category,
@@ -2876,6 +2896,7 @@ export async function resolvePlayerMechanics(
         outcome: "failure",
         combatStarted: false, combatEnded: false,
         damageDealtToMonster: 0, monsterThatDied: null,
+        damageType: "",
         damageDealtToPlayer: 0, damagedPlayer: null,
         healingToPlayer: 0, healedPlayer: null,
         inventoryChanges: [], goldChange: 0,
@@ -2934,6 +2955,7 @@ export async function resolvePlayerMechanics(
         outcome: "success",
         combatStarted: false, combatEnded: false,
         damageDealtToMonster: 0, monsterThatDied: null,
+        damageType: "",
         damageDealtToPlayer: 0, damagedPlayer: null,
         healingToPlayer: 0, healedPlayer: null,
         inventoryChanges: [], goldChange: 0,
@@ -2957,6 +2979,7 @@ export async function resolvePlayerMechanics(
       outcome: "success",
       combatStarted: false, combatEnded,
       damageDealtToMonster: 0, monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0, damagedPlayer: null,
       healingToPlayer: 0, healedPlayer: null,
       inventoryChanges: [], goldChange: 0,
@@ -3015,6 +3038,7 @@ export async function resolvePlayerMechanics(
       actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
       outcome: "success", combatStarted: false, combatEnded: adv.ended,
       damageDealtToMonster: 0, monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0, damagedPlayer: null,
       healingToPlayer: 0, healedPlayer: null,
       inventoryChanges: [], goldChange: 0,
@@ -3046,6 +3070,7 @@ export async function resolvePlayerMechanics(
       actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
       outcome: "success", combatStarted: false, combatEnded: adv.ended,
       damageDealtToMonster: 0, monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0, damagedPlayer: null,
       healingToPlayer: 0, healedPlayer: null,
       inventoryChanges: [], goldChange: 0,
@@ -3097,6 +3122,7 @@ export async function resolvePlayerMechanics(
             actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
             outcome: "success", combatStarted: false, combatEnded: adv.ended,
             damageDealtToMonster: 0, monsterThatDied: null,
+            damageType: "",
             damageDealtToPlayer: 0, damagedPlayer: null,
             healingToPlayer: healRoll.total, healedPlayer: target.name,
             inventoryChanges: [{ action: "remove", item: potion.itemName, type: "potion" }], goldChange: 0,
@@ -3138,6 +3164,7 @@ export async function resolvePlayerMechanics(
           actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
           outcome: hit ? "success" : "failure", combatStarted: false, combatEnded: adv.ended,
           damageDealtToMonster: hit ? 1 : 0, monsterThatDied: null,
+          damageType: "",
           damageDealtToPlayer: 0, damagedPlayer: null,
           healingToPlayer: 0, healedPlayer: null,
           inventoryChanges: [], goldChange: 0,
@@ -3176,6 +3203,7 @@ export async function resolvePlayerMechanics(
         actorName, playerRolls: [], monsterRolls: [],
         outcome: "success", combatStarted: false, combatEnded: false,
         damageDealtToMonster: 0, monsterThatDied: null,
+        damageType: "",
         damageDealtToPlayer: 0, damagedPlayer: null,
         healingToPlayer: 0, healedPlayer: null,
         inventoryChanges: [], goldChange: 0,
@@ -3222,6 +3250,7 @@ export async function resolvePlayerMechanics(
       actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
       outcome: "success", combatStarted: false, combatEnded: adv.ended,
       damageDealtToMonster: 0, monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0, damagedPlayer: null,
       healingToPlayer: 0, healedPlayer: null,
       inventoryChanges: [], goldChange: 0,
@@ -3266,6 +3295,7 @@ export async function resolvePlayerMechanics(
       actorName, playerRolls: [], monsterRolls: adv.monsterTurns.flatMap((mt) => mt.result.rolls),
       outcome: "success", combatStarted: false, combatEnded: adv.ended,
       damageDealtToMonster: 0, monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0, damagedPlayer: null,
       healingToPlayer: 0, healedPlayer: null,
       inventoryChanges: [], goldChange: 0,
@@ -3325,6 +3355,7 @@ export async function resolvePlayerMechanics(
       outcome: hidden ? "success" : "failure",
       combatStarted: false, combatEnded: adv.ended,
       damageDealtToMonster: 0, monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0, damagedPlayer: null,
       healingToPlayer: 0, healedPlayer: null,
       inventoryChanges: [], goldChange: 0,
@@ -3348,6 +3379,7 @@ export async function resolvePlayerMechanics(
         actorName, playerRolls: [], monsterRolls: [],
         outcome: "failure", combatStarted: false, combatEnded: false,
         damageDealtToMonster: 0, monsterThatDied: null,
+        damageType: "",
         damageDealtToPlayer: 0, damagedPlayer: null,
         healingToPlayer: 0, healedPlayer: null,
         inventoryChanges: [], goldChange: 0,
@@ -3402,6 +3434,7 @@ export async function resolvePlayerMechanics(
       outcome: success ? "success" : "failure",
       combatStarted: false, combatEnded: adv.ended,
       damageDealtToMonster: 0, monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0, damagedPlayer: null,
       healingToPlayer: 0, healedPlayer: null,
       inventoryChanges: [], goldChange: 0,
@@ -3555,6 +3588,7 @@ export async function resolvePlayerMechanics(
       combatEnded: false,
       damageDealtToMonster: 0,
       monsterThatDied: null,
+      damageType: "",
       damageDealtToPlayer: 0,
       damagedPlayer: null,
       healingToPlayer: 0,
@@ -3778,6 +3812,8 @@ export async function resolvePlayerMechanics(
     monsterThatDied: res.monsterThatDied,
     damageDealtToPlayer: res.damageDealtToPlayer,
     damagedPlayer: res.damagedPlayer,
+    // NEW-FEATURES-1 (Feature 1): explicit damage type for color-coded floating text.
+    damageType: res.damageType,
     healingToPlayer: res.healingToPlayer,
     healedPlayer: res.healedPlayer,
     inventoryChanges: res.inventoryChanges,

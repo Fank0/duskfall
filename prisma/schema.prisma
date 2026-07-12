@@ -551,6 +551,14 @@ model StatusEffect {
 
 /// Loot drops recorded when a monster is slain. Drives the LootLog panel.
 /// `itemsJson` is a JSON array of { name, type, description, quantity }.
+///
+/// NEW-FEATURES-1 (Feature 2): the `x` / `y` / `itemName` / `quantity` /
+/// `pickedUp` columns turn LootDrop into a grid-placed loot cell. When a
+/// monster dies, each rolled item is written as a separate LootDrop row with
+/// `x`/`y` set to the monster's death cell and `pickedUp=false`. The snapshot
+/// exposes only the unpicked-up rows as `lootDrops`; the auto-pickup endpoint
+/// flips `pickedUp=true` (soft delete — preserves the LootLog history).
+/// Legacy LootLog rows keep `x = -1` (the column default).
 model LootDrop {
   id          String   @id @default(cuid())
   roomId      String
@@ -560,6 +568,16 @@ model LootDrop {
   gold        Int      @default(0)
   itemsJson   String   @default("[]") // JSON array of { name, type, description, quantity }
   round       Int      @default(0) // combat round when the drop happened
+  // ===== NEW-FEATURES-1 (Feature 2): grid-placed loot columns =====
+  // x = -1 (default) means legacy LootLog row (no grid cell). x >= 0 means a
+  // grid loot cell at column x, row y on the 16x16 tactical grid.
+  x           Int      @default(-1)
+  y           Int      @default(-1)
+  // For grid loot rows: the single item name sitting on this cell. Empty for
+  // legacy LootLog rows (which use itemsJson instead).
+  itemName    String   @default("")
+  quantity    Int      @default(1)
+  pickedUp    Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   @@index([roomId])

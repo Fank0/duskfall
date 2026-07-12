@@ -254,6 +254,9 @@ const DICT: Record<Lang, Record<string, string>> = {
     "tutorial.tip1": "Пишите креативно! Мастер реагирует на любые действия, не только бой.",
     "tutorial.tip2": "Осматривайте всё — тайники, подсказки и скрытые двери можно найти.",
     "tutorial.tip3": "Отдых восстанавливает силы, но не в бою. Используйте короткие отдыхи с умом.",
+    "tutorial.prev": "Назад",
+    "tutorial.next": "Далее",
+    "tutorial.close": "Закрыть",
     "lobby.sign_out_toast": "Вы вышли из аккаунта.",
     "lobby.save_no_hero": "Не удалось определить героя в этом сохранении.",
 
@@ -310,6 +313,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.defeated": "повержен",
     "ui.damage_dealt": "Нанесено",
     "ui.takes_damage": "получает урона",
+    "ui.loot_picked_up": "💰 Подобрано: {item} ×{qty}",
     "ui.dm_no_response": "Мастер не ответил.",
     "ui.dm_connection_error": "Ошибка связи с Мастером.",
     "ui.reset_error": "Ошибка перезапуска.",
@@ -751,6 +755,9 @@ const DICT: Record<Lang, Record<string, string>> = {
     "tutorial.tip1": "Be creative! The DM reacts to any action, not just combat.",
     "tutorial.tip2": "Examine everything — hidden compartments, clues, and secret doors can be found.",
     "tutorial.tip3": "Rest restores resources, but not in combat. Use short rests wisely.",
+    "tutorial.prev": "Previous",
+    "tutorial.next": "Next",
+    "tutorial.close": "Close",
     "lobby.sign_out_toast": "You have signed out.",
     "lobby.save_no_hero": "Could not identify the hero in this save.",
 
@@ -807,6 +814,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.defeated": "defeated",
     "ui.damage_dealt": "Damage dealt",
     "ui.takes_damage": "takes damage",
+    "ui.loot_picked_up": "💰 Picked up: {item} ×{qty}",
     "ui.dm_no_response": "The DM did not respond.",
     "ui.dm_connection_error": "Connection error with the DM.",
     "ui.reset_error": "Reset error.",
@@ -1261,6 +1269,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.defeated": "derrotado",
     "ui.damage_dealt": "Daño infligido",
     "ui.takes_damage": "recibe daño",
+    "ui.loot_picked_up": "💰 Recogido: {item} ×{qty}",
     "ui.dm_no_response": "El DM no respondió.",
     "ui.dm_connection_error": "Error de conexión con el DM.",
     "ui.reset_error": "Error al reiniciar.",
@@ -1486,6 +1495,9 @@ const DICT: Record<Lang, Record<string, string>> = {
     "itemdb.enchantment.poison": "Veneno",
     "itemdb.enchantment.necrotic": "Necrótico",
     "itemdb.enchantment.holy": "Sagrado",
+    "tutorial.prev": "Anterior",
+    "tutorial.next": "Siguiente",
+    "tutorial.close": "Cerrar",
   },
 
   de: {
@@ -1696,6 +1708,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.defeated": "besiegt",
     "ui.damage_dealt": "Schaden verursacht",
     "ui.takes_damage": "nimmt Schaden",
+    "ui.loot_picked_up": "💰 Aufgehoben: {item} ×{qty}",
     "ui.dm_no_response": "Der SL hat nicht geantwortet.",
     "ui.dm_connection_error": "Verbindungsfehler zum SL.",
     "ui.reset_error": "Fehler beim Zurücksetzen.",
@@ -1921,6 +1934,9 @@ const DICT: Record<Lang, Record<string, string>> = {
     "itemdb.enchantment.poison": "Gift",
     "itemdb.enchantment.necrotic": "Nekrotisch",
     "itemdb.enchantment.holy": "Heilig",
+    "tutorial.prev": "Zurück",
+    "tutorial.next": "Weiter",
+    "tutorial.close": "Schließen",
   },
 
   fr: {
@@ -2130,6 +2146,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.defeated": "vaincu",
     "ui.damage_dealt": "Dégâts infligés",
     "ui.takes_damage": "subit des dégâts",
+    "ui.loot_picked_up": "💰 Ramassé : {item} ×{qty}",
     "ui.dm_no_response": "Le MJ n'a pas répondu.",
     "ui.dm_connection_error": "Erreur de connexion avec le MJ.",
     "ui.reset_error": "Erreur de réinitialisation.",
@@ -2355,6 +2372,9 @@ const DICT: Record<Lang, Record<string, string>> = {
     "itemdb.enchantment.poison": "Poison",
     "itemdb.enchantment.necrotic": "Nécrotique",
     "itemdb.enchantment.holy": "Sacré",
+    "tutorial.prev": "Précédent",
+    "tutorial.next": "Suivant",
+    "tutorial.close": "Fermer",
   },
 
   zh: {
@@ -2565,6 +2585,7 @@ const DICT: Record<Lang, Record<string, string>> = {
     "ui.defeated": "被击败",
     "ui.damage_dealt": "造成伤害",
     "ui.takes_damage": "受到伤害",
+    "ui.loot_picked_up": "💰 拾取：{item} ×{qty}",
     "ui.dm_no_response": "DM未回应。",
     "ui.dm_connection_error": "与DM连接出错。",
     "ui.reset_error": "重置出错。",
@@ -2790,6 +2811,9 @@ const DICT: Record<Lang, Record<string, string>> = {
     "itemdb.enchantment.poison": "毒素",
     "itemdb.enchantment.necrotic": "死灵",
     "itemdb.enchantment.holy": "神圣",
+    "tutorial.prev": "上一页",
+    "tutorial.next": "下一页",
+    "tutorial.close": "关闭",
   },
 };
 

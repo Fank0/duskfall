@@ -2,6 +2,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Swords, MapPin, Crosshair } from "lucide-react";
 import type { PlayerState, MonsterState, ConditionState } from "@/lib/game/types";
 import { CONDITIONS } from "@/lib/game/conditions";
@@ -24,7 +25,9 @@ export interface AoEOverlay {
   saveAbility?: string;
 }
 
-/** Combat animation event (transient — drives hit-flash, lunge, shake, crit burst). */
+/** Combat animation event (transient — drives hit-flash, lunge, shake, crit burst).
+ *  NEW-FEATURES-1 (Feature 1): carries `damageType` so the hit-flash overlay
+ *  could be color-tinted by element (fire=orange, cold=cyan, etc.) in future. */
 export interface CombatAnimEvent {
   /** Monotonic id — increments per event so the receiver can detect a new one. */
   id: number;
@@ -33,13 +36,19 @@ export interface CombatAnimEvent {
   damage: number;
   isCrit: boolean;
   isHeal: boolean;
+  /** D&D 5e damage type: fire | cold | lightning | poison | necrotic | radiant | physical | ... */
+  damageType?: string;
 }
 
-/** Loot / trap cell overlay info (item 20). */
+/** Loot / trap cell overlay info (item 20).
+ *  NEW-FEATURES-1 (Feature 2): `lootDrops` carries grid-placed loot drops from
+ *  slain monsters (auto-picked-up when a player walks onto the cell). */
 export interface GridExtras {
   lootCells: { x: number; y: number; itemName: string }[];
   traps: { x: number; y: number; discovered: boolean }[];
   terrainCells?: { x: number; y: number; type: string }[];
+  /** Grid-placed loot drops from slain monsters — rendered as 💰 icons. */
+  lootDrops?: { id: string; x: number; y: number; itemName: string; quantity: number; monsterName?: string }[];
 }
 
 /** Keywords that mark a monster as ranged (used for threat-range overlay, item 20). */
@@ -338,6 +347,24 @@ export const CombatGrid = memo(function CombatGrid({
     }
     return m;
   }, [lootCells]);
+  // ===== NEW-FEATURES-1 (Feature 2): grid-placed loot drops from slain monsters =====
+  // Map "x,y" → loot drop info (itemName + quantity + monsterName) so the cell
+  // renderer can show a 💰 icon. Distinct from the legacy `lootCells` hash-based
+  // system — these drops sit at the exact cell where the monster died and are
+  // auto-picked-up when a player walks onto them.
+  const lootDropMap = useMemo(() => {
+    const drops = gridExtras?.lootDrops;
+    if (!drops?.length) return null;
+    const m = new Map<string, { itemName: string; quantity: number; monsterName?: string }>();
+    for (const d of drops) {
+      // Keep the FIRST drop per cell (most recent kills overwrite earlier ones
+      // — fine because the cell renders a single 💰 icon; the toast lists each
+      // picked-up item individually).
+      const k = `${d.x},${d.y}`;
+      if (!m.has(k)) m.set(k, { itemName: d.itemName, quantity: d.quantity, monsterName: d.monsterName });
+    }
+    return m;
+  }, [gridExtras?.lootDrops]);
   const trapMap = useMemo(() => {
     if (!traps?.length) return null;
     const m = new Map<string, boolean>();
@@ -669,6 +696,7 @@ export const CombatGrid = memo(function CombatGrid({
               const tint = (x + y) % 2 === 0 ? "bg-stone-900/40" : "bg-stone-900/70";
               const isAoeCell = aoeCellSet?.has(`${x},${y}`);
               const lootItems = lootCellMap?.get(`${x},${y}`);
+              const lootDrop = lootDropMap?.get(`${x},${y}`);
               const trapDiscovered = trapMap?.get(`${x},${y}`);
               const isTrap = trapMap?.has(`${x},${y}`);
               const isThreat = threatCells?.has(`${x},${y}`);
@@ -872,6 +900,22 @@ export const CombatGrid = memo(function CombatGrid({
                       className="pointer-events-none absolute inset-0 z-10 rounded-[2px] loot-shimmer"
                       title={`${t(settings.lang, "grid.loot")}: ${lootItems.join(", ")}`}
                     />
+                  )}
+                  {/* ===== NEW-FEATURES-1 (Feature 2): grid-placed loot drop from a
+                      slain monster. Rendered as a 💰 icon at the death cell with a
+                      subtle amber pulse so it stands out from the cell tint.
+                      Auto-picked-up when a player walks onto the cell. ===== */}
+                  {lootDrop && (
+                    <div
+                      className="pointer-events-none absolute inset-0 z-[12] flex items-center justify-center rounded-[2px] bg-amber-500/15 border border-amber-400/40 animate-pulse"
+                      title={
+                        lootDrop.monsterName
+                          ? `💰 ${lootDrop.itemName}${lootDrop.quantity > 1 ? ` ×${lootDrop.quantity}` : ""} (с «${lootDrop.monsterName}»)`
+                          : `💰 ${lootDrop.itemName}${lootDrop.quantity > 1 ? ` ×${lootDrop.quantity}` : ""}`
+                      }
+                    >
+                      <span className="text-[12px] drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)]">💰</span>
+                    </div>
                   )}
                   {/* Discovered trap (item 20) */}
                   {isTrap && trapDiscovered && (
@@ -1218,38 +1262,71 @@ function gridExtrasEqual(
   if (a === b) return true;
   if (!a || !b) return false;
   // D8: include terrainCells — the path preview depends on it.
+  // NEW-FEATURES-1 (Feature 2): include lootDrops so the 💰 icons update on
+  // every kill / pickup (without this, the memo would skip re-rendering and
+  // the icon would lag behind the actual DB state).
   return (
     shallowEqual(a.lootCells, b.lootCells) &&
     shallowEqual(a.traps, b.traps) &&
-    shallowEqual(a.terrainCells, b.terrainCells)
+    shallowEqual(a.terrainCells, b.terrainCells) &&
+    shallowEqual(a.lootDrops, b.lootDrops)
   );
 }
 
-/** Small vertical stack of condition emoji icons shown at the top-right of a token. */
+/** Small vertical stack of condition emoji icons shown at the top-right of a token.
+ *
+ * NEW-FEATURES-1 (Feature 3): upgraded to BG3-style status-effect icons:
+ *  - 16px circular icons (was 14px) — easier to read at a glance.
+ *  - shadcn Tooltip on hover (was native `title`) — richer, faster, themeable.
+ *  - Tooltip shows: condition name (RU + EN) + remaining duration + source.
+ *  - First 4 conditions shown; a "+N" badge surfaces the overflow. */
 function ConditionIcons({ conditions, lang }: { conditions: ConditionState[]; lang: Lang }) {
   if (conditions.length === 0) return null;
+  const shown = conditions.slice(0, 4);
+  const overflow = conditions.length - shown.length;
   return (
     <div className="absolute -right-1 -top-1 z-10 flex flex-col items-center gap-px">
-      {conditions.slice(0, 4).map((c) => {
+      {shown.map((c) => {
         const def = CONDITIONS[c.condition];
         const icon = def?.icon ?? "❓";
-        const name = def?.name ?? c.condition;
+        const nameRu = def?.name ?? c.condition;
+        const nameEn = def?.nameEn ?? c.condition;
         const desc = def?.description ?? "";
         const color = def?.color ?? "#888";
         const sourceTag = c.source ? ` · Источник: ${c.source}` : "";
         return (
-          <span
-            key={c.id}
-            title={`${name} (${c.duration} ${t(lang, "ui.rounds")})\n${desc}${sourceTag}`}
-            className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-black/50 text-[9px] leading-none shadow-sm cursor-help"
-            style={{ background: `${color}cc` }}
-          >
-            {icon}
-          </span>
+          <Tooltip key={c.id}>
+            <TooltipTrigger asChild>
+              <span
+                className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-black/60 text-[10px] leading-none shadow-sm"
+                style={{ background: `${color}dd` }}
+              >
+                <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)]">{icon}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-[220px]">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-1 font-semibold text-amber-200">
+                  <span>{icon}</span>
+                  <span>{nameRu}</span>
+                  <span className="text-[10px] text-muted-foreground">({nameEn})</span>
+                </div>
+                <div className="text-[11px] text-stone-300">
+                  {t(lang, "ui.rounds")}: <span className="font-mono text-amber-300">{c.duration}</span>{sourceTag}
+                </div>
+                <div className="text-[11px] text-stone-400">{desc}</div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
         );
       })}
-      {conditions.length > 4 && (
-        <span className="text-[7px] leading-none text-amber-300/80">+{conditions.length - 4}</span>
+      {overflow > 0 && (
+        <span
+          className="rounded-full bg-stone-900/90 px-1 text-[8px] leading-none text-amber-300/90 border border-amber-700/40"
+          title={`+${overflow}`}
+        >
+          +{overflow}
+        </span>
       )}
     </div>
   );

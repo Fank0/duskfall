@@ -35,6 +35,7 @@ import type {
   InventoryChange,
   EquipmentSlot,
   StatKey,
+  LootDropCellState,
 } from "./types";
 
 export const GRID_SIZE = 16;
@@ -434,7 +435,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
 
   // Take only the last 100 chat messages (descending then reverse to keep asc order).
   // Older messages are loadable on demand via /api/game/chat-history.
-  const [players, monsters, inventory, chatDesc, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs, trapRows, terrainRows] = await Promise.all([
+  const [players, monsters, inventory, chatDesc, diceLog, activeScene, initiatives, conditions, quests, mapRoomsAll, npcs, trapRows, terrainRows, lootDropRows] = await Promise.all([
     db.player.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.monster.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
     db.inventoryItem.findMany({ where: { roomId: room.id }, orderBy: { createdAt: "asc" } }),
@@ -451,6 +452,12 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     db.trap.findMany({ where: { roomId: room.id, discovered: true } }),
     // D&D 5e terrain cells.
     db.terrainCell.findMany({ where: { roomId: room.id } }),
+    // NEW-FEATURES-1 (Feature 2): grid-placed loot drops (monster death loot).
+    // Only rows with x >= 0 AND not yet picked up are exposed to clients.
+    db.lootDrop.findMany({
+      where: { roomId: room.id, x: { gte: 0 }, pickedUp: false },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
   // Reverse the chat so the snapshot exposes ascending chronological order.
   const chat = chatDesc.slice().reverse();
@@ -501,6 +508,20 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     discovered: Boolean(t.discovered),
   }));
 
+  // ===== NEW-FEATURES-1 (Feature 2): grid-placed loot drops =====
+  // Each row is a single item sitting on a (x,y) cell, ready for auto-pickup.
+  // Rendered as 💰 on the CombatGrid; auto-picked-up when a player walks onto
+  // the cell (see /api/game/move-token → pickupLootAtPosition).
+  const lootDrops: LootDropCellState[] = lootDropRows.map((d) => ({
+    id: d.id,
+    x: d.x,
+    y: d.y,
+    itemName: d.itemName,
+    quantity: d.quantity,
+    monsterName: d.monsterName ?? "",
+    createdAt: d.createdAt?.toISOString?.() ?? String(d.createdAt ?? ""),
+  }));
+
   // Exploration turn: filter alive players once (was previously computed twice).
   const alivePlayers = players.filter((p) => p.isAlive && p.hp > 0);
   const currentExplorerName = room.combatActive
@@ -546,6 +567,7 @@ export async function getSnapshot(roomCode: string): Promise<GameStateSnapshot |
     hasForge: Boolean(room.hasForge),
     hasEnchant: Boolean(room.hasEnchant),
     lootCells,
+    lootDrops,
     traps,
     terrainCells: terrainRows.map((t) => ({ x: t.x, y: t.y, type: t.type, duration: t.duration })),
     dungeonBiome: room.dungeonBiome ?? "dungeon",
@@ -1127,13 +1149,22 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
       where: { roomId, combatantName: m.name },
       data: { isAlive: false },
     });
-    // ===== Monster loot drop (item-db task, item 3) =====
+    // ===== Monster loot drop (item-db task, item 3 + NEW-FEATURES-1 Feature 2) =====
     // When a monster dies AND its bestiary entry has loot (gold > 0 OR
     // items.length > 0), use generateLoot(partyLevel) to spawn 1–3 random
-    // items on the ground (playerName="__ground__"). Bosses bias toward
-    // higher rarity. This replaces the previous boss-loot-from-biome-pool
-    // logic — generateLoot is now the single source of truth for monster
-    // loot drops, and the bestiary's loot field is just a yes/no flag.
+    // items on the ground at the monster's death cell (NEW: grid-placed
+    // LootDrop rows, auto-picked-up when a player walks onto the cell).
+    // Bosses bias toward higher rarity.
+    //
+    // NEW-FEATURES-1 (Feature 2): drops are now grid-placed via
+    // `dropLootOnGrid(m.posX, m.posY, ...)` instead of being shuffled into the
+    // `__ground__` inventory bucket. Each item sits at the monster's death cell
+    // as a separate LootDrop row; the CombatGrid renders a 💰 icon, and the
+    // move-token route auto-pickups them on entry.
+    //
+    // We ALSO drop 1-2 named items from the bestiary's loot.items list (50%
+    // chance per item, capped at 2) so unique monster loot like "Ржавый кинжал"
+    // or "Кольцо защиты +1" actually appears on the grid.
     const bestiaryEntry = findBestiaryEntryByName(m.name);
     const hasLoot =
       bestiaryEntry?.loot &&
@@ -1145,9 +1176,22 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
       const rarityBias: ItemRarity | undefined = m.isBoss ? "veryrare" : undefined;
       const lootEntries = generateLoot(partyLevel, rarityBias);
       const spawnedNames: string[] = [];
+      // Drop generated items at the monster's death cell.
       for (const entry of lootEntries) {
-        await addDatabaseItemToInventory(roomId, "__ground__", entry);
+        await dropLootOnGrid(roomId, m.posX, m.posY, entry.name, 1, m.name);
         spawnedNames.push(entry.name);
+      }
+      // Drop 1-2 named items from the bestiary's loot table (50% per item, max 2).
+      const namedItems = bestiaryEntry?.loot?.items ?? [];
+      let namedDropped = 0;
+      for (const itemName of namedItems) {
+        if (namedDropped >= 2) break;
+        // 50% chance per named item — keeps the loot table varied per kill.
+        if (Math.random() < 0.5) {
+          await dropLootOnGrid(roomId, m.posX, m.posY, itemName, 1, m.name);
+          spawnedNames.push(itemName);
+          namedDropped++;
+        }
       }
       if (spawnedNames.length > 0) {
         await db.chatMessage.create({
@@ -1155,7 +1199,7 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
             roomId,
             role: "system",
             speaker: "",
-            content: `С поверженного «${m.name}» выпадает добыча: ${spawnedNames.join(", ")}.`,
+            content: `С поверженного «${m.name}» выпадает добыча: ${spawnedNames.join(", ")}. Подойдите, чтобы подобрать.`,
             round: 0,
           },
         });
@@ -1193,6 +1237,105 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
   }
   invalidateSnapshotCache(roomId);
   return { hp: newHp, died: newHp <= 0 };
+}
+
+/**
+ * NEW-FEATURES-1 (Feature 2): Drop a single item as a grid-placed LootDrop row
+ * at (x, y). The item sits on the cell until a player walks onto it and triggers
+ * `pickupLootAtPosition`. The item is NOT yet in any player's inventory — the
+ * snapshot exposes unpicked-up rows as `lootDrops`, and the CombatGrid renders
+ * them as 💰 icons.
+ *
+ * `monsterName` is preserved for the LootLog panel + tooltip context. `killerName`
+ * and `round` are optional metadata (best-effort — pass them when known).
+ */
+export async function dropLootOnGrid(
+  roomId: string,
+  x: number,
+  y: number,
+  itemName: string,
+  quantity: number,
+  monsterName: string,
+  killerName?: string,
+  round?: number
+): Promise<void> {
+  await db.lootDrop.create({
+    data: {
+      roomId,
+      x,
+      y,
+      itemName,
+      quantity: Math.max(1, quantity | 0),
+      monsterName,
+      killerName: killerName ?? "",
+      gold: 0,
+      itemsJson: "[]",
+      round: round ?? 0,
+      pickedUp: false,
+    },
+  });
+  invalidateSnapshotCache(roomId);
+}
+
+/**
+ * NEW-FEATURES-1 (Feature 2): Auto-pickup every unpicked-up LootDrop at (x, y)
+ * for `playerName`. For each drop: look up the item in the item database, add
+ * it to the player's inventory (via `addDatabaseItemToInventory` so the item
+ * retains its authored stats — equip slot, AC bonus, damage notation, etc.),
+ * then soft-delete the LootDrop row by setting `pickedUp = true`.
+ *
+ * Returns the list of picked-up items (name + quantity) so the API route can
+ * show a toast. Items not found in the database fall back to a generic
+ * InventoryItem row with just the name + "Предмет" type.
+ */
+export async function pickupLootAtPosition(
+  roomId: string,
+  x: number,
+  y: number,
+  playerName: string
+): Promise<{ itemName: string; quantity: number }[]> {
+  const drops = await db.lootDrop.findMany({
+    where: { roomId, x, y, pickedUp: false },
+    orderBy: { createdAt: "asc" },
+  });
+  if (drops.length === 0) return [];
+  const picked: { itemName: string; quantity: number }[] = [];
+  for (const d of drops) {
+    // Try the item database first (gives full stats: equip slot, AC bonus, etc.).
+    const entry = findItemByName(d.itemName);
+    if (entry) {
+      for (let i = 0; i < d.quantity; i++) {
+        await addDatabaseItemToInventory(roomId, playerName, entry);
+      }
+    } else {
+      // Fallback: create a generic InventoryItem row with the bare name.
+      const existing = await db.inventoryItem.findFirst({
+        where: { roomId, playerName, itemName: d.itemName },
+      });
+      if (existing) {
+        await db.inventoryItem.update({
+          where: { id: existing.id },
+          data: { quantity: existing.quantity + d.quantity },
+        });
+      } else {
+        await db.inventoryItem.create({
+          data: {
+            roomId,
+            playerName,
+            itemName: d.itemName,
+            itemType: "Предмет",
+            quantity: d.quantity,
+            description: "",
+          },
+        });
+      }
+    }
+    picked.push({ itemName: d.itemName, quantity: d.quantity });
+    // Soft-delete the LootDrop row (preserves LootLog history).
+    await db.lootDrop.update({ where: { id: d.id }, data: { pickedUp: true } });
+  }
+  invalidateSnapshotCache(roomId);
+  return picked;
 }
 
 export async function damagePlayer(roomId: string, name: string, amount: number) {

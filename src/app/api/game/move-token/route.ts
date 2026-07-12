@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getSnapshot, invalidateSnapshotCache, moveToken, damagePlayer } from "@/lib/game/state";
+import { getSnapshot, invalidateSnapshotCache, moveToken, damagePlayer, pickupLootAtPosition } from "@/lib/game/state";
 import { validatePlayerName, validateRoomCode } from "@/lib/game/validate";
 import { rollD20, rollDice } from "@/lib/game/dice";
 import { getTerrainCells, isDifficultTerrain } from "@/lib/game/terrain";
@@ -126,6 +126,17 @@ export async function POST(req: NextRequest) {
     await moveToken(room.id, playerName, x, y, true);
     invalidateSnapshotCache(room.id);
 
+    // ===== NEW-FEATURES-1 (Feature 2): auto-pickup loot drops on the destination cell =====
+    // After the player's token arrives at (x, y), check for any unpicked-up
+    // LootDrop rows on that cell and transfer them to the player's inventory.
+    // Returns the list of picked-up items so the client can show a toast.
+    let pickedUpLoot: { itemName: string; quantity: number }[] = [];
+    try {
+      pickedUpLoot = await pickupLootAtPosition(room.id, x, y, playerName);
+    } catch (e) {
+      console.warn("[api/game/move-token] loot pickup failed:", e);
+    }
+
     // D&D 5e: check if destination is difficult terrain (costs 2x movement).
     const terrainCells = await getTerrainCells(room.id);
     const destDifficult = isDifficultTerrain(terrainCells, x, y);
@@ -158,7 +169,7 @@ export async function POST(req: NextRequest) {
     // the new token position / movement points / opportunity-attack results.
     pushStateChange(roomCode);
     const snapshot = await getSnapshot(roomCode);
-    return NextResponse.json({ ok: true, snapshot, opportunityAttacks });
+    return NextResponse.json({ ok: true, snapshot, opportunityAttacks, pickedUpLoot });
   } catch (e: any) {
     console.error("[api/game/move-token] error:", e);
     return NextResponse.json(

@@ -47,8 +47,10 @@ function FloatingTextItem({ text }: { text: FloatingText }) {
   const [burstGone, setBurstGone] = useState(false);
 
   useEffect(() => {
+    // NEW-FEATURES-1 (Feature 1): tune the animation to the spec — rise ~40px
+    // upward over 1.2s and fade out. 0.55px × 75 ticks (16ms × 75 ≈ 1.2s) ≈ 41px.
     const timer = setTimeout(() => setVisible(false), 1200);
-    const anim = setInterval(() => setOffset((o) => o - 1.5), 16);
+    const anim = setInterval(() => setOffset((o) => o - 0.55), 16);
     const burstTimer = setTimeout(() => setBurstGone(true), 700);
     return () => { clearTimeout(timer); clearInterval(anim); clearTimeout(burstTimer); };
   }, []);
