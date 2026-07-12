@@ -1037,7 +1037,7 @@ export const BESTIARY: BestiaryEntry[] = [
   },
   // ===== Additional monsters (D&D 5e SRD) =====
   {
-    id: "giant-spider",
+    id: "giant-spider-srd",
     name: "Гигантский паук",
     nameEn: "Giant Spider",
     category: "beast",
@@ -1053,7 +1053,7 @@ export const BESTIARY: BestiaryEntry[] = [
     loot: { gold: 0, items: ["Яд паука"] },
   },
   {
-    id: "dire-wolf",
+    id: "dire-wolf-srd",
     name: "Лютоволк",
     nameEn: "Dire Wolf",
     category: "beast",
@@ -1085,7 +1085,7 @@ export const BESTIARY: BestiaryEntry[] = [
     loot: { gold: 50, items: ["Дубина огра"] },
   },
   {
-    id: "ghoul",
+    id: "ghoul-srd",
     name: "Гуль",
     nameEn: "Ghoul",
     category: "undead",
@@ -1101,7 +1101,7 @@ export const BESTIARY: BestiaryEntry[] = [
     loot: { gold: 0, items: [] },
   },
   {
-    id: "wraith",
+    id: "wraith-srd",
     name: "Призрак",
     nameEn: "Wraith",
     category: "undead",
