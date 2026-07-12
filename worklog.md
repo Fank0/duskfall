@@ -3803,3 +3803,38 @@ Stage Summary:
 - Feature 3 (status effect icons): ConditionIcons upgraded to 16px + shadcn Tooltip with rich hover (name RU+EN + duration + source + description). First 4 conditions shown; "+N" badge for overflow. Positioned at top-right of each token (not overlapping).
 - Files modified: 12 files (prisma/schema.prisma, src/lib/db.ts, src/lib/game/types.ts, src/lib/game/state.ts, src/lib/game/dm-agent.ts, src/lib/game/i18n.ts, src/app/page.tsx, src/app/api/game/move-token/route.ts, src/components/dnd/CombatGrid.tsx, src/components/dnd/CombatTextOverlay.tsx). No new files. No new packages. No mini-service changes.
 - No regressions: lint clean, type-check clean, dev server healthy (HTTP 200 on /, HTTP 200 on /api/game/state).
+
+---
+Task ID: BUGFIX-DUPES-FEATURES
+Agent: main (Z.ai Code)
+Task: Fix i18n missing keys + duplicate IDs + add 3 new gameplay features.
+
+Work Log:
+- Found and fixed missing i18n keys:
+  - bestiary.category.fiend/giant/aberration added to all 6 languages
+  - tutorial.prev/next/close added to all 6 languages (were missing from es/de/fr/zh)
+- Found and fixed duplicate item IDs in item-database.ts (6 duplicates):
+  - potion_speed → potion_speed_greater
+  - scroll_hold_person → scroll_hold_person_2
+  - scroll_fireball → scroll_fireball_2
+  - amulet_health → amulet_health_greater
+  - cloak_elvenkind → cloak_elvenkind_2
+  - boots_striding → boots_striding_2
+- Found and fixed duplicate bestiary IDs (4 duplicates):
+  - giant-spider → giant-spider-srd
+  - dire-wolf → dire-wolf-srd
+  - ghoul → ghoul-srd
+  - wraith → wraith-srd
+- Delegated 3 new gameplay features (NEW-FEATURES-1):
+  1. Floating damage numbers (BG3-style): damageType plumbed end-to-end from dm-agent → CombatTextOverlay, color-coded by damage type
+  2. Loot drops from defeated monsters: LootDrop Prisma model + dropLootOnGrid/pickupLootAtPosition helpers + 💰 icons on grid + auto-pickup on move + toast notification
+  3. Status effect icons on tokens (BG3-style): 16px icons with shadcn Tooltip showing condition name + duration + source + description
+- All commits pushed to GitHub (4 commits this session).
+
+Stage Summary:
+- 0 TypeScript errors, 0 lint errors, 0 console errors
+- Dev server HTTP 200, game loads cleanly
+- 10 duplicate ID bugs eliminated (6 items + 4 bestiary)
+- 3 new gameplay features added (floating damage, loot drops, status icons)
+- 21 i18n keys added across 6 languages (3 bestiary categories + 3 tutorial + 15 ui.loot_picked_up via subagent)
+- Project is stable and feature-rich for continued development.
