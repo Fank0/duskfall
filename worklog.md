@@ -3838,3 +3838,27 @@ Stage Summary:
 - 3 new gameplay features added (floating damage, loot drops, status icons)
 - 21 i18n keys added across 6 languages (3 bestiary categories + 3 tutorial + 15 ui.loot_picked_up via subagent)
 - Project is stable and feature-rich for continued development.
+
+---
+Task ID: LOOT-FIX
+Agent: main (Z.ai Code)
+Task: Fix loot drops not working for encounter-spawned monsters.
+
+Work Log:
+- Discovered via QA testing that loot drops only triggered when a monster had a bestiary entry (findBestiaryEntryByName returned a match). Encounter-spawned monsters like 'Утопленник' and 'Павший паладин' (from locations.ts / encounters.ts, not the BESTIARY array) dropped NOTHING.
+- Root cause: the loot drop logic in state.ts had `if (hasLoot)` guard where `hasLoot` required a bestiary entry with loot.
+- Fix: Generate random loot via generateLoot() for ALL monsters on death, regardless of whether they have a bestiary entry. Bestiary-named loot items + gold are still applied as a bonus when the entry exists.
+- Also added: gold from bestiary loot tables is now awarded to the monster's killer (first alive player) directly to their gold count, in addition to the item drops on the grid.
+- Verified via agent-browser:
+  - Created room QHRC4U, killed Павший паладин (encounter-spawned, not in bestiary)
+  - Loot drops appeared: 'Кольцо силы' + 'Зелье лечения' at (9,1)
+  - 💰 icon renders on the combat grid
+  - System chat message: 'С поверженного «Павший паладин» выпадает добыча...'
+  - 0 console errors
+- Committed and pushed to GitHub.
+
+Stage Summary:
+- Loot drops now work for ALL monsters (bestiary + encounter-spawned)
+- 0 TypeScript errors, 0 lint errors, 0 console errors
+- Dev server HTTP 200, game fully functional
+- 3 new gameplay features verified working: floating damage, loot drops, status icons
