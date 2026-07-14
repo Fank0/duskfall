@@ -1166,10 +1166,13 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
     // chance per item, capped at 2) so unique monster loot like "Ржавый кинжал"
     // or "Кольцо защиты +1" actually appears on the grid.
     const bestiaryEntry = findBestiaryEntryByName(m.name);
-    const hasLoot =
+    const hasBestiaryLoot =
       bestiaryEntry?.loot &&
       (bestiaryEntry.loot.gold > 0 || bestiaryEntry.loot.items.length > 0);
-    if (hasLoot) {
+    // Generate loot for ALL monsters (bestiary or not). Non-bestiary monsters
+    // (e.g. encounter-spawned) still drop 1-2 random items via generateLoot,
+    // so the player always gets some reward for defeating them.
+    {
       const partyLevel = await averagePartyLevel(roomId);
       // Bosses bias toward "veryrare" so their loot feels rewarding; regular
       // monsters use the level-scaled roll (no bias).
@@ -1182,15 +1185,35 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
         spawnedNames.push(entry.name);
       }
       // Drop 1-2 named items from the bestiary's loot table (50% per item, max 2).
-      const namedItems = bestiaryEntry?.loot?.items ?? [];
-      let namedDropped = 0;
-      for (const itemName of namedItems) {
-        if (namedDropped >= 2) break;
-        // 50% chance per named item — keeps the loot table varied per kill.
-        if (Math.random() < 0.5) {
-          await dropLootOnGrid(roomId, m.posX, m.posY, itemName, 1, m.name);
-          spawnedNames.push(itemName);
-          namedDropped++;
+      // Only if the monster has a bestiary entry with named items.
+      if (hasBestiaryLoot) {
+        const namedItems = bestiaryEntry?.loot?.items ?? [];
+        let namedDropped = 0;
+        for (const itemName of namedItems) {
+          if (namedDropped >= 2) break;
+          // 50% chance per named item — keeps the loot table varied per kill.
+          if (Math.random() < 0.5) {
+            await dropLootOnGrid(roomId, m.posX, m.posY, itemName, 1, m.name);
+            spawnedNames.push(itemName);
+            namedDropped++;
+          }
+        }
+        // Award gold from the bestiary loot table to the monster's killer.
+        if (bestiaryEntry?.loot?.gold && bestiaryEntry.loot.gold > 0) {
+          const goldToAward = bestiaryEntry.loot.gold;
+          // Find the player who killed the monster (the one whose turn it is)
+          // and award gold. We use the room's current turn or the first alive player.
+          const alivePlayers = await db.player.findMany({
+            where: { roomId, isAlive: true },
+            orderBy: { createdAt: "asc" },
+          });
+          if (alivePlayers.length > 0) {
+            const killer = alivePlayers[0];
+            await db.player.update({
+              where: { id: killer.id },
+              data: { gold: { increment: goldToAward } },
+            });
+          }
         }
       }
       if (spawnedNames.length > 0) {
