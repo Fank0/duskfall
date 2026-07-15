@@ -3862,3 +3862,40 @@ Stage Summary:
 - 0 TypeScript errors, 0 lint errors, 0 console errors
 - Dev server HTTP 200, game fully functional
 - 3 new gameplay features verified working: floating damage, loot drops, status icons
+
+---
+Task ID: GLOBAL-DEBUG-PLAYER-TEST
+Agent: main (Z.ai Code)
+Task: Global debug + test game as real player — fix all bugs found.
+
+Work Log:
+- User uploaded screenshot showing critical error: 'attempt to write a readonly database' (SQLite error 1032) when creating a room. The error occurred in createRoomWithHost() → db.room.create().
+- Root cause: The dev server process was started before the .env file existed (or the process env was stale), so DATABASE_URL wasn't loaded. Prisma couldn't find the database path and fell back to a read-only mode.
+- Fix: Restarted the dev server to reload .env. Verified room creation works after restart.
+
+- Conducted full player flow testing via agent-browser:
+  1. Registered as new player
+  2. Created room with manual character creation (Elf + Rogue + Criminal)
+  3. Discovered BUG: 'Случайно' button on stats step wiped race/class/background selections
+  4. Fixed: Made randomize() context-aware — on stats step, only rolls ability scores; on other steps, only randomizes that step's selection
+  5. Entered room, examined surroundings (DM generated rich narrative)
+  6. Started combat — 2 monsters (Разбойник-арбалетчик + Разбойник-головорез)
+  7. Cast cantrip (Жгучая вспышка) — targeted monster via grid click, dealt 7 damage
+  8. Killed Р2 (0/11 HP) — loot dropped (but found BUG: 10 items from one monster!)
+  9. Discovered BUG: duplicate loot drops from dead monsters
+  10. Root cause: damageMonster() dropped loot every time HP reached 0, even if already dead
+  11. Fixed: Added 'wasAlreadyDead' check — loot only drops ONCE (alive → dead transition)
+  12. Continued combat, killed Р1 (0/14 HP) — combat ended, exploration mode resumed
+  13. Verified: 0 console errors throughout, 0 TypeScript errors, 0 lint errors
+
+- Fixed 3 bugs total:
+  1. Readonly database (restart dev server)
+  2. Duplicate loot drops (wasAlreadyDead check)
+  3. Randomize button wiping selections (context-aware randomize)
+
+Stage Summary:
+- All 3 critical bugs fixed and verified
+- Full player flow tested end-to-end: register → create room → character creation → exploration → combat → kill monsters → loot drops → combat end
+- Game is fully playable as a real player
+- 0 errors across all checks (console, TypeScript, lint, dev server)
+- Committed and pushed to GitHub (commit 382843e)
