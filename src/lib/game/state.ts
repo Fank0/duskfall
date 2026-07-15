@@ -1138,13 +1138,17 @@ export async function damageMonster(roomId: string, monsterId: string, amount: n
     finalAmount = Math.floor(finalAmount / 2);
   }
 
+  const wasAlreadyDead = m.hp <= 0;
   const newHp = Math.max(0, m.hp - finalAmount);
   await db.monster.update({
     where: { id: m.id },
     data: { hp: newHp, isActive: newHp > 0 },
   });
   // Keep initiative entry alive-state in sync.
-  if (newHp <= 0) {
+  // Only drop loot ONCE — when the monster transitions from alive → dead.
+  // (If the monster is already at 0 HP and takes more damage, skip the loot
+  // drop to avoid duplicate loot piles.)
+  if (newHp <= 0 && !wasAlreadyDead) {
     await db.initiativeEntry.updateMany({
       where: { roomId, combatantName: m.name },
       data: { isAlive: false },

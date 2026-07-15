@@ -91,11 +91,51 @@ export function CharacterCreator({
   }
 
   function randomize() {
-    setRaceId(RACE_PRESETS[Math.floor(Math.random() * RACE_PRESETS.length)].id);
-    setClassId(CLASS_PRESETS[Math.floor(Math.random() * CLASS_PRESETS.length)].id);
-    setBackgroundId(BACKGROUND_PRESETS[Math.floor(Math.random() * BACKGROUND_PRESETS.length)].id);
-    setBonus({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 });
-    toast("Случайный герой сгенерирован!");
+    // Context-aware randomize: only randomize the fields relevant to the
+    // current step. On the "stats" step, roll random ability-score bonuses
+    // (standard array: 15,14,13,12,10,8 distributed randomly). On other
+    // steps, randomize only that step's selection. This prevents the
+    // "Случайно" button on the stats page from wiping the player's
+    // previously-chosen race/class/background.
+    if (step === "race") {
+      setRaceId(RACE_PRESETS[Math.floor(Math.random() * RACE_PRESETS.length)].id);
+      toast("Случайная раса выбрана!");
+    } else if (step === "class") {
+      setClassId(CLASS_PRESETS[Math.floor(Math.random() * CLASS_PRESETS.length)].id);
+      toast("Случайный класс выбран!");
+    } else if (step === "background") {
+      setBackgroundId(BACKGROUND_PRESETS[Math.floor(Math.random() * BACKGROUND_PRESETS.length)].id);
+      toast("Случайное происхождение выбрано!");
+    } else if (step === "stats") {
+      // Roll a random standard-array distribution (15,14,13,12,10,8).
+      const rolls = [15, 14, 13, 12, 10, 8];
+      // Fisher-Yates shuffle
+      for (let i = rolls.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [rolls[i], rolls[j]] = [rolls[j], rolls[i]];
+      }
+      setBonus({
+        str: rolls[0] - 10,
+        dex: rolls[1] - 10,
+        con: rolls[2] - 10,
+        int: rolls[3] - 10,
+        wis: rolls[4] - 10,
+        cha: rolls[5] - 10,
+      });
+      toast("Случайные характеристики брошены!");
+    } else if (step === "name") {
+      const randomName = ["Алдрик", "Малек", "Эльза", "Кормак", "Сигрид", "Бран", "Лиара", "Дрейк"][Math.floor(Math.random() * 8)] + " " + Math.floor(Math.random() * 100);
+      setPlayerName(randomName);
+      toast("Случайное имя выбрано!");
+    } else {
+      // Fallback: randomize everything (used by the header "Случайно" button
+      // when no specific step is active).
+      setRaceId(RACE_PRESETS[Math.floor(Math.random() * RACE_PRESETS.length)].id);
+      setClassId(CLASS_PRESETS[Math.floor(Math.random() * CLASS_PRESETS.length)].id);
+      setBackgroundId(BACKGROUND_PRESETS[Math.floor(Math.random() * BACKGROUND_PRESETS.length)].id);
+      setBonus({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 });
+      toast("Случайный герой сгенерирован!");
+    }
   }
 
   // Quick-create: generate a random character and immediately submit
